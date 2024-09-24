@@ -20,27 +20,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from sys import intern
+from collections.abc import Sequence
+from dataclasses import field
 from warnings import warn
 from functools import partial
-from typing import ClassVar
+from typing import Any, Union, Literal
 
 import numpy as np
 
+import modepy as mp
 from pymbolic.primitives import (  # noqa: N813
         Expression as ExpressionBase, Variable, Variable as var,
         cse_scope as cse_scope_base,
-        make_common_subexpression as cse)
+        make_common_subexpression as cse,
+        expr_dataclass)
 from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (
         NablaComponent, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector
 
 from pytools.obj_array import make_obj_array, flat_obj_array
-from sumpy.kernel import SpatialConstant
+from sumpy.kernel import Kernel, SpatialConstant
 
 from pytential.symbolic.dof_desc import (
-        DEFAULT_SOURCE, DEFAULT_TARGET,
+        DEFAULT_SOURCE, DEFAULT_TARGET, DEFAULT_DOFDESC,
         QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2,
         GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT,
         DOFDescriptor, DOFDescriptorLike,
@@ -275,6 +278,10 @@ __all__ = (
     )
 
 
+Operand = Union["Expression", np.ndarray, MultiVector]
+QBXForcedLimit = int | Literal["avg"] | None
+
+
 class _NoArgSentinel:
     pass
 
@@ -298,32 +305,28 @@ def array_to_tuple(ary):
 # }}}
 
 
+@expr_dataclass()
 class Expression(ExpressionBase):
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
 
 
+@expr_dataclass()
 class NamedIntermediateResult(Variable):
-    # These are inserted by the pytential 'compiler'.
-    pass
+    """Internal variables used by ``pytential.compiler``."""
 
 
+@expr_dataclass()
 class ErrorExpression(Expression):
     """An expression that, if evaluated, causes an error with the supplied
     *message*.
 
-    .. automethod:: __init__
+    .. autoattribute:: message
     """
-    init_arg_names = ("message",)
 
-    def __init__(self, message):
-        self.message = message
-
-    def __getinitargs__(self):
-        return (self.message,)
-
-    mapper_method = intern("map_error_expression")
+    message: str
+    """The error message to raise when this expression is encountered."""
 
 
 def make_sym_mv(name, num_components):
@@ -339,7 +342,8 @@ def make_sym_surface_mv(name, ambient_dim, dim, dofdesc=None):
             for i, vec in enumerate(par_grad.T))
 
 
-class Function(var):
+@expr_dataclass()
+class Function(Variable):
     def __call__(self, operand, *args, **kwargs):
         # If the call is handed an object array full of operands,
         # return an object array of the operator applied to each of the
@@ -355,10 +359,10 @@ class Function(var):
             return var.__call__(self, operand, *args, **kwargs)
 
 
+@expr_dataclass()
 class NumpyMathFunction(Function):
     """A math function named within the numpy naming convention and with
     numpy-like semantics."""
-    pass
 
 
 real = NumpyMathFunction("real")
@@ -391,66 +395,62 @@ log = NumpyMathFunction("log")
 
 # {{{ discretization properties
 
+@expr_dataclass()
 class DiscretizationProperty(Expression):
     """A quantity that depends exclusively on the discretization.
 
-    .. attribute:: dofdesc
+    .. autoattribute:: dofdesc
     """
 
-    init_arg_names: ClassVar[tuple[str, ...]] = ("dofdesc",)
+    dofdesc: DOFDescriptor
+    """The descriptor for this quantity that selects its geometry on evaluation."""
 
-    def __init__(self, dofdesc=None):
-        """
-        :arg dofdesc: |dofdesc-blurb|
-        """
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-        self.dofdesc = as_dofdesc(dofdesc)
-
-    def __getinitargs__(self):
-        return (self.dofdesc,)
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
 
+@expr_dataclass(init=False)
 class IsShapeClass(DiscretizationProperty):
     """A predicate that is *True* if the elements of the discretization have
     a unique type that matches :attr:`shape`.
 
-    .. attribute:: shape
-
-        A :class:`modepy.Shape` subclass.
+    .. autoattribute:: shape
     """
-    init_arg_names = ("shape", "dofdesc")
 
-    def __init__(self, shape, dofdesc) -> None:
+    shape: mp.Shape
+    """A :class:`modepy.Shape` subclass."""
+
+    # FIXME: this is added for backwards compatibility with pre-dataclass expressions
+    def __init__(self, shape: mp.Shape, dofdesc: DOFDescriptorLike) -> None:
+        object.__setattr__(self, "shape", shape)
         super().__init__(dofdesc)
-        self.shape = shape
-
-    def __getinitargs__(self):
-        return (self.shape, self.dofdesc)
-
-    mapper_method = intern("map_is_shape_class")
 
 
+@expr_dataclass()
 class QWeight(DiscretizationProperty):
     """Bare quadrature weights (without Jacobians)."""
 
-    mapper_method = intern("map_q_weight")
 
-
+@expr_dataclass(init=False)
 class NodeCoordinateComponent(DiscretizationProperty):
+    """
+    .. autoattribute:: ambient_axis
+    """
 
-    init_arg_names = ("ambient_axis", "dofdesc")
+    ambient_axis: int
+    """The axis index this node coordinate represents, i.e. 0 for $x$, etc."""
 
-    def __init__(self, ambient_axis, dofdesc=None):
-        """
-        :arg dofdesc: |dofdesc-blurb|
-        """
-        self.ambient_axis = ambient_axis
-        DiscretizationProperty.__init__(self, dofdesc)
-
-    def __getinitargs__(self):
-        return (self.ambient_axis, self.dofdesc)
-
-    mapper_method = intern("map_node_coordinate_component")
+    # FIXME: this is added for backwards compatibility with pre-dataclass expressions
+    def __init__(self, ambient_axis: int, dofdesc: DOFDescriptorLike) -> None:
+        object.__setattr__(self, "ambient_axis", ambient_axis)
+        super().__init__(dofdesc)
 
 
 def nodes(ambient_dim, dofdesc=None):
@@ -464,61 +464,71 @@ def nodes(ambient_dim, dofdesc=None):
                 for i in range(ambient_dim)]))
 
 
+@expr_dataclass()
 class NumReferenceDerivative(DiscretizationProperty):
-    """An operator that takes a derivative
-    of *operand* with respect to the the element
-    reference coordinates.
+    """An operator that takes a derivative of *operand* with respect to the the
+    element reference coordinates.
+
+    .. autoattribute:: ref_axes
+    .. autoattribute:: operand
     """
 
-    init_arg_names = ("ref_axes", "operand", "dofdesc")
+    ref_axes: tuple[tuple[int, int], ...]
+    """A tuple of pairs ``(axis, derivative_order)`` that define the reference
+    derivatives taken on the given *operand*. The tuple must be sorted with
+    respect to the axis index. For example, ``((0, 2), (1, 1))`` is a correct
+    input as it is sorted and each axis is unique. It denotes a second derivative
+    with respect to $x$ (0) and a first derivative with respect to $y$ (1).
+    """
+    operand: Operand
+    """An operand to differentiate."""
 
-    def __new__(cls, ref_axes=None, operand=None, dofdesc=None):
+    def __new__(cls,
+                ref_axes: int | tuple[tuple[int, int], ...] | None = None,
+                operand: Operand | None = None,
+                dofdesc: DOFDescriptor | None = None) -> "NumReferenceDerivative":
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
         if isinstance(operand, np.ndarray):
             def make_op(operand_i):
-                return cls(ref_axes, operand_i, dofdesc=dofdesc)
+                return cls(ref_axes, operand_i, as_dofdesc(dofdesc))
 
             return componentwise(make_op, operand)
         else:
             return DiscretizationProperty.__new__(cls)
 
-    def __init__(self, ref_axes, operand, dofdesc=None):
-        """
-        :arg ref_axes: a :class:`tuple` of tuples indicating indices of
-            coordinate axes of the reference element to the number of derivatives
-            which will be taken.  For example, the value ``((0, 2), (1, 1))``
-            indicates that Each axis must occur at most once. The tuple must be
-            sorted by the axis index.
+    # FIXME: this is added for backwards compatibility with pre-dataclass expressions
+    def __init__(self,
+                 ref_axes: tuple[tuple[int, int], ...],
+                 operand: Expression,
+                 dofdesc: DOFDescriptorLike) -> None:
+        object.__setattr__(self, "ref_axes", ref_axes)
+        object.__setattr__(self, "operand", operand)
+        super().__init__(dofdesc)
 
-            May also be a singile integer *i*, which is viewed as equivalent
-            to ``((i, 1),)``.
-        :arg dofdesc: |dofdesc-blurb|
-        """
+        if isinstance(self.ref_axes, int):
+            breakpoint()
+            warn(f"Passing an 'int' as 'ref_axes' to {type(self).__name__!r} "
+                 "is deprecated and will be removed in 2025. Pass the "
+                 "well-formatted tuple '((ref_axes, 1),)' instead.",
+                 DeprecationWarning, stacklevel=2)
 
-        if isinstance(ref_axes, int):
-            ref_axes = ((ref_axes, 1),)
+            object.__setattr__(self, "ref_axes", ((self.ref_axes, 1),))
 
-        if not isinstance(ref_axes, tuple):
-            raise ValueError("ref_axes must be a tuple")
+        if not isinstance(self.ref_axes, tuple):
+            raise ValueError(f"'ref_axes' must be a tuple: {type(self)}")
 
-        if tuple(sorted(ref_axes)) != ref_axes:
-            raise ValueError("ref_axes must be sorted")
+        if tuple(sorted(self.ref_axes)) != self.ref_axes:
+            raise ValueError(
+                f"'ref_axes' must be sorted by axis index: {self.ref_axes}"
+            )
 
-        if len(dict(ref_axes)) != len(ref_axes):
-            raise ValueError("ref_axes must not contain an axis more than once")
-
-        self.ref_axes = ref_axes
-
-        self.operand = operand
-        DiscretizationProperty.__init__(self, dofdesc)
-
-    def __getinitargs__(self):
-        return (self.ref_axes, self.operand, self.dofdesc)
-
-    mapper_method = intern("map_num_reference_derivative")
+        if len(dict(self.ref_axes)) != len(self.ref_axes):
+            raise ValueError(
+                f"'ref_axes' must not contain an axis more than once: {self.ref_axes}"
+            )
 
 
 def reference_jacobian(func, output_dim, dim, dofdesc=None):
@@ -530,7 +540,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     for i in range(output_dim):
         func_component = func[i]
         for j in range(dim):
-            jac[i, j] = NumReferenceDerivative(j, func_component, dofdesc)
+            jac[i, j] = NumReferenceDerivative(((j, 1),), func_component, dofdesc)
 
     return jac
 
@@ -540,6 +550,7 @@ def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
     reference-to-global parametrization.
     """
 
+    dofdesc = as_dofdesc(dofdesc)
     return cse(
             reference_jacobian(
                 [NodeCoordinateComponent(i, dofdesc) for i in range(ambient_dim)],
@@ -1020,18 +1031,35 @@ def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
 
 # {{{ operators
 
+@expr_dataclass()
 class Interpolation(Expression):
     """Interpolate quantity from a DOF described by *from_dd* to a DOF
-    described by *to_dd*."""
+    described by *to_dd*."
 
-    init_arg_names = ("from_dd", "to_dd", "operand")
+    .. autoattribute:: from_dd
+    .. autoattribute:: to_dd
+    .. autoattribute:: operand
+    """
 
-    def __new__(cls, from_dd, to_dd, operand):
+    from_dd: DOFDescriptor
+    """A descriptor for the geometry on which *operand* is defined."""
+    to_dd: DOFDescriptor
+    """A descriptor for the geometry to which to interpolate *operand* to."""
+    operand: Operand
+    """An expression or array of expressions to interpolate. Arrays are
+    interpolated componentwise.
+    """
+
+    def __new__(cls,
+                from_dd: DOFDescriptorLike,
+                to_dd: DOFDescriptorLike,
+                operand: Operand) -> "Interpolation":
         from_dd = as_dofdesc(from_dd)
         to_dd = as_dofdesc(to_dd)
 
         if from_dd == to_dd:
-            return operand
+            # FIXME: __new__ should return a class instance
+            return operand  # type: ignore[return-value]
 
         if isinstance(operand, np.ndarray):
             def make_op(operand_i):
@@ -1041,26 +1069,41 @@ class Interpolation(Expression):
         else:
             return Expression.__new__(cls)
 
-    def __init__(self, from_dd, to_dd, operand):
-        self.from_dd = as_dofdesc(from_dd)
-        self.to_dd = as_dofdesc(to_dd)
-        self.operand = operand
+    def __post_init__(self) -> None:
+        if not isinstance(self.from_dd, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'from_dd' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-    def __getinitargs__(self):
-        return (self.from_dd, self.to_dd, self.operand)
+            object.__setattr__(self, "from_dd", as_dofdesc(self.from_dd))
 
-    mapper_method = intern("map_interpolation")
+        if not isinstance(self.to_dd, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'to_dd' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
+
+            object.__setattr__(self, "to_dd", as_dofdesc(self.to_dd))
 
 
 def interp(from_dd, to_dd, operand):
-    return Interpolation(from_dd, to_dd, operand)
+    return Interpolation(as_dofdesc(from_dd), as_dofdesc(to_dd), operand)
 
 
+@expr_dataclass()
 class SingleScalarOperandExpression(Expression):
+    """
+    .. autoattribute:: operand
+    """
 
-    init_arg_names = ("operand",)
+    operand: Operand
+    """An expression or an array on which to apply the operation."""
 
-    def __new__(cls, operand=None):
+    def __new__(cls,
+                operand: Operand | None = None) -> "SingleScalarOperandExpression":
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
@@ -1073,29 +1116,20 @@ class SingleScalarOperandExpression(Expression):
         else:
             return Expression.__new__(cls)
 
-    def __init__(self, operand):
-        self.operand = operand
 
-    def __getinitargs__(self):
-        return (self.operand,)
-
-
+@expr_dataclass()
 class NodeSum(SingleScalarOperandExpression):
     """Implements a global sum over all discretization nodes."""
 
-    mapper_method = "map_node_sum"
 
-
+@expr_dataclass()
 class NodeMax(SingleScalarOperandExpression):
     """Implements a global maximum over all discretization nodes."""
 
-    mapper_method = "map_node_max"
 
-
+@expr_dataclass()
 class NodeMin(SingleScalarOperandExpression):
     """Implements a global minimum over all discretization nodes."""
-
-    mapper_method = "map_node_min"
 
 
 def integral(ambient_dim, dim, operand, dofdesc=None):
@@ -1107,69 +1141,84 @@ def integral(ambient_dim, dim, operand, dofdesc=None):
             * operand)
 
 
+@expr_dataclass()
 class SingleScalarOperandExpressionWithWhere(Expression):
+    """
+    .. autoattribute:: operand
+    .. autoattribute:: dofdesc
+    """
 
-    init_arg_names = ("operand", "dofdesc")
+    operand: Operand
+    """An expression or an array on which to apply the operation."""
+    dofdesc: DOFDescriptor
+    """The descriptor for the geometry where the *operand* is defined."""
 
-    def __new__(cls, operand=None, dofdesc=None):
+    def __new__(cls,
+                operand: Operand | None = None,
+                dofdesc: DOFDescriptorLike | None = None,
+                ) -> "SingleScalarOperandExpressionWithWhere":
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
         if isinstance(operand, np.ndarray | MultiVector):
             def make_op(operand_i):
-                return cls(operand_i, dofdesc)
+                return cls(operand_i, as_dofdesc(dofdesc))
 
             return componentwise(make_op, operand)
         else:
             return Expression.__new__(cls)
 
-    def __init__(self, operand, dofdesc=None):
-        self.operand = operand
-        self.dofdesc = as_dofdesc(dofdesc)
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-    def __getinitargs__(self):
-        return (self.operand, self.dofdesc)
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
 
+@expr_dataclass()
 class ElementwiseSum(SingleScalarOperandExpressionWithWhere):
     """Returns a vector of DOFs with all entries on each element set
     to the sum of DOFs on that element.
     """
 
-    mapper_method = "map_elementwise_sum"
 
-
+@expr_dataclass()
 class ElementwiseMin(SingleScalarOperandExpressionWithWhere):
     """Returns a vector of DOFs with all entries on each element set
     to the minimum of DOFs on that element.
     """
 
-    mapper_method = "map_elementwise_min"
 
-
+@expr_dataclass()
 class ElementwiseMax(SingleScalarOperandExpressionWithWhere):
     """Returns a vector of DOFs with all entries on each element set
     to the maximum of DOFs on that element.
     """
 
-    mapper_method = "map_elementwise_max"
 
-
+@expr_dataclass()
 class Ones(Expression):
-    """A DOF-vector that is constant *one* on the whole
-    discretization.
+    """A DOF-vector that is constant *one* on the whole discretization.
     """
 
-    init_arg_names = ("dofdesc",)
+    # pylint: disable-next=invalid-field-call
+    dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
+    """A descriptor for the discretization where the array is defined."""
 
-    def __init__(self, dofdesc=None):
-        self.dofdesc = as_dofdesc(dofdesc)
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-    def __getinitargs__(self):
-        return (self.dofdesc,)
-
-    mapper_method = intern("map_ones")
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
 
 def ones_vec(dim, dofdesc=None):
@@ -1189,33 +1238,37 @@ def mean(ambient_dim, dim, operand, dofdesc=None):
             / area(ambient_dim, dim, dofdesc))
 
 
+@expr_dataclass()
 class IterativeInverse(Expression):
+    """A symbolic :math:`A x = b` linear solve expression.
 
-    init_arg_names = ("expression", "rhs", "variable_name", "extra_vars", "dofdesc")
+    .. autoattribute:: expression
+    .. autoattribute:: rhs
+    .. autoattribute:: variable_name
+    .. autoattribute:: extra_vars
+    .. autoattribute:: dofdesc
+    """
 
-    def __init__(self, expression, rhs, variable_name, extra_vars=None,
-            dofdesc=None):
-        if extra_vars is None:
-            extra_vars = {}
-        self.expression = expression
-        self.rhs = rhs
-        self.variable_name = variable_name
-        self.extra_vars = extra_vars
-        self.dofdesc = as_dofdesc(dofdesc)
+    expression: Expression
+    """The operator *A* used in the linear solve."""
+    rhs: Expression
+    """The right-hand side variable used in the linear solve."""
+    variable_name: str
+    """The name of the variable to solve for."""
+    extra_vars: dict[str, Variable]
+    """A dictionary of additional variables required to define the operator."""
+    dofdesc: DOFDescriptor
+    """A descriptor for the geometry on which the solution is defined."""
 
-    def __getinitargs__(self):
-        return (self.expression, self.rhs, self.variable_name,
-                self.extra_vars, self.dofdesc)
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            breakpoint()
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-    def get_hash(self):
-        return hash((self.__class__,
-                     self.expression,
-                     self.rhs,
-                     self.variable_name,
-                     frozenset(self.extra_vars.items()),
-                     self.dofdesc))
-
-    mapper_method = intern("map_inverse")
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
 
 class Derivative(DerivativeBase):
@@ -1317,10 +1370,18 @@ class IntG(Expression):
     init_arg_names = ("target_kernel", "source_kernels", "densities",
                       "qbx_forced_limit", "source", "target", "kernel_arguments")
 
-    def __init__(self, target_kernel, source_kernels, densities,
-            qbx_forced_limit, source=None, target=None,
-            kernel_arguments=None,
-            **kwargs):
+    def __init__(self,
+                 target_kernel: Kernel,
+                 source_kernels: Sequence[Kernel],
+                 densities: Sequence[Expression],
+                 qbx_forced_limit: QBXForcedLimit,
+                 source: DOFDescriptorLike = None,
+                 target: DOFDescriptorLike = None,
+                 kernel_arguments: (
+                     dict[str, Any]
+                     | Sequence[tuple[str, Any]]
+                     | None) = None,
+                 **kwargs: Any) -> None:
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
@@ -1372,7 +1433,7 @@ class IntG(Expression):
         if kernel_arguments is None:
             kernel_arguments = {}
 
-        if isinstance(kernel_arguments, tuple):
+        if not isinstance(kernel_arguments, dict):
             kernel_arguments = dict(kernel_arguments)
 
         if qbx_forced_limit not in [-1, +1, -2, +2, "avg", None]:
@@ -1461,7 +1522,7 @@ class IntG(Expression):
         assert len(self.init_arg_names) == len(state), type(self)
         self.__init__(*state)
 
-    mapper_method = intern("map_int_g")
+    mapper_method = "map_int_g"
 
 
 _DIR_VEC_NAME = "dsource_vec"
@@ -1650,7 +1711,6 @@ def Sp(kernel, *args, **kwargs):
         kwargs["qbx_forced_limit"] = "avg"
 
     ambient_dim = kwargs.get("ambient_dim")
-    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
     if ambient_dim is None:
@@ -1666,7 +1726,6 @@ def Sp(kernel, *args, **kwargs):
 
 def Spp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
-    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
     if ambient_dim is None:
@@ -1683,7 +1742,6 @@ def Spp(kernel, *args, **kwargs):
 
 def D(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
-    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
     if ambient_dim is None:
@@ -1706,7 +1764,6 @@ def D(kernel, *args, **kwargs):
 
 def Dp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
-    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
     if ambient_dim is None:
