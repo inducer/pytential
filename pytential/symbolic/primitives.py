@@ -117,18 +117,18 @@ Functions
 .. data:: cos
 .. data:: tan
 
-.. data:: asin
-.. data:: acos
-.. data:: atan
-.. data:: atan2
+.. data:: arcsin
+.. data:: arccos
+.. data:: arctan
+.. data:: arctan2
 
 .. data:: sinh
 .. data:: cosh
 .. data:: tanh
 
-.. data:: asinh
-.. data:: acosh
-.. data:: atanh
+.. data:: arcsinh
+.. data:: arccosh
+.. data:: arctanh
 
 .. data:: exp
 .. data:: log
@@ -232,9 +232,10 @@ __all__ = (
     "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
 
     "real", "imag", "conj", "abs",
-
-    "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh",
-    "tanh", "asinh", "acosh", "atanh", "exp", "log",
+    "sqrt",
+    "sin", "cos", "tan", "arcsin", "arccos", "arctan", "arctan2",
+    "sinh", "cosh", "tanh", "arcsinh", "arccosh", "arctanh",
+    "exp", "log",
 
     "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
     "parametrization_derivative_matrix", "pseudoscalar", "area_element",
@@ -361,26 +362,6 @@ class NumpyMathFunction(Function):
     pass
 
 
-class CLMathFunction(NumpyMathFunction):
-    _np_to_cl_names = {
-        "arcsin": "asin",
-        "arccos": "acos",
-        "arctan": "atan",
-        "arctan2": "atan2",
-        "asinh": "arcsinh",
-        "acosh": "arccosh",
-        "atanh": "arctanh",
-    }
-
-    def __call__(self, *args, **kwargs):
-        cl_name = self._np_to_cl_names[self.name]
-        warn(f"'sym.{cl_name}' is deprecated. Use 'sym.{self.name}' instead. "
-             f"'sym.{cl_name}' will go away in 2022.",
-             DeprecationWarning, stacklevel=2)
-
-        return super().__call__(*args, **kwargs)
-
-
 real = NumpyMathFunction("real")
 imag = NumpyMathFunction("imag")
 conj = NumpyMathFunction("conj")
@@ -392,11 +373,6 @@ sin = NumpyMathFunction("sin")
 cos = NumpyMathFunction("cos")
 tan = NumpyMathFunction("tan")
 
-asin = CLMathFunction("arcsin")
-acos = CLMathFunction("arccos")
-atan = CLMathFunction("arctan")
-atan2 = CLMathFunction("arctan2")
-
 arcsin = NumpyMathFunction("arcsin")
 arccos = NumpyMathFunction("arccos")
 arctan = NumpyMathFunction("arctan")
@@ -405,10 +381,6 @@ arctan2 = NumpyMathFunction("arctan2")
 sinh = NumpyMathFunction("sinh")
 cosh = NumpyMathFunction("cosh")
 tanh = NumpyMathFunction("tanh")
-
-asinh = CLMathFunction("arcsinh")
-acosh = CLMathFunction("arccosh")
-atanh = CLMathFunction("arctanh")
 
 arcsinh = NumpyMathFunction("arcsinh")
 arccosh = NumpyMathFunction("arccosh")
