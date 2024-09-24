@@ -37,7 +37,6 @@ from pymbolic.geometric_algebra.primitives import (
 from pymbolic.primitives import make_sym_vector
 
 from pytools.obj_array import make_obj_array, flat_obj_array
-from pytools import single_valued, MovedFunctionDeprecationWrapper
 from sumpy.kernel import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -706,9 +705,6 @@ def _element_size(ambient_dim, dim=None, dofdesc=None):
     return ElementwiseSum(
             area_element(ambient_dim=ambient_dim, dim=dim)
             * QWeight())**(1/dim)
-
-
-_panel_size = MovedFunctionDeprecationWrapper(_element_size)
 
 
 def _small_mat_inverse(mat):
@@ -1390,6 +1386,8 @@ class IntG(Expression):
         for kernel in (*source_kernels, target_kernel):
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
+
+        from pytools import single_valued
 
         single_valued(kernel.get_base_kernel() for
                 kernel in (*source_kernels, target_kernel))
