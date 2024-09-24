@@ -28,7 +28,7 @@ from pymbolic.mapper.stringifier import (
 from pymbolic.mapper import (
         Mapper,
         CachedMapper,
-        CSECachingMapperMixin
+        CSECachingMapperMixin,
         )
 from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
@@ -50,6 +50,7 @@ from pymbolic.geometric_algebra.mapper import (
         as DerivativeSourceFinderBase,
 
         GraphvizMapper as GraphvizMapperBase)
+from pymbolic.typing import ExpressionT
 import pytential.symbolic.primitives as prim
 
 
@@ -72,7 +73,7 @@ def rec_int_g_arguments(mapper, expr):
 
 # {{{ IdentityMapper
 
-class IdentityMapper(IdentityMapperBase):
+class IdentityMapper(IdentityMapperBase[[]]):
     def map_node_sum(self, expr):
         operand = self.rec(expr.operand)
         if operand is expr.operand:
@@ -294,15 +295,20 @@ def flatten(expr):
 
 # {{{ LocationTagger
 
-class LocationTagger(CSECachingMapperMixin, IdentityMapper):
+class LocationTagger(CSECachingMapperMixin[ExpressionT, []],
+                     IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
 
     def __init__(self, default_target, default_source):
         self.default_source = default_source
         self.default_target = default_target
 
-    map_common_subexpression_uncached = \
-            IdentityMapper.map_common_subexpression
+    def map_common_subexpression_uncached(self, expr) -> ExpressionT:
+        # Mypy 1.13 complains about this:
+        # error: Too few arguments for "map_common_subexpression" of "IdentityMapper"  [call-arg]  # noqa: E501
+        # error: Argument 1 to "map_common_subexpression" of "IdentityMapper" has incompatible type "LocationTagger"; expected "IdentityMapper[P]"  [arg-type]  # noqa: E501
+        # This seems spurious?
+        return IdentityMapper.map_common_subexpression(self, expr)  # type: ignore[arg-type, call-arg]
 
     def _default_dofdesc(self, dofdesc):
         if dofdesc.geometry is None:
