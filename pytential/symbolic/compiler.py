@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Expression, Variable
+from pymbolic.primitives import cse_scope, Expression, Variable, Subscript
 from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
@@ -44,6 +44,7 @@ class Statement:
     .. attribute:: exprs
     .. attribute:: priority
     """
+
     names: list[str]
     exprs: list[Expression]
     priority: int
@@ -52,7 +53,7 @@ class Statement:
         raise NotImplementedError(
                 f"get_assignees for '{self.__class__.__name__}'")
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Variable]:
         raise NotImplementedError(
                 f"get_dependencies for '{self.__class__.__name__}'")
 
@@ -80,14 +81,19 @@ class Assign(Statement):
     def get_assignees(self):
         return set(self.names)
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Variable]:
         from operator import or_
-        deps = reduce(or_, (dep_mapper(expr) for expr in self.exprs))
+        all_deps = reduce(or_, (dep_mapper(expr) for expr in self.exprs))
 
-        return {
-                dep
-                for dep in deps
-                if dep.name not in self.names}
+        deps: set[Variable] = set()
+        for dep in all_deps:
+            if isinstance(dep, Variable):
+                if dep.name not in self.names:
+                    deps.add(dep)
+            else:
+                raise TypeError(f"Unsupported dependency type: {type(dep)}")
+
+        return deps
 
     def __str__(self):
         comment = self.comment
@@ -189,13 +195,16 @@ class ComputePotential(Statement):
     def get_assignees(self):
         return {o.name for o in self.outputs}
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
-        result = set(dep_mapper(self.densities[0]))
-        for density in self.densities[1:]:
-            result.update(dep_mapper(density))
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Variable]:
+        from itertools import chain
 
-        for arg_expr in self.kernel_arguments.values():
-            result.update(dep_mapper(arg_expr))
+        result: set[Variable] = set()
+        for expr in chain(self.densities, self.kernel_arguments.values()):
+            for dep in dep_mapper(expr):
+                if isinstance(dep, Variable):
+                    result.add(dep)
+                else:
+                    raise TypeError(f"Unsupported dependency type: {type(dep)}")
 
         return result
 
@@ -546,9 +555,7 @@ class OperatorCompiler(CachedIdentityMapper):
 
     def assign_to_new_var(
             self, expr: Expression, priority: int = 0, prefix: str | None = None,
-            ) -> Variable:
-        from pymbolic.primitives import Subscript
-
+            ) -> Variable | Subscript:
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
         # their scalar components.
