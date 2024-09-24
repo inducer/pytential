@@ -29,6 +29,7 @@ import numpy as np
 from arraycontext import PyOpenCLArrayContext, Array
 
 from pytential import GeometryCollection, sym
+from pytential.symbolic.matrix import ClusterMatrixBuilderBase
 from pytential.linalg.utils import IndexList, TargetAndSourceClusterList
 from pytential.linalg.proxy import ProxyGeneratorBase, ProxyClusterGeometryData
 from pytential.linalg.direct_solver_symbolic import (
@@ -253,17 +254,17 @@ class SkeletonizationWrangler:
     domains: tuple[sym.DOFDescriptor, ...]
     context: dict[str, Any]
 
-    neighbor_cluster_builder: Callable[..., np.ndarray]
+    neighbor_cluster_builder: type[ClusterMatrixBuilderBase]
 
     # target skeletonization
     weighted_targets: bool
     target_proxy_exprs: np.ndarray
-    proxy_target_cluster_builder: Callable[..., np.ndarray]
+    proxy_target_cluster_builder: type[ClusterMatrixBuilderBase]
 
     # source skeletonization
     weighted_sources: bool
     source_proxy_exprs: np.ndarray
-    proxy_source_cluster_builder: Callable[..., np.ndarray]
+    proxy_source_cluster_builder: type[ClusterMatrixBuilderBase]
 
     @property
     def nrows(self) -> int:
@@ -386,9 +387,9 @@ def make_skeletonization_wrangler(
 
         # internal
         _weighted_proxy: bool | tuple[bool, bool] | None = None,
-        _proxy_source_cluster_builder: Callable[..., np.ndarray] | None = None,
-        _proxy_target_cluster_builder: Callable[..., np.ndarray] | None = None,
-        _neighbor_cluster_builder: Callable[..., np.ndarray] | None = None,
+        _proxy_source_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
+        _proxy_target_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
+        _neighbor_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
         ) -> SkeletonizationWrangler:
     if context is None:
         context = {}
@@ -396,13 +397,14 @@ def make_skeletonization_wrangler(
     # {{{ setup expressions
 
     try:
-        exprs = list(exprs)
+        lpot_exprs = list(exprs)
     except TypeError:
-        exprs = [exprs]
+        lpot_exprs = [exprs]
 
     try:
         input_exprs = list(input_exprs)
     except TypeError:
+        assert not isinstance(input_exprs, Sequence)
         input_exprs = [input_exprs]
 
     from pytential.symbolic.execution import _prepare_auto_where, _prepare_domains
@@ -410,11 +412,11 @@ def make_skeletonization_wrangler(
     auto_where = _prepare_auto_where(auto_where, places)
     domains = _prepare_domains(len(input_exprs), places, domains, auto_where[0])
 
-    exprs = prepare_expr(places, exprs, auto_where)
+    prepared_lpot_exprs = prepare_expr(places, lpot_exprs, auto_where)
     source_proxy_exprs = prepare_proxy_expr(
-            places, exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
+            places, prepared_lpot_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
     target_proxy_exprs = prepare_proxy_expr(
-            places, exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
+            places, prepared_lpot_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
 
     # }}}
 
@@ -449,7 +451,7 @@ def make_skeletonization_wrangler(
 
     return SkeletonizationWrangler(
             # operator
-            exprs=exprs,
+            exprs=prepared_lpot_exprs,
             input_exprs=tuple(input_exprs),
             domains=tuple(domains),
             context=context,
