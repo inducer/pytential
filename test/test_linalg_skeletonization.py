@@ -161,7 +161,7 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 def run_skeletonize_by_proxy(actx, case, resolution,
                              places=None, mat=None,
                              ctol=None, rtol=None,
-                             suffix="", visualize=False):
+                             suffix="", rng=None, visualize=False):
     from pytools import ProcessTimer
 
     # {{{ geometry
@@ -234,11 +234,13 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     # skeleton
     from pytential.linalg.skeletonization import \
             _skeletonize_block_by_proxy_with_mats
+
     with ProcessTimer() as p:
         skeleton = _skeletonize_block_by_proxy_with_mats(
                 actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
                 id_eps=case.id_eps,
-                max_particles_in_box=case.max_particles_in_box)
+                max_particles_in_box=case.max_particles_in_box,
+                rng=rng)
 
     logger.info("[time] skeletonization by proxy: %s", p)
 
@@ -358,10 +360,8 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     empirically determined (not too huge) :math:`c`.
     """
 
-    import scipy.linalg.interpolative as sli
-    sli.seed(42)
-
     actx = actx_factory()
+    rng = np.random.default_rng(seed=42)
 
     if visualize:
         logging.basicConfig(level=logging.INFO)
@@ -371,9 +371,10 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
 
     run_skeletonize_by_proxy(
         actx, case, case.resolutions[0],
-        ctol=6,
+        ctol=8,
         # FIXME: why is the 3D error so large?
         rtol=10**case.ambient_dim,
+        rng=rng,
         visualize=visualize)
 
 # }}}
@@ -405,10 +406,8 @@ def test_skeletonize_by_proxy_convergence(
     accuracy of the skeletonization scales linearly with :math:`\epsilon_{id}`
     (the ID tolerance).
     """
-    import scipy.linalg.interpolative as sli
-    sli.seed(42)
-
     actx = actx_factory()
+    rng = np.random.default_rng(seed=42)
 
     if visualize:
         logging.basicConfig(level=logging.INFO)
@@ -440,7 +439,7 @@ def test_skeletonize_by_proxy_convergence(
         case = replace(case, id_eps=id_eps[i], weighted_proxy=weighted)
         rec_error[i], (places, mat) = run_skeletonize_by_proxy(
             actx, case, r, places=places, mat=mat,
-            suffix=f"{suffix}_{i:04d}", visualize=False)
+            suffix=f"{suffix}_{i:04d}", rng=rng, visualize=False)
 
         was_zero = rec_error[i] == 0.0
         eoc.add_data_point(id_eps[i], rec_error[i])
