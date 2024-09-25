@@ -76,6 +76,18 @@ class _not_provided:  # noqa: N801
     pass
 
 
+class _LevelToOrderWrapper:
+    """
+    Helper functor to convert a constant integer fmm order into a pickable and
+    callable object.
+    """
+    def __init__(self, fmm_order):
+        self.fmm_order = fmm_order
+
+    def __call__(self, kernel, kernel_args, tree, level):
+        return self.fmm_order
+
+
 class QBXLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a QBX layer potential.
 
@@ -131,7 +143,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             order to be used on a given *level* of *tree* with *kernel*, where
             *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
             *kernel_args* is a set of *(key, value)* tuples with evaluated
-            kernel arguments. May not be given if *fmm_order* is given.
+            kernel arguments. May not be given if *fmm_order* is given. If used in
+            the distributed setting, this argument must be pickable.
         :arg fmm_backend: a string denoting the desired FMM backend to use,
             either `"sumpy"` or `"fmmlib"`. Only used if *fmm_order* or
             *fmm_level_to_order* are provided.
@@ -204,9 +217,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 assert isinstance(fmm_order, int) and not isinstance(fmm_order, bool)
 
-                # pylint: disable-next=function-redefined
-                def fmm_level_to_order(kernel, kernel_args, tree, level):
-                    return fmm_order
+                fmm_level_to_order = _LevelToOrderWrapper(fmm_order)
+
         assert isinstance(fmm_level_to_order, bool) or callable(fmm_level_to_order)
 
         if _max_leaf_refine_weight is None:
