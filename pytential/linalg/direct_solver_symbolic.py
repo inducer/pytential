@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
+
 from pytools.obj_array import make_obj_array
 
 from pytential.symbolic.mappers import (
@@ -44,9 +46,12 @@ class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
 
 def prepare_expr(places, exprs, auto_where=None):
     from pytential.symbolic.execution import _prepare_expr
-    return make_obj_array([
-        _prepare_expr(places, expr, auto_where=auto_where)
-        for expr in exprs])
+    if isinstance(exprs, np.ndarray):
+        return make_obj_array([
+            _prepare_expr(places, expr, auto_where=auto_where)
+            for expr in exprs])
+
+    return _prepare_expr(places, exprs, auto_where=auto_where)
 
 
 def prepare_proxy_expr(places, exprs, auto_where=None):
@@ -222,3 +227,5 @@ class DOFDescriptorReplacer(_LocationReplacer):
         self.operand_rec = _LocationReplacer(source, default_source=source)
 
 # }}}
+
+# vim: foldmethod=marker

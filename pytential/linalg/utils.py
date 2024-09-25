@@ -34,16 +34,14 @@ if TYPE_CHECKING:
 
 
 __doc__ = """
-Misc
-~~~~
-
-.. currentmodule:: pytential.linalg
-
 .. autoclass:: IndexList
 .. autoclass:: TargetAndSourceClusterList
 
 .. autofunction:: make_index_list
 .. autofunction:: make_index_cluster_cartesian_product
+.. autofunction:: make_flat_cluster_diag
+
+.. autofunction:: interp_decomp
 """
 
 
@@ -54,6 +52,7 @@ class IndexList:
     """Convenience class for working with clusters (subsets) of an array.
 
     .. attribute:: nclusters
+    .. attribute:: nindices
     .. attribute:: indices
 
         An :class:`~numpy.ndarray` of not necessarily continuous or increasing
@@ -77,6 +76,10 @@ class IndexList:
     @property
     def nclusters(self) -> int:
         return self.starts.size - 1
+
+    @property
+    def nindices(self) -> int:
+        return self.indices.size
 
     def cluster_size(self, i: int) -> int:
         if not (0 <= i < self.nclusters):
@@ -113,6 +116,11 @@ class TargetAndSourceClusterList:
     """Convenience class for working with clusters (subsets) of a matrix.
 
     .. attribute:: nclusters
+
+    .. attribute:: shape
+
+        Shape of the Cartesian product of the :attr:`targets` and :attr:`sources`.
+
     .. attribute:: targets
 
         An :class:`IndexList` encapsulating target cluster indices.
@@ -152,6 +160,13 @@ class TargetAndSourceClusterList:
     @property
     def _flat_total_size(self):
         return self._flat_cluster_starts[-1]
+
+    def __iter__(self):
+        return iter((self.targets, self.sources))
+
+    @property
+    def shape(self):
+        return (self.targets.nindices, self.sources.nindices)
 
     def cluster_shape(self, i: int, j: int) -> Tuple[int, int]:
         r"""
@@ -282,7 +297,7 @@ def make_index_cluster_cartesian_product(
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "icluster", 128, outer_tag="g.0")
-        return knl
+        return knl.executor(actx.context)
 
     @memoize_in(mindex, (make_index_cluster_cartesian_product, "index_product"))
     def _product():
@@ -308,15 +323,14 @@ def make_flat_cluster_diag(
         correspondence to the index sets constructed by
         :func:`make_index_cluster_cartesian_product` for *mindex*.
 
-    :returns: a block diagonal object :class:`~numpy.ndarray`, where each
-        diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
-        corresponds to the cluster :math:`i`.
+    :returns: an object :class:`~numpy.ndarray`, where each element represents
+        the block of a block-diagonal matrix.
     """
-    cluster_mat: np.ndarray = np.full((mindex.nclusters, mindex.nclusters), 0,
-                                      dtype=object)
+
+    cluster_mat: np.ndarray = np.empty(mindex.nclusters, dtype=object)
     for i in range(mindex.nclusters):
         shape = mindex.cluster_shape(i, i)
-        cluster_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
+        cluster_mat[i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
 
     return cluster_mat
 
@@ -334,8 +348,8 @@ def interp_decomp(
     :return: a tuple ``(k, idx, interp)`` containing the numerical rank *k*,
         the column indices *idx* and the resulting interpolation matrix *interp*.
     """
-    if rank is not None and eps is not None:
-        raise ValueError("providing both 'rank' and 'eps' is not supported")
+    if (rank is not None and eps is not None) or (rank is None and eps is None):
+        raise ValueError("either 'rank' or 'eps' must be provided (not both)")
 
     import scipy.linalg.interpolative as sli
     if rank is None:
@@ -486,3 +500,5 @@ def skeletonization_error(
     return result
 
 # }}}
+
+# vim: foldmethod=marker
