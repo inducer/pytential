@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 from typing import Any, Dict, Hashable, Mapping, Optional, Tuple, Union
 
-import immutables
+import immutabledict
 
 from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
 import pytential.symbolic.primitives as sym
@@ -166,7 +166,7 @@ class GeometryCollection:
             assert isinstance(places, Mapping)
             places_dict = places
 
-        self.places = immutables.Map(places_dict)
+        self.places = immutabledict.immutabledict(places_dict)
         self.auto_where = (auto_source, auto_target)
 
         self._caches: Dict[str, Any] = {}
