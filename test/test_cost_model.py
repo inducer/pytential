@@ -336,7 +336,7 @@ def test_timing_data_gathering(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
 
     lpot_source = get_lpot_source(actx, 2)
     places = GeometryCollection(lpot_source)
