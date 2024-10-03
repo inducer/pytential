@@ -282,7 +282,7 @@ def make_index_cluster_cartesian_product(
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "icluster", 128, outer_tag="g.0")
-        return knl
+        return knl.executor(actx.context)
 
     @memoize_in(mindex, (make_index_cluster_cartesian_product, "index_product"))
     def _product():

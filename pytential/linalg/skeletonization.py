@@ -137,7 +137,7 @@ def _approximate_geometry_waa_magnitude(
             lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
             )
 
-        return knl
+        return knl.executor(actx.context)
 
     waa = bind(places, sym.weights_and_area_elements(
         places.ambient_dim, dofdesc=domain))(actx)

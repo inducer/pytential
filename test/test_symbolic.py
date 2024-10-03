@@ -349,7 +349,7 @@ def test_node_reduction(actx_factory):
             for xi in arys
             ))
         r = bind(
-            discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_NODE)
+            discr, func(sym.var("x"), dofdesc=sym.as_dofdesc(sym.GRANULARITY_NODE))
             )(actx, x=x)
         assert actx.to_numpy(flat_norm(r - expected)) < 1.0e-15
 
@@ -358,7 +358,7 @@ def test_node_reduction(actx_factory):
             for xi in arys
             ))
         r = bind(
-            discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_ELEMENT)
+            discr, func(sym.var("x"), dofdesc=sym.as_dofdesc(sym.GRANULARITY_ELEMENT))
             )(actx, x=x)
         assert actx.to_numpy(flat_norm(r - expected)) < 1.0e-15
 
@@ -391,8 +391,8 @@ def principal_directions(ambient_dim, dim=None, dofdesc=None):
     k1, k2 = principal_curvatures(ambient_dim, dim=dim, dofdesc=dofdesc)
 
     from pytools.obj_array import make_obj_array
-    d1 = sym.cse(make_obj_array([s12, -(s11 - k1)]))
-    d2 = sym.cse(make_obj_array([-(s22 - k2), s12]))
+    d1 = sym.cse(make_obj_array([s12, -(s11 - k1)]), scope=sym.cse_scope.EVALUATION)
+    d2 = sym.cse(make_obj_array([-(s22 - k2), s12]), scope=sym.cse_scope.EVALUATION)
 
     form1 = sym.first_fundamental_form(ambient_dim, dim=dim, dofdesc=dofdesc)
     return make_obj_array([
@@ -489,9 +489,10 @@ def test_mapper_int_g_term_collector(op_name, k=0):
     expr_only_intgs = IntGTermCollector()(expr)
 
     # FIXME: how to check this did something?
-    sigma = sym.cse(op.get_density_var("sigma") / op.get_sqrt_weight())
+    sigma = sym.cse(op.get_density_var("sigma") / op.get_sqrt_weight(),
+                    scope=sym.cse_scope.EVALUATION)
     if op_name == "dirichlet":
-        expected_expr = -1 * sym.D(op.kernel, sigma)
+        expected_expr = -1 * sym.D(op.kernel, sigma, qbx_forced_limit="avg")
     elif op_name == "neumann":
         int_g = sym.S(op.kernel, sigma, qbx_forced_limit="avg")
         expected_expr = sym.div([int_g] * ambient_dim)
