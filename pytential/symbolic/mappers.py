@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import replace
 from functools import reduce
 
 from pymbolic.mapper.stringifier import (
@@ -130,9 +131,7 @@ class IdentityMapper(IdentityMapperBase):
         if not changed:
             return expr
 
-        return expr.copy(
-                densities=densities,
-                kernel_arguments=kernel_arguments)
+        return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
@@ -262,10 +261,7 @@ class EvaluationMapper(EvaluationMapperBase):
         if not changed:
             return expr
 
-        return expr.copy(
-                densities=densities,
-                kernel_arguments=kernel_arguments,
-                )
+        return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
     def map_common_subexpression(self, expr):
         child = self.rec(expr.child)
@@ -539,9 +535,9 @@ class DerivativeTaker(Mapper):
 
     def map_int_g(self, expr):
         from sumpy.kernel import AxisTargetDerivative
-        return expr.copy(
-                target_kernel=AxisTargetDerivative(
-                    self.ambient_axis, expr.target_kernel))
+
+        target_kernel = AxisTargetDerivative(self.ambient_axis, expr.target_kernel)
+        return replace(expr, target_kernel=target_kernel)
 
 
 class DerivativeSourceAndNablaComponentCollector(
@@ -587,15 +583,15 @@ class UnregularizedPreprocessor(IdentityMapper):
             raise ValueError(
                     "Unregularized evaluation does not support one-sided limits")
 
-        expr = expr.copy(
-                qbx_forced_limit=None,
-                densities=self.rec(expr.densities),
-                kernel_arguments={
-                    name: self.rec(arg_expr)
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    })
-
-        return expr
+        return replace(
+            expr,
+            qbx_forced_limit=None,
+            densities=self.rec(expr.densities),
+            kernel_arguments={
+                name: self.rec(arg_expr)
+                for name, arg_expr in expr.kernel_arguments.items()
+            }
+        )
 
 # }}}
 
@@ -643,7 +639,7 @@ class InterpolationPreprocessor(IdentityMapper):
 
     def map_int_g(self, expr):
         if expr.target.discr_stage is None:
-            expr = expr.copy(target=expr.target.to_stage1())
+            expr = replace(expr, target=expr.target.to_stage1())
 
         if expr.source.discr_stage is not None:
             return expr
@@ -655,8 +651,9 @@ class InterpolationPreprocessor(IdentityMapper):
 
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
-        densities = [prim.interp(from_dd, to_dd, self.rec(density)) for
-            density in expr.densities]
+        densities = tuple(
+            prim.interp(from_dd, to_dd, self.rec(density)) for
+            density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
         kernel_arguments = {
@@ -664,7 +661,8 @@ class InterpolationPreprocessor(IdentityMapper):
                     self.rec(self.tagger(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items()}
 
-        return expr.copy(
+        return replace(
+                expr,
                 densities=densities,
                 kernel_arguments=kernel_arguments,
                 source=to_dd)
@@ -695,7 +693,8 @@ class QBXPreprocessor(IdentityMapper):
 
         is_self = source_discr is target_discr
 
-        expr = expr.copy(
+        expr = replace(
+                expr,
                 densities=self.rec(expr.densities),
                 kernel_arguments={
                     name: self.rec(arg_expr)
@@ -724,8 +723,8 @@ class QBXPreprocessor(IdentityMapper):
 
         if expr.qbx_forced_limit == "avg":
             return 0.5*(
-                    expr.copy(qbx_forced_limit=+1)
-                    + expr.copy(qbx_forced_limit=-1))
+                    replace(expr, qbx_forced_limit=+1)
+                    + replace(expr, qbx_forced_limit=-1))
         else:
             return expr
 
