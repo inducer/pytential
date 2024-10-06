@@ -20,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
 from dataclasses import field
 from warnings import warn
 from functools import partial
@@ -1350,179 +1349,183 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
+@expr_dataclass(hash=False)
 class IntG(Expression):
     r"""
     .. math::
 
-        \int_\Gamma T (\sum S_k G(x-y) \sigma_k(y)) dS_y
+        \int_\Gamma T (\sum S_k[G](x-y) \sigma_k(y)) dS_y
 
     where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
     function, :math:`S_k` are source derivative operators and :math:`T` is a
     target derivative operator.
 
-    .. attribute:: target_kernel
-    .. attribute:: source_kernels
-    .. attribute:: densities
-    .. attribute:: qbx_forced_limit
-    .. attribute:: kernel_arguments
+    .. autoattribute:: target_kernel
+    .. autoattribute:: source_kernels
+    .. autoattribute:: densities
+    .. autoattribute:: qbx_forced_limit
+    .. autoattribute:: source
+    .. autoattribute:: target
+    .. autoattribute:: kernel_arguments
     """
 
-    init_arg_names = ("target_kernel", "source_kernels", "densities",
-                      "qbx_forced_limit", "source", "target", "kernel_arguments")
+    target_kernel: Kernel
+    """An instance of :class:`~sumpy.kernel.Kernel` with only target dervatives
+    attached. This represents the target derivative operator :math:`T` above.
 
-    def __init__(self,
-                 target_kernel: Kernel,
-                 source_kernels: Sequence[Kernel],
-                 densities: Sequence[Expression],
-                 qbx_forced_limit: QBXForcedLimit,
-                 source: DOFDescriptorLike = None,
-                 target: DOFDescriptorLike = None,
-                 kernel_arguments: (
-                     dict[str, Any]
-                     | Sequence[tuple[str, Any]]
-                     | None) = None,
-                 **kwargs: Any) -> None:
-        """*target_derivatives* and later arguments should be considered
-        keyword-only.
+    Note that the term ``target_kernel`` is bad as it's not a kernel and merely
+    represents a target derivative operator. This name will change once :mod:`sumpy`
+    properly supports derivative operators. This also means that the user has to
+    make sure that base kernels of all the kernels passed are the same.
+    """
+    source_kernels: tuple[Kernel, ...]
+    """A tuple of instances of :class:`~sumpy.kernel.Kernel` with only source
+    derivatives attached. k-th elements represents the k-th source derivative
+    operator above.
+    """
+    densities: tuple[Expression, ...]
+    """A tuple of density expressions. Length of this tuple must match the length
+    of the *source_kernels* arguments.
+    """
+    qbx_forced_limit: QBXForcedLimit
+    """Limit used for the QBX expansions. Can take one of the values
 
-        :arg source_kernels: a tuple of instances of :class:`sumpy.kernel.Kernel`
-            with only source derivatives attached. k-th elements represents the
-            k-th source derivative operator above.
-        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel` with only
-            target dervatives attached. This represents the target derivative
-            operator :math:`T` above. Note that the term ``target_kernel`` is
-            bad as it's not a kernel and merely represents a target derivative
-            operator. This name will change once :mod:`sumpy` properly
-            supports derivative operators. This also means that the user has to
-            make sure that base kernels of all the kernels passed are the same.
-        :arg densities: a tuple of density expressions. Length of this tuple
-            must match the length of the source_kernels arguments.
-        :arg qbx_forced_limit: +1 if the output is required to originate from a
-            QBX center on the "+" side of the boundary. -1 for the other side.
-            Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*
-            will fail if no QBX center is found.
+    * *None*: may be used to avoid expressing a side preference for close
+      evaluation.
+    * ``+1``: if the output is required to originate from a QBX center on the "+"
+      side of the boundary.
+    * ``-1``: for the "-" side.
+    * ``'avg'``: may be used as a shorthand to evaluate this potential as an
+      average of the ``+1`` and the ``-1`` value.
+    * ``+2`` may be used to *allow* evaluation QBX center on the "+" side of the
+      (but disallow evaluation using a center on the "-" side).
+    * ``-2``: for the "-" side.
 
-            +2 may be used to *allow* evaluation QBX center on the "+" side of the
-            (but disallow evaluation using a center on the "-" side). Potential
-            evaluation at the target still succeeds if no applicable QBX center
-            is found. (-2 for the analogous behavior on the "-" side.)
+    Evaluation at a target with a value of ``±1`` in *qbx_forced_limit* will
+    fail if no QBX center is found. To allow potential evaluation at the target
+    to succeeds even if no applicable QBX center is found use ``±2``.
+    """
+    source: DOFDescriptor = field(default_factory=lambda: EMPTY_DESCRIPTOR)
+    """The symbolic name of the source discretization. This name is bound to a
+    concrete :class:`~pytential.source.LayerPotentialSourceBase`
+    by :func:`pytential.bind`.
+    """
+    target: DOFDescriptor = field(default_factory=lambda: EMPTY_DESCRIPTOR)
+    """The symbolic name of the set of targets. This name gets assigned to a
+    concrete target set by :func:`pytential.bind`.
+    """
+    kernel_arguments: dict[str, Operand] = field(default_factory=dict)
+    """A dictionary mapping named :class:`~sumpy.kernel.Kernel` arguments
+    (see :meth:`~sumpy.kernel.Kernel.get_args` and
+    :meth:`~sumpy.kernel.Kernel.get_source_args`) to expressions that determine
+    them.
+    """
 
-            *None* may be used to avoid expressing a side preference for close
-            evaluation.
+    def __post_init__(self) -> None:
+        if self.qbx_forced_limit not in {-1, +1, -2, +2, "avg", None}:
+            raise ValueError(
+                f"Invalid value for 'qbx_forced_limit': {self.qbx_forced_limit}"
+            )
 
-            ``'avg'`` may be used as a shorthand to evaluate this potential
-            as an average of the ``+1`` and the ``-1`` value.
+        if not isinstance(self.source_kernels, tuple):
+            warn(f"'source_kernels' is not tuple ({type(self.source_kernels)}). "
+                 "Passing a different type is deprecated and will stop working in "
+                 "2025.", DeprecationWarning, stacklevel=2)
 
-        :arg kernel_arguments: A dictionary mapping named
-            :class:`sumpy.kernel.Kernel` arguments
-            (see :meth:`sumpy.kernel.Kernel.get_args`
-            and :meth:`sumpy.kernel.Kernel.get_source_args`)
-            to expressions that determine them
+            object.__setattr__(self, "source_kernels", tuple(self.source_kernels))
 
-        :arg source: The symbolic name of the source discretization. This name
-            is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
-            by :func:`pytential.bind`.
+        if not isinstance(self.densities, tuple):
+            warn(f"'densities' is not tuple ({type(self.densities)}). "
+                 "Passing a different type is deprecated and will stop working in "
+                 "2025.", DeprecationWarning, stacklevel=2)
 
-        :arg target: The symbolic name of the set of targets. This name gets
-            assigned to a concrete target set by :func:`pytential.bind`.
+            object.__setattr__(self, "densities", tuple(self.densities))
 
-        *kwargs* has the same meaning as *kernel_arguments* can be used as a
-        more user-friendly interface.
-        """
+        if not isinstance(self.source, DOFDescriptor):
+            warn("Passing a 'source' descriptor that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-        if kernel_arguments is None:
-            kernel_arguments = {}
+            object.__setattr__(self, "source", as_dofdesc(self.source))
 
-        if not isinstance(kernel_arguments, dict):
-            kernel_arguments = dict(kernel_arguments)
+        if not isinstance(self.target, DOFDescriptor):
+            warn("Passing a 'target' descriptor that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
 
-        if qbx_forced_limit not in [-1, +1, -2, +2, "avg", None]:
-            raise ValueError("invalid value (%s) of qbx_forced_limit"
-                    % qbx_forced_limit)
+            object.__setattr__(self, "target", as_dofdesc(self.target))
 
-        source_kernels = tuple(source_kernels)
-        densities = tuple(densities)
-        kernel_arg_names = set()
+        if not isinstance(self.kernel_arguments, dict):
+            warn(f"'kernel_arguments' is not a dict ({type(self.kernel_arguments)}). "
+                 "Passing a different type is deprecated and will stop being "
+                 "supported in 2025.", DeprecationWarning, stacklevel=2)
 
-        for kernel in (*source_kernels, target_kernel):
-            for karg in (kernel.get_args() + kernel.get_source_args()):
-                kernel_arg_names.add(karg.loopy_arg.name)
+            kernel_arguments = self.kernel_arguments if self.kernel_arguments else {}
+            object.__setattr__(self, "kernel_arguments", dict(kernel_arguments))
 
         from pytools import single_valued
 
-        single_valued(kernel.get_base_kernel() for
-                kernel in (*source_kernels, target_kernel))
+        kernels = (*self.source_kernels, self.target_kernel)
+        single_valued(kernel.get_base_kernel() for kernel in kernels)
 
-        kernel_arguments = kernel_arguments.copy()
-        if kwargs:
-            for name, val in kwargs.items():
-                if name in kernel_arguments:
-                    raise ValueError("'%s' already set in kernel_arguments"
-                            % name)
+        kernel_arg_names = set()
+        for kernel in kernels:
+            for karg in (kernel.get_args() + kernel.get_source_args()):
+                kernel_arg_names.add(karg.loopy_arg.name)
 
-                if name not in kernel_arg_names:
-                    raise TypeError("'%s' not recognized as kernel argument"
-                            % name)
-
-                kernel_arguments[name] = val
-
-        provided_arg_names = set(kernel_arguments.keys())
+        provided_arg_names = set(self.kernel_arguments.keys())
         missing_args = kernel_arg_names - provided_arg_names
         if missing_args:
-            raise TypeError("kernel argument(s) '%s' not supplied"
-                    % ", ".join(missing_args))
+            raise ValueError(
+                "Kernel argument(s) not supplied: '{}'".format(", ".join(missing_args))
+            )
 
-        extraneous_args = provided_arg_names - kernel_arg_names
+        # FIXME: this check is clearly wrong :(
+        extra_args = provided_arg_names - kernel_arg_names
         if missing_args:
-            raise TypeError("kernel arguments '%s' not recognized"
-                    % ", ".join(extraneous_args))
+            raise ValueError(
+                "Kernel argument(s) not recognized: '{}'".format(", ".join(extra_args))
+            )
 
-        self.target_kernel = target_kernel
-        self.source_kernels = source_kernels
-        self.densities = tuple(densities)
-        self.qbx_forced_limit = qbx_forced_limit
-        self.source = as_dofdesc(source)
-        self.target = as_dofdesc(target)
-        self.kernel_arguments = kernel_arguments
+    def copy(self, **kwargs) -> "IntG":
+        warn(f"'{type(self).__name__}.copy' is deprecated and will be removed in "
+             f"2025. {type(self)} is a dataclass now and can use "
+             "'dataclasses.replace'.", DeprecationWarning, stacklevel=2)
 
-    def copy(self, target_kernel=None, source_kernels=None, densities=None,
-            qbx_forced_limit=_NoArgSentinel,
-            source=_NoArgSentinel, target=_NoArgSentinel,
-            kernel_arguments=None):
-        if target_kernel is None:
-            target_kernel = self.target_kernel
+        from dataclasses import replace
+        return replace(self, **kwargs)
 
-        if source_kernels is None:
-            source_kernels = self.source_kernels
+    def __eq__(self, other: Any) -> bool:
+        if self is other:
+            return True
+        if self.__class__ is not other.__class__:
+            return False
+        if hash(self) != hash(other):
+            return False
 
-        if densities is None:
-            densities = self.densities
+        return (
+            self.__class__ == other.__class__
+            and self.target_kernel == other.target_kernel
+            and self.source_kernels == other.source_kernels
+            and self.densities == other.densities
+            and self.source == other.source
+            and self.target == other.target
+            and (
+                hashable_kernel_args(self.kernel_arguments)
+                == hashable_kernel_args(other.kernel_arguments))
+            )
 
-        if kernel_arguments is None:
-            kernel_arguments = self.kernel_arguments
-
-        if qbx_forced_limit is _NoArgSentinel:
-            qbx_forced_limit = self.qbx_forced_limit
-
-        source = self.source if source is _NoArgSentinel else as_dofdesc(source)
-        target = self.target if target is _NoArgSentinel else as_dofdesc(target)
-        return type(self)(target_kernel, source_kernels, densities,
-                          qbx_forced_limit=qbx_forced_limit,
-                          source=source,
-                          target=target,
-                          kernel_arguments=kernel_arguments)
-
-    def __getinitargs__(self):
-        return (self.target_kernel, self.source_kernels, self.densities,
-                self.qbx_forced_limit, self.source, self.target,
-                hashable_kernel_args(self.kernel_arguments))
-
-    def __setstate__(self, state):
-        # Overwrite pymbolic.Expression.__setstate__
-        assert len(self.init_arg_names) == len(state), type(self)
-        self.__init__(*state)
-
-    mapper_method = "map_int_g"
+    def __hash__(self) -> int:
+        return hash((
+            self.target_kernel,
+            self.source_kernels,
+            self.densities,
+            self.qbx_forced_limit,
+            self.source, self.target,
+            hashable_kernel_args(self.kernel_arguments)
+            ))
 
 
 _DIR_VEC_NAME = "dsource_vec"
@@ -1576,17 +1579,10 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
     r"""
     .. math::
 
-        \int_\Gamma \operatorname{dsource} \dot \nabla_y
-            \dot g(x-y) \sigma(y) dS_y
+        \int_\Gamma \operatorname{dsource} \dot \nabla_y G(x-y) \sigma(y) dS_y
 
-    where :math:`\sigma` is *density*, and
-    *dsource*, a multivector.
-    Note that the first product in the integrand
-    is a geometric product.
-
-    .. attribute:: dsource
-
-        A :class:`pymbolic.geometric_algebra.MultiVector`.
+    where :math:`\sigma` is *density* and *dsource* is a multivector.
+    Note that the first product in the integrand is a geometric product.
     """
 
     if kernel_arguments is None:
@@ -1648,13 +1644,23 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     txr = TargetTransformationRemover()
 
     target_kernel = sxr(kernel)
-    source_kernels = [txr(kernel)]
+    source_kernels = (txr(kernel),)
+
+    if kernel_arguments is None:
+        kernel_arguments = {}
+
+    if kwargs is not None:
+        kernel_arguments = {**kernel_arguments, **kwargs}
 
     def make_op(operand_i):
-        return IntG(target_kernel=target_kernel, densities=[operand_i],
+        return IntG(
+            target_kernel=target_kernel,
             source_kernels=source_kernels,
-            qbx_forced_limit=qbx_forced_limit, source=source, target=target,
-            kernel_arguments=kernel_arguments, **kwargs)
+            densities=(operand_i,),
+            qbx_forced_limit=qbx_forced_limit,
+            source=as_dofdesc(source),
+            target=as_dofdesc(target),
+            kernel_arguments=kernel_arguments)
 
     if isinstance(density, np.ndarray | MultiVector):
         return componentwise(make_op, density)
