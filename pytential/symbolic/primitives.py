@@ -89,6 +89,8 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 :class:`~meshmode.dof_array.DOFArray` is used and otherwise
 :class:`~pyopencl.array.Array` is used.
 
+.. autoclass:: Expression
+
 Diagnostics
 ^^^^^^^^^^^
 
@@ -228,6 +230,8 @@ Pretty-printing expressions
 """
 
 __all__ = (
+    "Expression",
+
     "ErrorExpression",
 
     "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
@@ -306,6 +310,12 @@ def array_to_tuple(ary):
 
 @expr_dataclass()
 class Expression(ExpressionBase):
+    """Bases: :class:`~pymbolic.primitives.Expression`.
+
+    A subclass of :class:`~pymbolic.primitives.Expression` for use with
+    :mod:`pytential` mappers.
+    """
+
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
@@ -1405,15 +1415,21 @@ class IntG(Expression):
     fail if no QBX center is found. To allow potential evaluation at the target
     to succeeds even if no applicable QBX center is found use ``±2``.
     """
-    source: DOFDescriptor = field(default_factory=lambda: EMPTY_DESCRIPTOR)
+
+    # pylint: disable-next=invalid-field-call
+    source: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
     """The symbolic name of the source discretization. This name is bound to a
     concrete :class:`~pytential.source.LayerPotentialSourceBase`
     by :func:`pytential.bind`.
     """
-    target: DOFDescriptor = field(default_factory=lambda: EMPTY_DESCRIPTOR)
+
+    # pylint: disable-next=invalid-field-call
+    target: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
     """The symbolic name of the set of targets. This name gets assigned to a
     concrete target set by :func:`pytential.bind`.
     """
+
+    # pylint: disable-next=invalid-field-call
     kernel_arguments: dict[str, Operand] = field(default_factory=dict)
     """A dictionary mapping named :class:`~sumpy.kernel.Kernel` arguments
     (see :meth:`~sumpy.kernel.Kernel.get_args` and
@@ -1475,7 +1491,7 @@ class IntG(Expression):
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
-        provided_arg_names = set(self.kernel_arguments.keys())
+        provided_arg_names = set(self.kernel_arguments.keys())  # pylint: disable=no-member
         missing_args = kernel_arg_names - provided_arg_names
         if missing_args:
             raise ValueError(

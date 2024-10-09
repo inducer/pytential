@@ -30,4 +30,5 @@ intersphinx_mapping = {
     "pytools": ("https://documen.tician.de/pytools", None),
     "scipy": ("https://docs.scipy.org/doc/scipy", None),
     "sumpy": ("https://documen.tician.de/sumpy", None),
+    "sympy": ("https://docs.sympy.org/latest/", None),
 }
