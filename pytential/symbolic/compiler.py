@@ -24,11 +24,11 @@ from dataclasses import dataclass
 from functools import reduce
 from typing import (
         AbstractSet, Any, Collection, Tuple, Dict, Hashable, List,
-        Optional, Sequence, Set, Iterator)
+        Optional, Sequence, Set, Iterator, Union)
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Expression, Variable
+from pymbolic.primitives import cse_scope, Expression, Variable, Subscript
 from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
@@ -53,7 +53,7 @@ class Statement:
         raise NotImplementedError(
                 f"get_assignees for '{self.__class__.__name__}'")
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Variable]:
         raise NotImplementedError(
                 f"get_dependencies for '{self.__class__.__name__}'")
 
@@ -81,7 +81,7 @@ class Assign(Statement):
     def get_assignees(self):
         return set(self.names)
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Variable]:
         from operator import or_
         deps = reduce(or_, (dep_mapper(expr) for expr in self.exprs))
 
@@ -189,7 +189,7 @@ class ComputePotential(Statement):
     def get_assignees(self):
         return {o.name for o in self.outputs}
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Variable]:
         result = dep_mapper(self.densities[0])
         for density in self.densities[1:]:
             result.update(dep_mapper(density))
@@ -546,9 +546,7 @@ class OperatorCompiler(CachedIdentityMapper):
 
     def assign_to_new_var(
             self, expr: Expression, priority: int = 0, prefix: Optional[str] = None,
-            ) -> Variable:
-        from pymbolic.primitives import Subscript
-
+            ) -> Union[Variable, Subscript]:
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
         # their scalar components.

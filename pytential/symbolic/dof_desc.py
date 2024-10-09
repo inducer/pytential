@@ -273,6 +273,8 @@ def as_dofdesc(desc: "DOFDescriptorLike") -> "DOFDescriptor":
 
 # {{{ type annotations
 
+EMPTY_DESCRIPTOR = DOFDescriptor(geometry=None)
+
 DiscretizationStages = Union[
         Type[QBX_SOURCE_STAGE1],
         Type[QBX_SOURCE_STAGE2],
