@@ -309,7 +309,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
-                for name, expr in zip(insn.names, insn.exprs)]
+                for name, expr in zip(insn.names, insn.exprs, strict=True)]
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
@@ -470,7 +470,7 @@ class MatVecOp:
 
         from arraycontext import flatten
         result = self.array_context.zeros(self.total_dofs, self.dtype)
-        for res_i, (start, end) in zip(ary, self.starts_and_ends):
+        for res_i, (start, end) in zip(ary, self.starts_and_ends, strict=True):
             result[start:end] = flatten(res_i, self.array_context)
 
         return result
@@ -478,7 +478,7 @@ class MatVecOp:
     def unflatten(self, ary):
         # Convert a flat version of *ary* into a structured version.
         components = []
-        for discr, (start, end) in zip(self.discrs, self.starts_and_ends):
+        for discr, (start, end) in zip(self.discrs, self.starts_and_ends, strict=True):
             component = ary[start:end]
 
             from meshmode.discretization import Discretization

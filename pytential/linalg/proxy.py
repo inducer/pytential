@@ -736,7 +736,8 @@ def gather_cluster_neighbor_points(
         # get nodes inside the boxes
         istart = tree.box_source_starts[iboxes]
         iend = istart + tree.box_source_counts_cumul[iboxes]
-        isources = np.hstack([np.arange(s, e) for s, e in zip(istart, iend)])
+        isources = np.hstack([
+            np.arange(s, e) for s, e in zip(istart, iend, strict=True)])
         nodes = np.vstack([s[isources] for s in tree.sources])
         isources = tree.user_source_ids[isources]
 

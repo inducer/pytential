@@ -103,7 +103,8 @@ class Assign(Statement):
 
             lines = []
             lines.append("{" + comment)
-            for n, e, dnr in zip(self.names, self.exprs, self.do_not_return):
+            for n, e, dnr in zip(self.names, self.exprs, self.do_not_return,
+                                 strict=True):
                 if dnr:
                     dnr_indicator = "-#"
                 else:
@@ -643,7 +644,7 @@ class OperatorCompiler(CachedIdentityMapper):
                     target_name=op.target,
                     qbx_forced_limit=op.qbx_forced_limit,
                     )
-                for name, op in zip(names, group)
+                for name, op in zip(names, group, strict=True)
                 ]
 
             self.code.append(
@@ -661,7 +662,7 @@ class OperatorCompiler(CachedIdentityMapper):
                         priority=max(getattr(op, "priority", 0) for op in group),
                         ))
 
-            for name, group_expr in zip(names, group):
+            for name, group_expr in zip(names, group, strict=True):
                 self.expr_to_var[group_expr] = NamedIntermediateResult(name)
 
             return self.expr_to_var[expr]

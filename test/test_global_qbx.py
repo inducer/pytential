@@ -394,7 +394,8 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
      vol_int_slice,
      vol_ext_slice,
      far_slice,
-     ) = (slice(start, end) for start, end in zip(np.r_[0, sizes], sizes))
+     ) = (slice(start, end)
+          for start, end in zip(np.r_[0, sizes[:-1]], sizes, strict=True))
 
     # }}}
 
@@ -438,7 +439,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
         for tx, ty, tcenter in zip(
                 targets[0, tgt_slice],
                 targets[1, tgt_slice],
-                target_assoc.target_to_center[tgt_slice]):
+                target_assoc.target_to_center[tgt_slice], strict=True):
             if tcenter >= 0:
                 ax.add_artist(
                         plt.Line2D(

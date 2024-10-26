@@ -489,7 +489,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 points=self.flat_centers())
 
         for start, (target_discr, _) in zip(
-                target_discr_starts, self.target_discrs_and_qbx_sides):
+                target_discr_starts[:-1],
+                self.target_discrs_and_qbx_sides, strict=True):
             code_getter.copy_targets_kernel()(
                     actx.queue,
                     targets=targets[:,
@@ -513,8 +514,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         target_side_preferences = actx.np.zeros(tgt_info.ntargets, dtype=np.int8)
         for tdstart, (target_discr, qbx_side) in zip(
-                tgt_info.target_discr_starts,
-                self.target_discrs_and_qbx_sides):
+                tgt_info.target_discr_starts[:-1],
+                self.target_discrs_and_qbx_sides, strict=True):
             target_side_preferences[tdstart:tdstart+target_discr.ndofs] = qbx_side
 
         return actx.freeze(target_side_preferences)
@@ -939,12 +940,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         if draw_circles:
             for cx, cy, r in zip(
                     centers[0], centers[1],
-                    actx.to_numpy(self.flat_expansion_radii())):
+                    actx.to_numpy(self.flat_expansion_radii()), strict=True):
                 ax.add_artist(pt.Circle((cx, cy), r,
                     fill=False, ls="dotted", lw=1))
 
         if draw_center_numbers:
-            for icenter, (cx, cy) in enumerate(zip(centers[0], centers[1])):
+            for icenter, (cx, cy) in enumerate(zip(centers[0], centers[1],
+                                                   strict=True)):
                 pt.text(cx, cy,
                     str(icenter), fontsize=8,
                     ha="left", va="center",
@@ -977,7 +979,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         for tx, ty, tcenter in zip(
                 targets[0][self.ncenters:],
                 targets[1][self.ncenters:],
-                ttc[self.ncenters:]):
+                ttc[self.ncenters:], strict=True):
             checked += 1
             if tcenter >= 0:
                 tccount += 1

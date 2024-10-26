@@ -322,7 +322,7 @@ def test_node_reduction(actx_factory):
     base_node_nrs = np.cumsum([0] + [grp.ndofs for grp in discr.groups])
     ary = DOFArray(actx, data=tuple(
         randrange_like(xi, offset)
-        for xi, offset in zip(discr.nodes()[0], base_node_nrs)
+        for xi, offset in zip(discr.nodes()[0], base_node_nrs[:-1], strict=True)
         ))
 
     n = discr.ndofs

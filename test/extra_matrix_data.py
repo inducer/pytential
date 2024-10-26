@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -22,26 +23,26 @@ class MatrixTestCaseMixin:
     # operators
     op_type: str = "scalar"
     # disable fmm for matrix tests
-    fmm_backend: Optional[str] = None
+    fmm_backend: str | None = None
 
     # partitioning
     approx_cluster_count: int = 10
-    max_particles_in_box: Optional[int] = None
+    max_particles_in_box: int | None = None
     tree_kind: str = "adaptive-level-restricted"
     index_sparsity_factor: float = 1.0
 
     # proxy
     proxy_radius_factor: float = 1.0
-    proxy_approx_count: Optional[float] = None
+    proxy_approx_count: float | None = None
 
     # skeletonization
     id_eps: float = 1.0e-8
     skel_discr_stage: DiscretizationStages = sym.QBX_SOURCE_STAGE2
 
-    weighted_proxy: Optional[bool] = None
-    proxy_source_cluster_builder: Optional[Callable[..., Any]] = None
-    proxy_target_cluster_builder: Optional[Callable[..., Any]] = None
-    neighbor_cluster_builder: Optional[Callable[..., Any]] = None
+    weighted_proxy: bool | None = None
+    proxy_source_cluster_builder: Callable[..., Any] | None = None
+    proxy_target_cluster_builder: Callable[..., Any] | None = None
+    neighbor_cluster_builder: Callable[..., Any] | None = None
 
     def get_cluster_index(self, actx, places, dofdesc=None):
         if dofdesc is None:

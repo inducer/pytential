@@ -77,7 +77,7 @@ def evaluate_sphere_eigf(actx, discr, m: int, n: int) -> DOFArray:
 
     from scipy.special import sph_harm      # pylint: disable=no-name-in-module
     y_mn = []
-    for gtheta, gphi in zip(theta, phi):
+    for gtheta, gphi in zip(theta, phi, strict=True):
         result = sph_harm(m, n, actx.to_numpy(gphi), actx.to_numpy(gtheta))
 
         y_mn.append(actx.from_numpy(result.real.copy()))

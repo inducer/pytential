@@ -454,7 +454,8 @@ class _FMMGeometryData:
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
-        for start, target_discr in zip(target_discr_starts, target_discrs):
+        for start, target_discr in zip(target_discr_starts[:-1],
+                                       target_discrs, strict=True):
             code_getter.copy_targets_kernel()(actx.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
                     points=flatten(

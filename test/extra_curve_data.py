@@ -54,6 +54,8 @@ class CompositeCurve(Curve):
         self.curves = curves
 
     def __call__(self, ts):
+        from itertools import pairwise
+
         ranges = np.linspace(0, 1, len(self.curves) + 1)
         ts_argsort = np.argsort(ts)
         ts_sorted = ts[ts_argsort]
@@ -62,10 +64,9 @@ class CompositeCurve(Curve):
         # trail of 1s, then they won't be forwarded to the last curve.
         ts_split_points[-1] = len(ts)
         result = []
-        subranges = [
-            slice(*pair) for pair in zip(ts_split_points, ts_split_points[1:])]
+        subranges = [slice(*pair) for pair in pairwise(ts_split_points)]
         for curve, subrange, (start, end) in zip(
-                self.curves, subranges, zip(ranges, ranges[1:])):
+                self.curves, subranges, pairwise(ranges), strict=True):
             ts_mapped = (ts_sorted[subrange] - start) / (end - start)
             result.append(curve(ts_mapped))
         final = np.concatenate(result, axis=-1)

@@ -371,7 +371,7 @@ non_qbx_box_target_lists`),
 
                 **self.kernel_extra_kwargs.copy())
 
-        for pot_i, pot_res_i in zip(pot, pot_res):
+        for pot_i, pot_res_i in zip(pot, pot_res, strict=True):
             assert pot_i is pot_res_i
 
         return (pot, SumpyTimingFuture(queue, events))
@@ -585,7 +585,8 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
 
     all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
 
-    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
+    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials,
+                           strict=False):
         ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
 
     all_potentials_in_tree_order += qbx_potentials

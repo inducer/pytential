@@ -237,7 +237,7 @@ def run_exterior_stokes(actx_factory, *,
     v_error = [0.0] * ambient_dim
     v_error[:ambient_dim] = [
             dof_array_rel_error(actx, u, uref)
-            for u, uref in zip(velocity, ref_velocity)]
+            for u, uref in zip(velocity, ref_velocity, strict=True)]
     h_max = actx.to_numpy(
             bind(places, sym.h_max(ambient_dim))(actx)
             )
@@ -300,7 +300,7 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
                 resolution=resolution,
                 visualize=visualize)
 
-        for eoc, e in zip(eocs, errors):
+        for eoc, e in zip(eocs, errors, strict=True):
             eoc.add_data_point(h_max, e)
 
     for eoc in eocs:
@@ -345,7 +345,7 @@ def run_stokes_identity(actx_factory, case, identity, resolution, visualize=Fals
     error = [0.0] * places.ambient_dim
     error[:places.ambient_dim] = [
             discr_rel_error(actx, density_discr, x, xref, p=np.inf)
-            for x, xref in zip(result, ref_result)]
+            for x, xref in zip(result, ref_result, strict=True)]
     logger.info("resolution %4d h_min %.5e h_max %.5e error %.5e %.5e %.5e",
             resolution, h_min, h_max, *error)
 
@@ -443,7 +443,7 @@ def test_stokeslet_identity(actx_factory, cls, visualize=False):
                 resolution=resolution,
                 visualize=visualize)
 
-        for eoc, e in zip(eocs, errors):
+        for eoc, e in zip(eocs, errors, strict=True):
             eoc.add_data_point(h_max, e)
 
     for eoc in eocs:
@@ -502,7 +502,7 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
                 resolution=resolution,
                 visualize=visualize)
 
-        for eoc, e in zip(eocs, errors):
+        for eoc, e in zip(eocs, errors, strict=True):
             eoc.add_data_point(h_max, e)
 
     for eoc in eocs:
