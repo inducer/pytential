@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import AbstractSet, Collection, Iterator, Hashable, Sequence
+from collections.abc import Collection, Iterator, Hashable, Sequence, Set
 from dataclasses import dataclass
 from functools import reduce
 from typing import Any
@@ -190,7 +190,7 @@ class ComputePotential(Statement):
         return {o.name for o in self.outputs}
 
     def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
-        result = dep_mapper(self.densities[0])
+        result = set(dep_mapper(self.densities[0]))
         for density in self.densities[1:]:
             result.update(dep_mapper(density))
 
@@ -326,7 +326,7 @@ def dot_dataflow_graph(
 class Code:
     def __init__(
             self,
-            inputs: AbstractSet[str],
+            inputs: Set[str],
             schedule: Sequence[tuple[Statement, Collection[str]]],
             result: np.ndarray,
            ) -> None:
@@ -359,8 +359,8 @@ def _get_next_step(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
         result: np.ndarray,
-        available_names: AbstractSet[str],
-        done_stmts: AbstractSet[Statement]
+        available_names: Set[str],
+        done_stmts: Set[Statement]
         ) -> tuple[Statement, set[str]]:
 
     from pytools import argmax2

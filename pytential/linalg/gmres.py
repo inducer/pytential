@@ -193,7 +193,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
             if (stall_iterations
                     and len(residual_norms) > stall_iterations
                     and norm_r > (
-                        residual_norms[-stall_iterations]  # pylint:disable=invalid-unary-operand-type
+                        residual_norms[-stall_iterations]
                         / no_progress_factor)):
 
                 state = "stalled"
