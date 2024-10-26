@@ -60,11 +60,11 @@ def rec_int_g_arguments(mapper, expr):
             }
 
     changed = (
-            all(d is orig for d, orig in zip(densities, expr.densities))
+            all(d is orig for d, orig in zip(densities, expr.densities, strict=True))
             and all(
                 arg is orig for arg, orig in zip(
                     kernel_arguments.values(),
-                    expr.kernel_arguments.values()))
+                    expr.kernel_arguments.values(), strict=True))
             )
 
     return densities, kernel_arguments, changed
@@ -510,7 +510,8 @@ class DerivativeTaker(Mapper):
 
     def map_sum(self, expr):
         children = [self.rec(child) for child in expr.children]
-        if all(child is orig for child, orig in zip(children, expr.children)):
+        if all(child is orig for child, orig in zip(
+                children, expr.children, strict=True)):
             return expr
 
         from pymbolic.primitives import flattened_sum
@@ -819,7 +820,8 @@ class StringifyMapper(BaseStringifyMapper):
     def map_int_g(self, expr, enclosing_prec):
         source_kernels_str = " + ".join([
             "{} * {}".format(self.rec(density, PREC_PRODUCT), source_kernel)
-            for source_kernel, density in zip(expr.source_kernels, expr.densities)
+            for source_kernel, density in zip(
+                expr.source_kernels, expr.densities, strict=True)
         ])
         target_kernel_str = str(expr.target_kernel)
         base_kernel_str = str(expr.target_kernel.get_base_kernel())

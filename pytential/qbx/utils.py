@@ -304,7 +304,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     queue = actx.queue
     particles = tuple(
             actx.np.concatenate(dim_coords)
-            for dim_coords in zip(sources, centers, *targets))
+            for dim_coords in zip(sources, centers, *targets, strict=True))
 
     # Counts
     nparticles = len(particles[0])

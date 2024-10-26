@@ -33,7 +33,7 @@ def sort_arrays_together(*arys, key=None):
     :param key: a function that takes in a tuple of values
                 and returns a value to compare.
     """
-    return zip(*sorted(zip(*arys), key=key))
+    return zip(*sorted(zip(*arys, strict=True), key=key), strict=True)
 
 
 def pytest_teardown_function():

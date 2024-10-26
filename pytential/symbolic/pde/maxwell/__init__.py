@@ -201,7 +201,7 @@ class MuellerAugmentedMFIEOperator:
         self.epss = epss
         self.ks = [
                 sym.cse(omega*(eps*mu)**0.5, f"k{i}")
-                for i, (eps, mu) in enumerate(zip(epss, mus))]
+                for i, (eps, mu) in enumerate(zip(epss, mus, strict=True))]
 
     def make_unknown(self, name):
         return sym.make_sym_vector(name, 6)

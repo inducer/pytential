@@ -113,7 +113,7 @@ class CenterGranularityConnection(GranularityConnection):
                 "idof": ConcurrentDOFInameTag()})
 
         results = []
-        for grp, subary1, subary2 in zip(self.discr.groups, ary1, ary2):
+        for grp, subary1, subary2 in zip(self.discr.groups, ary1, ary2, strict=True):
             if subary1.dtype != subary2.dtype:
                 raise ValueError("dtype mismatch in inputs: "
                     f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")

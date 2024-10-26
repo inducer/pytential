@@ -20,8 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -86,41 +87,41 @@ def make_source_and_target_points(
 
 @dataclass
 class IntegralEquationTestCase:
-    name: Optional[str] = None
-    ambient_dim: Optional[int] = None
+    name: str | None = None
+    ambient_dim: int | None = None
 
     # operator
-    knl_class_or_helmholtz_k: Union[Type[Kernel], float] = 0
-    knl_kwargs: Dict[str, Any] = field(default_factory=dict)
+    knl_class_or_helmholtz_k: type[Kernel] | float = 0
+    knl_kwargs: dict[str, Any] = field(default_factory=dict)
     bc_type: str = "dirichlet"
     side: int = -1
 
     # qbx
-    qbx_order: Optional[int] = None
+    qbx_order: int | None = None
     source_ovsmp: int = 4
-    target_order: Optional[int] = None
+    target_order: int | None = None
     use_refinement: bool = True
-    group_cls: Type[MeshElementGroup] = SimplexElementGroup
-    group_factory_cls: Type[ElementGroupFactory] = InterpolatoryQuadratureGroupFactory
+    group_cls: type[MeshElementGroup] = SimplexElementGroup
+    group_factory_cls: type[ElementGroupFactory] = InterpolatoryQuadratureGroupFactory
 
     # fmm
-    fmm_backend: Optional[str] = "sumpy"
-    fmm_order: Optional[int] = None
-    fmm_tol: Optional[float] = None
+    fmm_backend: str | None = "sumpy"
+    fmm_order: int | None = None
+    fmm_tol: float | None = None
     disable_fft: bool = False
 
     # solver
     gmres_tol: float = 1.0e-14
 
     # test case
-    resolutions: Optional[List[int]] = None
-    inner_radius: Optional[float] = None
-    outer_radius: Optional[float] = None
+    resolutions: list[int] | None = None
+    inner_radius: float | None = None
+    outer_radius: float | None = None
     check_tangential_deriv: bool = True
     check_gradient: bool = False
 
-    box_extent_norm: Optional[str] = None
-    from_sep_smaller_crit: Optional[str] = None
+    box_extent_norm: str | None = None
+    from_sep_smaller_crit: str | None = None
 
     # {{{ symbolic
 
@@ -259,13 +260,13 @@ class CurveTestCase(IntegralEquationTestCase):
     target_order: int = 5
 
     # fmm
-    fmm_backend: Optional[str] = None
+    fmm_backend: str | None = None
 
     # test case
-    curve_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    curve_fn: Callable[[np.ndarray], np.ndarray] | None = None
     inner_radius: float = 0.1
     outer_radius: float = 2
-    resolutions: List[int] = field(default_factory=lambda: [40, 50, 60])
+    resolutions: list[int] = field(default_factory=lambda: [40, 50, 60])
 
     def _curve_fn(self, t):
         return self.curve_fn(t)
@@ -299,7 +300,7 @@ class CircleTestCase(EllipseTestCase):
 @dataclass
 class WobbleCircleTestCase(CurveTestCase):
     name: str = "wobble-circle"
-    resolutions: List[int] = field(default_factory=lambda: [2000, 3000, 4000])
+    resolutions: list[int] = field(default_factory=lambda: [2000, 3000, 4000])
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import WobblyCircle
@@ -316,7 +317,7 @@ class StarfishTestCase(CurveTestCase):
     inner_radius: float = 0.25
     outer_radius: float = 2.0
 
-    resolutions: List[int] = field(default_factory=lambda: [30, 50, 70, 90])
+    resolutions: list[int] = field(default_factory=lambda: [30, 50, 70, 90])
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import NArmedStarfish
@@ -335,7 +336,7 @@ class Helmholtz3DTestCase(IntegralEquationTestCase):
     use_refinement: bool = False
 
     # fmm
-    fmm_backend: Optional[str] = "fmmlib"
+    fmm_backend: str | None = "fmmlib"
 
     # solver
     gmres_tol: float = 1.0e-7
@@ -353,7 +354,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
     fmm_order: int = 13
 
     # test case
-    resolutions: List[int] = field(
+    resolutions: list[int] = field(
         default_factory=lambda: [2.0, 0.8])     # type: ignore[list-item]
     inner_radius: float = 0.4
     outer_radius: float = 5.0
@@ -383,14 +384,14 @@ class SphereTestCase(IntegralEquationTestCase):
     use_refinement: bool = False
 
     # fmm
-    fmm_backend: Optional[str] = "fmmlib"
+    fmm_backend: str | None = "fmmlib"
     fmm_tol: float = 1.0e-4
 
     # solver
     gmres_tol: float = 1.0e-7
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [1, 2])
+    resolutions: list[int] = field(default_factory=lambda: [1, 2])
     check_gradient: bool = False
     check_tangential_deriv: bool = False
 
@@ -443,7 +444,7 @@ class GMSHSphereTestCase(SphereTestCase):
     name: str = "gmsphere"
 
     radius: float = 1.5
-    resolutions: List[int] = field(
+    resolutions: list[int] = field(
         default_factory=lambda: [0.4])      # type: ignore[list-item]
 
     def get_mesh(self, resolution, mesh_order):
@@ -500,7 +501,7 @@ class TorusTestCase(IntegralEquationTestCase):
     r_minor: float = 2.0
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [0, 1, 2])
+    resolutions: list[int] = field(default_factory=lambda: [0, 1, 2])
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_torus
@@ -519,7 +520,7 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
     use_refinement: bool = True
 
     # test case
-    resolutions: List[int] = field(
+    resolutions: list[int] = field(
         default_factory=lambda: [1.4])  # type: ignore[list-item]
     inner_radius: float = 0.4
     outer_radius: float = 12.0
@@ -542,7 +543,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
     name: str = "ellipsoid"
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [2, 1])
+    resolutions: list[int] = field(default_factory=lambda: [2, 1])
     inner_radius: float = 0.4
     outer_radius: float = 5.0
 
@@ -596,11 +597,11 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
     use_refinement: bool = True
 
     # fmm
-    fmm_backend: Optional[str] = "fmmlib"
+    fmm_backend: str | None = "fmmlib"
     fmm_tol: float = 1.0e-4
 
     # test case
-    resolutions: List[int] = field(
+    resolutions: list[int] = field(
         default_factory=lambda: [0.1])  # type: ignore[list-item]
     inner_radius: float = 0.2
     outer_radius: float = 12   # was '-13' in some large-scale run (?)
@@ -645,12 +646,12 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
     target_order: int = 6
 
     # fmm
-    fmm_backend: Optional[str] = "fmmlib"
+    fmm_backend: str | None = "fmmlib"
     fmm_tol: float = 1.0e-4
     use_refinement: bool = True
 
     # test case
-    resolutions: List[int] = field(
+    resolutions: list[int] = field(
         default_factory=lambda: [0.2])  # type: ignore[list-item]
     inner_radius: float = 0.2
     outer_radius: float = 15
@@ -662,7 +663,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
 
     # other stuff
     visualize_geometry: bool = True
-    vis_grid_spacing: Tuple[float, float, float] = field(
+    vis_grid_spacing: tuple[float, float, float] = field(
         default_factory=lambda: (0.025, 0.2, 0.025))
     vis_extend_factor: float = 0.2
 

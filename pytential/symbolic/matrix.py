@@ -380,7 +380,7 @@ class MatrixBuilder(MatrixBuilderBase):
         assert abs(expr.qbx_forced_limit) > 0
 
         result = 0
-        for kernel, density in zip(expr.source_kernels, expr.densities):
+        for kernel, density in zip(expr.source_kernels, expr.densities, strict=True):
             rec_density = self.rec(density)
             if is_zero(rec_density):
                 continue
@@ -463,7 +463,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         target_base_kernel = expr.target_kernel.get_base_kernel()
 
         result = 0
-        for density, kernel in zip(expr.densities, expr.source_kernels):
+        for density, kernel in zip(expr.densities, expr.source_kernels, strict=True):
             rec_density = self.rec(density)
             if is_zero(rec_density):
                 continue
@@ -553,7 +553,7 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
         result = 0
         assert abs(expr.qbx_forced_limit) > 0
 
-        for kernel, density in zip(expr.source_kernels, expr.densities):
+        for kernel, density in zip(expr.source_kernels, expr.densities, strict=True):
             rec_density = self._inner_mapper.rec(density)
             if is_zero(rec_density):
                 continue
@@ -640,7 +640,7 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
         target_base_kernel = expr.target_kernel.get_base_kernel()
 
         result = 0
-        for kernel, density in zip(expr.source_kernels, expr.densities):
+        for kernel, density in zip(expr.source_kernels, expr.densities, strict=True):
             rec_density = self._inner_mapper.rec(density)
             if is_zero(rec_density):
                 continue
