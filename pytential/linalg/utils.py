@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 import numpy.linalg as la
@@ -153,14 +153,14 @@ class TargetAndSourceClusterList:
     def _flat_total_size(self):
         return self._flat_cluster_starts[-1]
 
-    def cluster_shape(self, i: int, j: int) -> Tuple[int, int]:
+    def cluster_shape(self, i: int, j: int) -> tuple[int, int]:
         r"""
         :returns: the shape of the cluster ``(i, j)``, where *i* indexes into
             the :attr:`targets` and *j* into the :attr:`sources`.
         """
         return (self.targets.cluster_size(i), self.sources.cluster_size(j))
 
-    def cluster_indices(self, i: int, j: int) -> Tuple[np.ndarray, np.ndarray]:
+    def cluster_indices(self, i: int, j: int) -> tuple[np.ndarray, np.ndarray]:
         """
         :returns: a view into the indices that make up the cluster ``(i, j)``.
         """
@@ -192,7 +192,7 @@ class TargetAndSourceClusterList:
 
 def make_index_list(
         indices: np.ndarray,
-        starts: Optional[np.ndarray] = None) -> IndexList:
+        starts: np.ndarray | None = None) -> IndexList:
     """Wrap a ``(indices, starts)`` tuple into an :class:`IndexList`.
 
     :param starts: if *None*, then *indices* is expected to be an object
@@ -213,7 +213,7 @@ def make_index_list(
 
 def make_index_cluster_cartesian_product(
         actx: PyOpenCLArrayContext,
-        mindex: TargetAndSourceClusterList) -> Tuple[Array, Array]:
+        mindex: TargetAndSourceClusterList) -> tuple[Array, Array]:
     """Constructs a cluster by cluster Cartesian product of all the
     indices in *mindex*.
 
@@ -326,8 +326,8 @@ def make_flat_cluster_diag(
 # {{{ interpolative decomposition
 
 def interp_decomp(
-        A: np.ndarray, *, rank: Optional[int], eps: Optional[float],
-        ) -> Tuple[int, np.ndarray, np.ndarray]:
+        A: np.ndarray, *, rank: int | None, eps: float | None,
+        ) -> tuple[int, np.ndarray, np.ndarray]:
     """Wrapper for :func:`~scipy.linalg.interpolative.interp_decomp` that
     always has the same output signature.
 
@@ -354,8 +354,8 @@ def interp_decomp(
 
 def cluster_skeletonization_error(
         mat: np.ndarray, skeleton: "SkeletonizationResult", *,
-        ord: Optional[float] = None,
-        relative: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+        ord: float | None = None,
+        relative: bool = False) -> tuple[np.ndarray, np.ndarray]:
     r"""Evaluate the cluster-wise skeletonization errors for the given *skeleton*.
 
     Errors are computed for all interactions between cluster :math:`i` and
@@ -428,7 +428,7 @@ def cluster_skeletonization_error(
 
 def skeletonization_error(
         mat: np.ndarray, skeleton: "SkeletonizationResult", *,
-        ord: Optional[float] = None,
+        ord: float | None = None,
         relative: bool = False) -> "np.floating[Any]":
     r"""Computes the skeletonization error for the entire matrix *mat*.
 

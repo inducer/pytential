@@ -31,9 +31,9 @@ __doc__ = """
 .. autoclass:: ResidualPrinter
 """
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Optional, Sequence
 
 import numpy as np
 
@@ -278,16 +278,16 @@ class ResidualPrinter:
 def gmres(
         op: Callable[[ArrayOrContainerT], ArrayOrContainerT],
         rhs: ArrayOrContainerT,
-        restart: Optional[int] = None,
-        tol: Optional[float] = None,
-        x0: Optional[ArrayOrContainerT] = None,
-        inner_product: Optional[
-            Callable[[ArrayOrContainerT, ArrayOrContainerT], float]] = None,
-        maxiter: Optional[int] = None,
-        hard_failure: Optional[bool] = None,
-        no_progress_factor: Optional[float] = None,
-        stall_iterations: Optional[int] = None,
-        callback: Optional[Callable[[ArrayOrContainerT], None]] = None,
+        restart: int | None = None,
+        tol: float | None = None,
+        x0: ArrayOrContainerT | None = None,
+        inner_product: (
+            Callable[[ArrayOrContainerT, ArrayOrContainerT], float] | None) = None,
+        maxiter: int | None = None,
+        hard_failure: bool | None = None,
+        no_progress_factor: float | None = None,
+        stall_iterations: int | None = None,
+        callback: Callable[[ArrayOrContainerT], None] | None = None,
         progress: bool = False,
         require_monotonicity: bool = True) -> GMRESResult:
     """Solve a linear system :math:`Ax = b` using GMRES with restarts.

@@ -27,7 +27,7 @@ __doc__ = """
 .. autoclass:: BiharmonicClampedPlateOperator
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -155,9 +155,9 @@ class DirichletOperator(L2WeightedPDEOperator):
     """
 
     def __init__(self, kernel: Kernel, loc_sign: int, *,
-            alpha: Optional[Union[int, float, complex]] = None,
+            alpha: int | float | complex | None = None,
             use_l2_weighting: bool = False,
-            kernel_arguments: Optional[Dict[str, Any]] = None):
+            kernel_arguments: dict[str, Any] | None = None):
         """
         :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
             problems.
@@ -294,10 +294,10 @@ class NeumannOperator(L2WeightedPDEOperator):
     """
 
     def __init__(self, kernel: Kernel, loc_sign: int, *,
-            alpha: Optional[Union[int, float, complex]] = None,
+            alpha: int | float | complex | None = None,
             use_improved_operator: bool = True,
             use_l2_weighting: bool = False,
-            kernel_arguments: Optional[Dict[str, Any]] = None):
+            kernel_arguments: dict[str, Any] | None = None):
         """
         :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
             problems.

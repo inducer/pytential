@@ -20,11 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import AbstractSet, Collection, Iterator, Hashable, Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import (
-        AbstractSet, Any, Collection, Tuple, Dict, Hashable, List,
-        Optional, Sequence, Set, Iterator)
+from typing import Any
 
 import numpy as np
 
@@ -45,15 +44,15 @@ class Statement:
     .. attribute:: exprs
     .. attribute:: priority
     """
-    names: List[str]
-    exprs: List[Expression]
+    names: list[str]
+    exprs: list[Expression]
     priority: int
 
-    def get_assignees(self) -> Set[str]:
+    def get_assignees(self) -> set[str]:
         raise NotImplementedError(
                 f"get_assignees for '{self.__class__.__name__}'")
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
         raise NotImplementedError(
                 f"get_dependencies for '{self.__class__.__name__}'")
 
@@ -71,7 +70,7 @@ class Assign(Statement):
         expression that is not needed beyond this assignment.
     """
 
-    do_not_return: Optional[List[bool]] = None
+    do_not_return: list[bool] | None = None
     comment: str = ""
 
     def __post_init__(self):
@@ -81,7 +80,7 @@ class Assign(Statement):
     def get_assignees(self):
         return set(self.names)
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
         from operator import or_
         deps = reduce(or_, (dep_mapper(expr) for expr in self.exprs))
 
@@ -179,17 +178,17 @@ class ComputePotential(Statement):
     .. attribute:: source
     """
 
-    outputs: List[PotentialOutput]
-    target_kernels: List[Kernel]
-    kernel_arguments: Dict[str, Any]
-    source_kernels: List[Kernel]
-    densities: List[Expression]
+    outputs: list[PotentialOutput]
+    target_kernels: list[Kernel]
+    kernel_arguments: dict[str, Any]
+    source_kernels: list[Kernel]
+    densities: list[Expression]
     source: DOFDescriptor
 
     def get_assignees(self):
         return {o.name for o in self.outputs}
 
-    def get_dependencies(self, dep_mapper: DependencyMapper) -> Set[Expression]:
+    def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
         result = dep_mapper(self.densities[0])
         for density in self.densities[1:]:
             result.update(dep_mapper(density))
@@ -327,7 +326,7 @@ class Code:
     def __init__(
             self,
             inputs: AbstractSet[str],
-            schedule: Sequence[Tuple[Statement, Collection[str]]],
+            schedule: Sequence[tuple[Statement, Collection[str]]],
             result: np.ndarray,
            ) -> None:
         self.inputs = inputs
@@ -335,7 +334,7 @@ class Code:
         self.result = result
 
     @property
-    def statements(self) -> List[Statement]:
+    def statements(self) -> list[Statement]:
         return [stmt for stmt, _discardable_vars in self._schedule]
 
     def __str__(self) -> str:
@@ -361,7 +360,7 @@ def _get_next_step(
         result: np.ndarray,
         available_names: AbstractSet[str],
         done_stmts: AbstractSet[Statement]
-        ) -> Tuple[Statement, Set[str]]:
+        ) -> tuple[Statement, set[str]]:
 
     from pytools import argmax2
     available_stmts = [
@@ -410,14 +409,14 @@ def _compute_schedule(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
         result: np.ndarray,
-        ) -> Tuple[Set[str], List[Tuple[Statement, Set[str]]]]:
+        ) -> tuple[set[str], list[tuple[Statement, set[str]]]]:
     # FIXME: I'm O(n**2). I want to be replaced with a normal topological sort.
 
     schedule = []
 
-    done_stmts: Set[Statement] = set()
+    done_stmts: set[Statement] = set()
 
-    inputs: Set[str] = {
+    inputs: set[str] = {
             dep.name
             for stmt in set(statements)
             for dep in stmt.get_dependencies(dep_mapper)
@@ -464,10 +463,10 @@ class OperatorCompiler(CachedIdentityMapper):
         self.places = places
         self.prefix = prefix
 
-        self.code: List[Statement] = []
-        self.expr_to_var: Dict[Expression, Variable] = {}
-        self.assigned_names: Set[str] = set()
-        self.group_to_operators: Dict[Hashable, Set[IntG]] = {}
+        self.code: list[Statement] = []
+        self.expr_to_var: dict[Expression, Variable] = {}
+        self.assigned_names: set[str] = set()
+        self.group_to_operators: dict[Hashable, set[IntG]] = {}
         self.dep_mapper = DependencyMapper(
                 # include_operator_bindings=False,
                 include_lookups=False,
@@ -510,7 +509,7 @@ class OperatorCompiler(CachedIdentityMapper):
 
     # {{{ variables and names
 
-    def get_var_name(self, prefix: Optional[str] = None) -> str:
+    def get_var_name(self, prefix: str | None = None) -> str:
         def generate_suffixes() -> Iterator[str]:
             yield ""
             i = 2
@@ -545,14 +544,14 @@ class OperatorCompiler(CachedIdentityMapper):
                 priority=priority)
 
     def assign_to_new_var(
-            self, expr: Expression, priority: int = 0, prefix: Optional[str] = None,
+            self, expr: Expression, priority: int = 0, prefix: str | None = None,
             ) -> Variable:
         from pymbolic.primitives import Subscript
 
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
         # their scalar components.
-        if isinstance(expr, (Variable, Subscript)):
+        if isinstance(expr, Variable | Subscript):
             return expr
 
         new_name = self.get_var_name(prefix)

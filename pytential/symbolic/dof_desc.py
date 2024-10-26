@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,7 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Hashable, Optional, Type, Union
+from collections.abc import Hashable
+from typing import Any
 
 __doc__ = """
 .. autoclass:: DEFAULT_SOURCE
@@ -159,9 +162,9 @@ class DOFDescriptor:
     """
 
     def __init__(self,
-            geometry: Optional[Hashable] = None,
-            discr_stage: Optional["DiscretizationStages"] = None,
-            granularity: Optional["DOFGranularities"] = None):
+            geometry: Hashable | None = None,
+            discr_stage: DiscretizationStages | None = None,
+            granularity: DOFGranularities | None = None):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
@@ -181,10 +184,9 @@ class DOFDescriptor:
         self.granularity = granularity
 
     def copy(self,
-            geometry: Optional[Hashable] = None,
-            discr_stage: Optional[
-                "DiscretizationStages"] = _NoArgSentinel,  # type: ignore[assignment]
-            granularity: Optional["DOFGranularities"] = None) -> "DOFDescriptor":
+            geometry: Hashable | None = None,
+            discr_stage: DiscretizationStages | None = _NoArgSentinel,  # type: ignore[assignment]
+            granularity: DOFGranularities | None = None) -> DOFDescriptor:
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
                     if discr_stage is _NoArgSentinel else discr_stage
@@ -199,13 +201,13 @@ class DOFDescriptor:
                     if discr_stage is _NoArgSentinel else discr_stage),
                 )
 
-    def to_stage1(self) -> "DOFDescriptor":
+    def to_stage1(self) -> DOFDescriptor:
         return self.copy(discr_stage=QBX_SOURCE_STAGE1)
 
-    def to_stage2(self) -> "DOFDescriptor":
+    def to_stage2(self) -> DOFDescriptor:
         return self.copy(discr_stage=QBX_SOURCE_STAGE2)
 
-    def to_quad_stage2(self) -> "DOFDescriptor":
+    def to_quad_stage2(self) -> DOFDescriptor:
         return self.copy(discr_stage=QBX_SOURCE_QUAD_STAGE2)
 
     def __hash__(self) -> int:
@@ -255,7 +257,7 @@ class DOFDescriptor:
         return "/".join(name)
 
 
-def as_dofdesc(desc: "DOFDescriptorLike") -> "DOFDescriptor":
+def as_dofdesc(desc: DOFDescriptorLike) -> DOFDescriptor:
     if isinstance(desc, DOFDescriptor):
         return desc
 
@@ -273,21 +275,18 @@ def as_dofdesc(desc: "DOFDescriptorLike") -> "DOFDescriptor":
 
 # {{{ type annotations
 
-DiscretizationStages = Union[
-        Type[QBX_SOURCE_STAGE1],
-        Type[QBX_SOURCE_STAGE2],
-        Type[QBX_SOURCE_QUAD_STAGE2],
-        ]
+DiscretizationStages = (
+        type[QBX_SOURCE_STAGE1]
+        | type[QBX_SOURCE_STAGE2]
+        | type[QBX_SOURCE_QUAD_STAGE2]
+        )
 
-DOFGranularities = Union[
-        Type[GRANULARITY_NODE],
-        Type[GRANULARITY_CENTER],
-        Type[GRANULARITY_ELEMENT],
-        ]
+DOFGranularities = (
+        type[GRANULARITY_NODE]
+        | type[GRANULARITY_CENTER]
+        | type[GRANULARITY_ELEMENT]
+        )
 
-DOFDescriptorLike = Union[
-    DOFDescriptor,
-    Hashable
-    ]
+DOFDescriptorLike = DOFDescriptor | Hashable
 
 # }}}
