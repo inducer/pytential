@@ -28,7 +28,7 @@ __doc__ = """
 """
 
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -80,9 +80,9 @@ class BeltramiOperator:
     """
 
     def __init__(self, kernel: Kernel, *,
-            dim: Optional[int] = None,
+            dim: int | None = None,
             precond: str = "left",
-            kernel_arguments: Optional[Dict[str, Any]] = None) -> None:
+            kernel_arguments: dict[str, Any] | None = None) -> None:
         if dim is None:
             dim = kernel.dim - 1
 
@@ -144,7 +144,7 @@ class BeltramiOperator:
 
     def operator(self,
             sigma: sym.var,
-            mean_curvature: Optional[sym.var] = None,
+            mean_curvature: sym.var | None = None,
             **kwargs) -> sym.var:
         """
         :arg mean_curvature: an expression for the mean curvature that can be
@@ -223,7 +223,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
     """
 
     def __init__(self, ambient_dim, *,
-            dim: Optional[int] = None,
+            dim: int | None = None,
             precond: str = "left") -> None:
         from sumpy.kernel import LaplaceKernel
         super().__init__(
@@ -233,7 +233,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 
     def operator(self,
             sigma: sym.var,
-            mean_curvature: Optional[sym.var] = None,
+            mean_curvature: sym.var | None = None,
             **kwargs) -> sym.var:
         """
         :arg mean_curvature: an expression for the mean curvature that can be
@@ -305,7 +305,7 @@ class YukawaBeltramiOperator(BeltramiOperator):
     """
 
     def __init__(self, ambient_dim: int, *,
-            dim: Optional[int] = None,
+            dim: int | None = None,
             precond: str = "left",
             yukawa_k_name: str = "k") -> None:
         from sumpy.kernel import YukawaKernel
@@ -334,7 +334,7 @@ class HelmholtzBeltramiOperator(BeltramiOperator):
     """
 
     def __init__(self, ambient_dim: int, *,
-            dim: Optional[int] = None,
+            dim: int | None = None,
             precond: str = "left",
             helmholtz_k_name: str = "k") -> None:
         from sumpy.kernel import HelmholtzKernel

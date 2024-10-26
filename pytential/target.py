@@ -37,7 +37,7 @@ used as evaluation targets.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from arraycontext.context import Array
 from pytools import T
@@ -87,7 +87,7 @@ class PointsTarget(TargetBase):
     .. automethod:: preprocess_optemplate
     """
 
-    def __init__(self, nodes: Array, normals: Optional[Array] = None) -> None:
+    def __init__(self, nodes: Array, normals: Array | None = None) -> None:
         self._nodes = nodes
         self.normals = normals
 

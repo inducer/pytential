@@ -128,16 +128,16 @@ class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangl
         if isinstance(knl, DirectionalSourceDerivative):
             knl = knl.inner_kernel
 
-        return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
+        return (isinstance(knl, LaplaceKernel | HelmholtzKernel)
                 and knl.dim in (2, 3))
 
     @staticmethod
     def is_supported_helmknl_for_tsqbx(knl):
         # Supports at most one derivative.
-        if isinstance(knl, (DirectionalSourceDerivative, AxisTargetDerivative)):
+        if isinstance(knl, DirectionalSourceDerivative | AxisTargetDerivative):
             knl = knl.inner_kernel
 
-        return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
+        return (isinstance(knl, LaplaceKernel | HelmholtzKernel)
                 and knl.dim == 3)
 
     @property

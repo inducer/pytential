@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -23,7 +25,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Dict, Hashable, Mapping, Optional, Tuple, Union
+from collections.abc import Hashable, Mapping
+from typing import Any
 
 import immutables
 
@@ -37,20 +40,21 @@ from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
 
 __doc__ = """
+.. class:: AutoWhereLike
+
+    Types accepted for ``auto_where`` arguments to aid in determining where an
+    expression is evaluated.
+
 .. class:: GeometryLike
 
     Types accepted by the :class:`GeometryCollection`.
 
 .. autoclass:: GeometryCollection
-
 .. autofunction:: add_geometry_to_collection
 """
 
-GeometryLike = Union[TargetBase, PotentialSource, Discretization]
-AutoWhereLike = Union[
-        "DOFDescriptorLike",
-        Tuple["DOFDescriptorLike", "DOFDescriptorLike"]
-        ]
+GeometryLike = TargetBase | PotentialSource | Discretization
+AutoWhereLike = DOFDescriptorLike | tuple[DOFDescriptorLike, DOFDescriptorLike]
 
 
 def _is_valid_identifier(name: str) -> bool:
@@ -113,12 +117,12 @@ class GeometryCollection:
     """
 
     def __init__(self,
-            places: Union[
-                "GeometryLike",
-                Tuple["GeometryLike", "GeometryLike"],
-                Mapping[Hashable, "GeometryLike"]
-                ],
-            auto_where: Optional[AutoWhereLike] = None) -> None:
+            places: (
+                GeometryLike
+                | tuple[GeometryLike, GeometryLike]
+                | Mapping[Hashable, GeometryLike]
+                ),
+            auto_where: AutoWhereLike | None = None) -> None:
         r"""
         :arg places: a scalar, tuple of or mapping of symbolic names to
             geometry objects. Supported objects are
@@ -151,7 +155,7 @@ class GeometryCollection:
         elif isinstance(places, TargetBase):
             places_dict = {auto_target.geometry: places}
             auto_source = auto_target
-        if isinstance(places, (Discretization, PotentialSource)):
+        if isinstance(places, Discretization | PotentialSource):
             places_dict = {
                 auto_source.geometry: places,
                 auto_target.geometry: places
@@ -169,7 +173,7 @@ class GeometryCollection:
         self.places = immutables.Map(places_dict)
         self.auto_where = (auto_source, auto_target)
 
-        self._caches: Dict[str, Any] = {}
+        self._caches: dict[str, Any] = {}
 
         # }}}
 
@@ -193,7 +197,7 @@ class GeometryCollection:
 
         # check allowed types
         for p in self.places.values():
-            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
+            if not isinstance(p, PotentialSource | TargetBase | Discretization):
                 raise TypeError(
                     "Values in 'places' must be discretization, targets "
                     f"or layer potential sources, got '{type(p).__name__}'")
@@ -282,9 +286,7 @@ class GeometryCollection:
 
     # }}}
 
-    def get_connection(self,
-            from_dd: "DOFDescriptorLike",
-            to_dd: "DOFDescriptorLike"):
+    def get_connection(self, from_dd: DOFDescriptorLike, to_dd: DOFDescriptorLike):
         """Construct a connection from *from_dd* to *to_dd* geometries.
 
         :returns: an object compatible with the
@@ -297,8 +299,8 @@ class GeometryCollection:
 
     def get_discretization(
             self, geometry: Hashable,
-            discr_stage: Optional["DiscretizationStages"] = None
-            ) -> "GeometryLike":
+            discr_stage: DiscretizationStages | None = None
+            ) -> GeometryLike:
         """Get the geometry or discretization in the collection.
 
         If a specific QBX stage discretization is requested, refinement is
@@ -327,7 +329,7 @@ class GeometryCollection:
         else:
             return discr
 
-    def get_geometry(self, geometry: Hashable) -> "GeometryLike":
+    def get_geometry(self, geometry: Hashable) -> GeometryLike:
         """
         :arg geometry: the identifier of the geometry in the collection.
         """
@@ -339,9 +341,9 @@ class GeometryCollection:
 
     def copy(
             self,
-            places: Optional[Mapping[Hashable, "GeometryLike"]] = None,
-            auto_where: Optional[AutoWhereLike] = None,
-            ) -> "GeometryCollection":
+            places: Mapping[Hashable, GeometryLike] | None = None,
+            auto_where: AutoWhereLike | None = None,
+            ) -> GeometryCollection:
         """Get a shallow copy of the geometry collection."""
         return type(self)(
                 places=self.places if places is None else places,
@@ -349,8 +351,8 @@ class GeometryCollection:
 
     def merge(
             self,
-            places: Union["GeometryCollection", Mapping[Hashable, "GeometryLike"]],
-            ) -> "GeometryCollection":
+            places: GeometryCollection | Mapping[Hashable, GeometryLike],
+            ) -> GeometryCollection:
         """Merges two geometry collections and returns the new collection.
 
         :arg places: a mapping or :class:`GeometryCollection` to
@@ -380,7 +382,7 @@ class GeometryCollection:
 
 def add_geometry_to_collection(
         places: GeometryCollection,
-        geometries: Mapping[Hashable, "GeometryLike"]) -> GeometryCollection:
+        geometries: Mapping[Hashable, GeometryLike]) -> GeometryCollection:
     """Adds a mapping of geometries to an existing collection.
 
     This function is similar to :meth:`GeometryCollection.merge`, but it makes
@@ -399,7 +401,7 @@ def add_geometry_to_collection(
         if key in places.places:
             raise ValueError(f"geometry '{key}' already in the collection")
 
-        if not isinstance(geometry, (PointsTarget, PointPotentialSource)):
+        if not isinstance(geometry, PointsTarget | PointPotentialSource):
             raise TypeError(
                     f"Cannot add a geometry of type '{type(geometry).__name__}' "
                     "to the existing collection. Construct a new collection "

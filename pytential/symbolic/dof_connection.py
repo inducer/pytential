@@ -141,7 +141,7 @@ class CenterGranularityConnection(GranularityConnection):
             If *arys* was a pair of arrays :math:`(x, y)`, they are
             interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
         """
-        if isinstance(arys, (list, tuple)):
+        if isinstance(arys, list | tuple):
             ary1, ary2 = arys
         else:
             ary1, ary2 = arys, arys
@@ -196,7 +196,7 @@ class DOFConnection:
         from meshmode.discretization.connection import DiscretizationConnection
         for conn in self.connections:
             if not isinstance(conn,
-                    (DiscretizationConnection, GranularityConnection)):
+                    DiscretizationConnection | GranularityConnection):
                 raise ValueError("unsupported connection type: {type(conn)}")
 
         if self.connections:

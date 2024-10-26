@@ -20,8 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 import numpy.linalg as la
@@ -68,9 +69,9 @@ _DEFAULT_MAX_PARTICLES_IN_BOX = 32
 
 def partition_by_nodes(
         actx: PyOpenCLArrayContext, places: GeometryCollection, *,
-        dofdesc: Optional["DOFDescriptorLike"] = None,
-        tree_kind: Optional[str] = "adaptive-level-restricted",
-        max_particles_in_box: Optional[int] = None) -> IndexList:
+        dofdesc: DOFDescriptorLike | None = None,
+        tree_kind: str | None = "adaptive-level-restricted",
+        max_particles_in_box: int | None = None) -> IndexList:
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
@@ -116,7 +117,7 @@ def partition_by_nodes(
                 ).nonzero()
 
         indices: np.ndarray = np.empty(len(leaf_boxes), dtype=object)
-        starts: Optional[np.ndarray] = None
+        starts: np.ndarray | None = None
 
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
@@ -230,7 +231,7 @@ class ProxyClusterGeometryData:
     centers: np.ndarray
     radii: np.ndarray
 
-    _cluster_radii: Optional[np.ndarray] = None
+    _cluster_radii: np.ndarray | None = None
 
     @property
     def nclusters(self) -> int:
@@ -361,11 +362,11 @@ class ProxyGeneratorBase:
 
     def __init__(
             self, places: GeometryCollection,
-            approx_nproxy: Optional[int] = None,
-            radius_factor: Optional[float] = None,
+            approx_nproxy: int | None = None,
+            radius_factor: float | None = None,
             norm_type: str = "linf",
 
-            _generate_ref_proxies: Optional[Callable[[int], np.ndarray]] = None,
+            _generate_ref_proxies: Callable[[int], np.ndarray] | None = None,
             ) -> None:
         """
         :param approx_nproxy: desired number of proxy points. In higher
@@ -422,7 +423,7 @@ class ProxyGeneratorBase:
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
-            source_dd: Optional["DOFDescriptorLike"],
+            source_dd: DOFDescriptorLike | None,
             dof_index: IndexList,
             **kwargs: Any) -> ProxyClusterGeometryData:
         """Generate proxy points for each cluster in *dof_index_set* with nodes in
@@ -625,7 +626,7 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
-            source_dd: Optional["DOFDescriptorLike"],
+            source_dd: DOFDescriptorLike | None,
             dof_index: IndexList, **kwargs) -> ProxyClusterGeometryData:
         if source_dd is None:
             source_dd = self.places.auto_source
@@ -651,7 +652,7 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
 def gather_cluster_neighbor_points(
         actx: PyOpenCLArrayContext, pxy: ProxyClusterGeometryData, *,
-        max_particles_in_box: Optional[int] = None) -> IndexList:
+        max_particles_in_box: int | None = None) -> IndexList:
     """Generate a set of neighboring points for each cluster of points in
     *pxy*. Neighboring points of a cluster :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also

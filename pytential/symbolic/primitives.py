@@ -23,7 +23,7 @@ THE SOFTWARE.
 from sys import intern
 from warnings import warn
 from functools import partial
-from typing import ClassVar, Tuple
+from typing import ClassVar
 
 import numpy as np
 
@@ -397,7 +397,7 @@ class DiscretizationProperty(Expression):
     .. attribute:: dofdesc
     """
 
-    init_arg_names: ClassVar[Tuple[str, ...]] = ("dofdesc",)
+    init_arg_names: ClassVar[tuple[str, ...]] = ("dofdesc",)
 
     def __init__(self, dofdesc=None):
         """
@@ -1065,7 +1065,7 @@ class SingleScalarOperandExpression(Expression):
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
-        if isinstance(operand, (np.ndarray, MultiVector)):
+        if isinstance(operand, np.ndarray | MultiVector):
             def make_op(operand_i):
                 return cls(operand_i)
 
@@ -1116,7 +1116,7 @@ class SingleScalarOperandExpressionWithWhere(Expression):
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
-        if isinstance(operand, (np.ndarray, MultiVector)):
+        if isinstance(operand, np.ndarray | MultiVector):
             def make_op(operand_i):
                 return cls(operand_i, dofdesc)
 
@@ -1595,7 +1595,7 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
             qbx_forced_limit=qbx_forced_limit, source=source, target=target,
             kernel_arguments=kernel_arguments, **kwargs)
 
-    if isinstance(density, (np.ndarray, MultiVector)):
+    if isinstance(density, np.ndarray | MultiVector):
         return componentwise(make_op, density)
     else:
         return make_op(density)

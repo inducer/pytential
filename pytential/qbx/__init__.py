@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Callable
 from functools import partial
-from typing import Callable, Optional, Union
 
 import numpy as np
 
@@ -93,15 +93,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def __init__(
             self,
             density_discr: Discretization,
-            fine_order: Optional[int],
-            qbx_order: Optional[int] = None,
-            fmm_order: Optional[Union[bool, int]] = None,
-            fmm_level_to_order: Optional[
-                Union[bool, Callable[..., int]]
-                ] = None,
-            expansion_factory: Optional[DefaultExpansionFactoryBase] = None,
-            target_association_tolerance: Optional[
-                float] = _not_provided,  # type: ignore[assignment]
+            fine_order: int | None,
+            qbx_order: int | None = None,
+            fmm_order: bool | int | None = None,
+            fmm_level_to_order: bool | Callable[..., int] | None = None,
+            expansion_factory: DefaultExpansionFactoryBase | None = None,
+            target_association_tolerance: float | None = _not_provided,  # type: ignore[assignment]
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
@@ -109,15 +106,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _disable_refinement: bool = False,
             _expansions_in_tree_have_extent: bool = True,
             _expansion_stick_out_factor: float = 0.5,
-            _max_leaf_refine_weight: Optional[int] = None,
-            _box_extent_norm: Optional[str] = None,
+            _max_leaf_refine_weight: int | None = None,
+            _box_extent_norm: str | None = None,
             _tree_kind: str = "adaptive",
             _well_sep_is_n_away: int = 2,
-            _from_sep_smaller_crit: Optional[str] = None,
-            _from_sep_smaller_min_nsources_cumul: Optional[int] = None,
-            _use_target_specific_qbx: Optional[bool] = None,
-            geometry_data_inspector: Optional[Callable[..., bool]] = None,
-            cost_model: Optional[AbstractQBXCostModel] = None,
+            _from_sep_smaller_crit: str | None = None,
+            _from_sep_smaller_min_nsources_cumul: int | None = None,
+            _use_target_specific_qbx: bool | None = None,
+            geometry_data_inspector: Callable[..., bool] | None = None,
+            cost_model: AbstractQBXCostModel | None = None,
             fmm_backend: str = "sumpy",
             ) -> None:
         """

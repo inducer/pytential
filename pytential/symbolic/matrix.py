@@ -37,7 +37,7 @@ from pytential.symbolic.mappers import EvaluationMapperBase
 # {{{ helpers
 
 def is_zero(x):
-    return isinstance(x, (int, float, complex, np.number)) and x == 0
+    return isinstance(x, int | float | complex | np.number) and x == 0
 
 
 def _get_layer_potential_args(actx, places, expr, context=None, include_args=None):
@@ -166,7 +166,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             if is_zero(rec_child):
                 return 0
 
-            if isinstance(rec_child, (np.number, int, float, complex)):
+            if isinstance(rec_child, np.number | int | float | complex):
                 vecs_and_scalars = vecs_and_scalars * rec_child
             elif isinstance(rec_child, np.ndarray):
                 if self.is_kind_matrix(rec_child):
@@ -326,7 +326,7 @@ class MatrixBuilder(MatrixBuilderBase):
         operand = self.rec(expr.operand)
         actx = self.array_context
 
-        if isinstance(operand, (int, float, complex, np.number)):
+        if isinstance(operand, int | float | complex | np.number):
             return operand
         elif isinstance(operand, np.ndarray) and operand.ndim == 1:
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)

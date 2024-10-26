@@ -20,9 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
-from typing import (
-        Any, Callable, Dict, Hashable, Optional, Sequence, Tuple, Union)
+from typing import Any
 
 import numpy as np
 
@@ -249,9 +249,9 @@ class SkeletonizationWrangler:
 
     # operator
     exprs: np.ndarray
-    input_exprs: Tuple[sym.var, ...]
-    domains: Tuple[sym.DOFDescriptor, ...]
-    context: Dict[str, Any]
+    input_exprs: tuple[sym.var, ...]
+    domains: tuple[sym.DOFDescriptor, ...]
+    context: dict[str, Any]
 
     neighbor_cluster_builder: Callable[..., np.ndarray]
 
@@ -296,7 +296,7 @@ class SkeletonizationWrangler:
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
-            ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
+            ibrow: int, ibcol: int) -> tuple[np.ndarray, TargetAndSourceClusterList]:
         nbr_src_index = TargetAndSourceClusterList(nbrindex, pxy.srcindex)
 
         eval_mapper_cls = self.neighbor_cluster_builder
@@ -311,7 +311,7 @@ class SkeletonizationWrangler:
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
-            ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
+            ibrow: int, ibcol: int) -> tuple[np.ndarray, TargetAndSourceClusterList]:
         tgt_nbr_index = TargetAndSourceClusterList(pxy.srcindex, nbrindex)
 
         eval_mapper_cls = self.neighbor_cluster_builder
@@ -330,7 +330,7 @@ class SkeletonizationWrangler:
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
-            ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
+            ibrow: int, ibcol: int) -> tuple[np.ndarray, TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         pxy_src_index = TargetAndSourceClusterList(pxy.pxyindex, pxy.srcindex)
         places = add_geometry_to_collection(
@@ -351,7 +351,7 @@ class SkeletonizationWrangler:
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
-            ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
+            ibrow: int, ibcol: int) -> tuple[np.ndarray, TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         tgt_pxy_index = TargetAndSourceClusterList(pxy.srcindex, pxy.pxyindex)
         places = add_geometry_to_collection(
@@ -378,17 +378,17 @@ class SkeletonizationWrangler:
 
 def make_skeletonization_wrangler(
         places: GeometryCollection,
-        exprs: Union[sym.var, Sequence[sym.var]],
-        input_exprs: Union[sym.var, Sequence[sym.var]], *,
-        domains: Optional[Sequence[Hashable]] = None,
-        context: Optional[Dict[str, Any]] = None,
-        auto_where: Optional[Union[Hashable, Tuple[Hashable, Hashable]]] = None,
+        exprs: sym.var | Sequence[sym.var],
+        input_exprs: sym.var | Sequence[sym.var], *,
+        domains: Sequence[Hashable] | None = None,
+        context: dict[str, Any] | None = None,
+        auto_where: Hashable | tuple[Hashable, Hashable] | None = None,
 
         # internal
-        _weighted_proxy: Optional[Union[bool, Tuple[bool, bool]]] = None,
-        _proxy_source_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
-        _proxy_target_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
-        _neighbor_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
+        _weighted_proxy: bool | tuple[bool, bool] | None = None,
+        _proxy_source_cluster_builder: Callable[..., np.ndarray] | None = None,
+        _proxy_target_cluster_builder: Callable[..., np.ndarray] | None = None,
+        _neighbor_cluster_builder: Callable[..., np.ndarray] | None = None,
         ) -> SkeletonizationWrangler:
     if context is None:
         context = {}
@@ -515,7 +515,7 @@ class _ProxyNeighborEvaluationResult:
     nbrmat: np.ndarray
     nbrindex: TargetAndSourceClusterList
 
-    def __getitem__(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
+    def __getitem__(self, i: int) -> tuple[np.ndarray, np.ndarray]:
         """
         :returns: a :class:`tuple` of ``(pxymat, nbrmat)`` containing the
             :math:`i`-th cluster interactions. The matrices are reshaped into
@@ -538,11 +538,11 @@ def _evaluate_proxy_skeletonization_interaction(
         wrangler: SkeletonizationWrangler,
         cluster_index: IndexList, *,
         evaluate_proxy: Callable[...,
-            Tuple[np.ndarray, TargetAndSourceClusterList]],
+            tuple[np.ndarray, TargetAndSourceClusterList]],
         evaluate_neighbor: Callable[...,
-            Tuple[np.ndarray, TargetAndSourceClusterList]],
-        dofdesc: Optional[sym.DOFDescriptor] = None,
-        max_particles_in_box: Optional[int] = None,
+            tuple[np.ndarray, TargetAndSourceClusterList]],
+        dofdesc: sym.DOFDescriptor | None = None,
+        max_particles_in_box: int | None = None,
         ) -> _ProxyNeighborEvaluationResult:
     """Evaluate the proxy to cluster and neighbor to cluster interactions for
     each cluster in *cluster_index*.
@@ -572,8 +572,8 @@ def _skeletonize_block_by_proxy_with_mats(
         proxy_generator: ProxyGeneratorBase,
         wrangler: SkeletonizationWrangler,
         tgt_src_index: TargetAndSourceClusterList, *,
-        id_eps: Optional[float] = None, id_rank: Optional[int] = None,
-        max_particles_in_box: Optional[int] = None
+        id_eps: float | None = None, id_rank: int | None = None,
+        max_particles_in_box: int | None = None
         ) -> "SkeletonizationResult":
     nclusters = tgt_src_index.nclusters
     if nclusters == 1:
@@ -718,8 +718,8 @@ class SkeletonizationResult:
 
     # NOTE: these are meant only for testing! They contain the interactions
     # between the source / target points and their proxies / neighbors.
-    _src_eval_result: Optional[_ProxyNeighborEvaluationResult] = None
-    _tgt_eval_result: Optional[_ProxyNeighborEvaluationResult] = None
+    _src_eval_result: _ProxyNeighborEvaluationResult | None = None
+    _tgt_eval_result: _ProxyNeighborEvaluationResult | None = None
 
     def __post_init__(self):
         if __debug__:
@@ -747,17 +747,17 @@ def skeletonize_by_proxy(
         places: GeometryCollection,
 
         tgt_src_index: TargetAndSourceClusterList,
-        exprs: Union[sym.var, Sequence[sym.var]],
-        input_exprs: Union[sym.var, Sequence[sym.var]], *,
-        domains: Optional[Sequence[Hashable]] = None,
-        context: Optional[Dict[str, Any]] = None,
+        exprs: sym.var | Sequence[sym.var],
+        input_exprs: sym.var | Sequence[sym.var], *,
+        domains: Sequence[Hashable] | None = None,
+        context: dict[str, Any] | None = None,
 
-        approx_nproxy: Optional[int] = None,
-        proxy_radius_factor: Optional[float] = None,
+        approx_nproxy: int | None = None,
+        proxy_radius_factor: float | None = None,
 
-        id_eps: Optional[float] = None,
-        id_rank: Optional[int] = None,
-        max_particles_in_box: Optional[int] = None) -> np.ndarray:
+        id_eps: float | None = None,
+        id_rank: int | None = None,
+        max_particles_in_box: int | None = None) -> np.ndarray:
     r"""Evaluate and skeletonize a symbolic expression using proxy-based methods.
 
     :arg tgt_src_index: a :class:`~pytential.linalg.TargetAndSourceClusterList`

@@ -20,8 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Hashable
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Hashable, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
@@ -77,7 +78,7 @@ class PotentialSource(ABC):
         """:class:`~numpy.dtype` of complex data living on the source geometry."""
 
     @abstractmethod
-    def op_group_features(self, expr: sym.IntG) -> Tuple[Hashable, ...]:
+    def op_group_features(self, expr: sym.IntG) -> tuple[Hashable, ...]:
         """
         :arg expr: a subclass of :class:`~pytential.symbolic.primitives.IntG`.
         :returns: a characteristic tuple by which operators that can be
@@ -87,8 +88,8 @@ class PotentialSource(ABC):
     @abstractmethod
     def get_p2p(self,
                 actx: PyOpenCLArrayContext,
-                target_kernels: Tuple[Kernel, ...],
-                source_kernels: Optional[Tuple[Kernel, ...]] = None) -> P2PBase:
+                target_kernels: tuple[Kernel, ...],
+                source_kernels: tuple[Kernel, ...] | None = None) -> P2PBase:
         """
         :returns: a subclass of :class:`~sumpy.p2p.P2PBase` for evaluating
             the *target_kernels* and the *source_kernels* on the source geometry.
@@ -110,11 +111,11 @@ class _SumpyP2PMixin:
 
     def get_p2p(self,
                 actx: PyOpenCLArrayContext,
-                target_kernels: Tuple[Kernel, ...],
-                source_kernels: Optional[Tuple[Kernel, ...]] = None) -> P2PBase:
+                target_kernels: tuple[Kernel, ...],
+                source_kernels: tuple[Kernel, ...] | None = None) -> P2PBase:
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(target_kernels: Tuple[Kernel, ...],
-                source_kernels: Optional[Tuple[Kernel, ...]]) -> P2PBase:
+        def p2p(target_kernels: tuple[Kernel, ...],
+                source_kernels: tuple[Kernel, ...] | None) -> P2PBase:
             if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype    # type: ignore[attr-defined]
             else:

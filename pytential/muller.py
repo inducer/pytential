@@ -20,7 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Callable, List, Optional, Tuple, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 import numpy as np
 
@@ -31,8 +32,8 @@ def muller_deflate(
         f: Callable[[T], T], n: int, *,
         maxiter: int = 100,
         eps: float = 1.0e-14,
-        z_start: Optional[np.ndarray] = None,
-        ) -> Tuple[List[T], List[int]]:
+        z_start: np.ndarray | None = None,
+        ) -> tuple[list[T], list[int]]:
     """
     :arg n: number of zeros sought.
     :returns: a tuple of ``(roots, niter)``, where *roots* is a list of roots
@@ -40,8 +41,8 @@ def muller_deflate(
         find each root.
     """
     # initialize variables
-    roots: List[T] = []
-    niter: List[int] = []
+    roots: list[T] = []
+    niter: list[int] = []
 
     def f_deflated(z: T) -> T:
         y = f(z)
@@ -72,7 +73,7 @@ def muller_deflate(
 def muller(f: Callable[[T], T], *,
            maxiter: int = 100,
            tol: float = 1.0e-11,
-           z_start: Optional[np.ndarray] = None) -> Tuple[T, int]:
+           z_start: np.ndarray | None = None) -> tuple[T, int]:
     """Find a root of the complex-valued function *f* defined in the complex
     plane using Muller's method.
 
