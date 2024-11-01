@@ -1558,9 +1558,6 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 
 
 # {{{ non-dimension-specific operators
-#
-# (these get made specific to dimensionality by
-# pytential.symbolic.mappers.Dimensionalizer)
 
 # {{{ geometric calculus
 
