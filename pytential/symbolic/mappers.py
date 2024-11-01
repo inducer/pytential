@@ -32,6 +32,7 @@ from pymbolic.mapper import (
         )
 from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
+from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
 from pymbolic.geometric_algebra.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
@@ -279,6 +280,18 @@ class EvaluationMapper(EvaluationMapperBase):
 # }}}
 
 
+# {{{ FlattenMapper
+
+class FlattenMapper(FlattenMapperBase, IdentityMapper):
+    pass
+
+
+def flatten(expr):
+    return FlattenMapper()(expr)
+
+# }}}
+
+
 # {{{ LocationTagger
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
@@ -491,6 +504,9 @@ class _DerivativeTakerUnsupoortedProductError(Exception):
 class DerivativeTaker(Mapper):
     def __init__(self, ambient_axis):
         self.ambient_axis = ambient_axis
+
+    def map_constant(self, expr):
+        return 0
 
     def map_sum(self, expr):
         children = [self.rec(child) for child in expr.children]

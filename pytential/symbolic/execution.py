@@ -597,9 +597,9 @@ def _prepare_expr(places, expr, auto_where=None):
 
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
-            ToTargetTagger,
-            DerivativeBinder)
+            ToTargetTagger, DerivativeBinder, flatten)
 
+    expr = flatten(expr)
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
     expr = ToTargetTagger(auto_source, auto_target)(expr)
     expr = DerivativeBinder()(expr)
