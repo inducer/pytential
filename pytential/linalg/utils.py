@@ -325,11 +325,28 @@ def make_flat_cluster_diag(
 
 # {{{ interpolative decomposition
 
+def reconstruct_interp_matrix(idx: np.ndarray, proj: np.ndarray) -> np.ndarray:
+    """Reconstruct interpolation matrix from the ID decomposition.
+
+    :arg idx: a one-dimensional index array.
+    :arg proj: the matrix of interpolation coefficients.
+    """
+
+    n, krank = len(idx), proj.shape[0]
+    p = np.zeros([krank, n], dtype=proj.dtype)
+
+    for ci in range(krank):
+        p[ci, idx[ci]] = 1.0
+    p[:, idx[krank:]] = proj[:, :]
+
+    return p
+
+
 def interp_decomp(
         A: np.ndarray, *, rank: Optional[int], eps: Optional[float],
+        rng: Optional[np.random.Generator] = None,
         ) -> Tuple[int, np.ndarray, np.ndarray]:
-    """Wrapper for :func:`~scipy.linalg.interpolative.interp_decomp` that
-    always has the same output signature.
+    """Perform the interpolative decomposition of the matrix *A*.
 
     :return: a tuple ``(k, idx, interp)`` containing the numerical rank *k*,
         the column indices *idx* and the resulting interpolation matrix *interp*.
@@ -337,14 +354,30 @@ def interp_decomp(
     if rank is not None and eps is not None:
         raise ValueError("providing both 'rank' and 'eps' is not supported")
 
-    import scipy.linalg.interpolative as sli
+    import pytential.linalg._decomp_interpolative as sli
+
+    # NOTE: this is a simplified version of scipy.interpolative.interp_decomp
+    # where we assume that
+    # * A is always an ndarray (not a LinearOperator)
+    # * The result is always supposed to be randomized.
+
+    A = np.ascontiguousarray(A)
     if rank is None:
-        k, idx, proj = sli.interp_decomp(A, eps)
-    else:
-        idx, proj = sli.interp_decomp(A, rank)
+        assert eps is not None
+        if A.dtype == np.float64:
+            k, idx, proj = sli.iddp_aid(A, eps, rng=rng)
+        else:
+            k, idx, proj = sli.idzp_aid(A, eps, rng=rng)
+
+    else:   # eps is None
+        if A.dtype == np.float64:
+            idx, proj = sli.iddr_aid(A, rank, rng=rng)
+        else:
+            idx, proj = sli.idzr_aid(A, rank, rng=rng)
+
         k = rank
 
-    interp = sli.reconstruct_interp_matrix(idx, proj)
+    interp = reconstruct_interp_matrix(idx, proj)
     return k, idx, interp
 
 # }}}

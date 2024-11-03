@@ -573,7 +573,8 @@ def _skeletonize_block_by_proxy_with_mats(
         wrangler: SkeletonizationWrangler,
         tgt_src_index: TargetAndSourceClusterList, *,
         id_eps: Optional[float] = None, id_rank: Optional[int] = None,
-        max_particles_in_box: Optional[int] = None
+        max_particles_in_box: Optional[int] = None,
+        rng: Optional[np.random.Generator] = None,
         ) -> "SkeletonizationResult":
     nclusters = tgt_src_index.nclusters
     if nclusters == 1:
@@ -614,6 +615,7 @@ def _skeletonize_block_by_proxy_with_mats(
     R: np.ndarray = np.empty(nclusters, dtype=object)
 
     from pytential.linalg import interp_decomp
+
     for i in range(nclusters):
         k = id_rank
         src_mat = np.vstack(src_result[i])
@@ -627,7 +629,7 @@ def _skeletonize_block_by_proxy_with_mats(
             assert np.all(isfinite), np.where(isfinite)
 
         # skeletonize target points
-        k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps)
+        k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps, rng=rng)
         assert 0 < k <= len(idx)
 
         if k > max_allowable_rank:
@@ -639,7 +641,7 @@ def _skeletonize_block_by_proxy_with_mats(
         assert L[i].shape == (tgt_mat.shape[0], k)
 
         # skeletonize source points
-        k, idx, interp = interp_decomp(src_mat, rank=k, eps=None)
+        k, idx, interp = interp_decomp(src_mat, rank=k, eps=None, rng=rng)
         assert 0 < k <= len(idx)
 
         R[i] = interp
