@@ -88,6 +88,28 @@ class QBXSumpyTreeIndependentDataForWrangler(SumpyTreeIndependentDataForWrangler
         return QBXExpansionWrangler
 
 
+def _reorder_and_finalize_potentials(
+        wrangler, non_qbx_potentials, qbx_potentials, template_ary):
+    nqbtl = wrangler.geo_data.non_qbx_box_target_lists()
+
+    all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
+
+    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
+        ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
+
+    all_potentials_in_tree_order += qbx_potentials
+
+    def reorder_and_finalize_potentials(x):
+        # "finalize" gives host FMMs (like FMMlib) a chance to turn the
+        # potential back into a CL array.
+        return wrangler.finalize_potentials(x[
+            wrangler.geo_data.traversal().tree.sorted_target_ids], template_ary)
+
+    from pytools.obj_array import obj_array_vectorize
+    return obj_array_vectorize(
+            reorder_and_finalize_potentials, all_potentials_in_tree_order)
+
+
 class QBXExpansionWrangler(SumpyExpansionWrangler):
     """A specialized implementation of the
     :class:`boxtree.fmm.ExpansionWranglerInterface` for the QBX FMM.
@@ -382,6 +404,17 @@ non_qbx_box_target_lists`),
         return (self.full_output_zeros(template_ary),
                 SumpyTimingFuture(template_ary.queue, events=()))
 
+    def gather_non_qbx_potentials(self, non_qbx_potentials):
+        return non_qbx_potentials
+
+    def gather_qbx_potentials(self, qbx_potentials):
+        return qbx_potentials
+
+    def reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary):
+        return _reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary)
+
     # }}}
 
 
@@ -416,10 +449,7 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
     See also :func:`boxtree.fmm.drive_fmm`.
     """
     wrangler = expansion_wrangler
-
-    geo_data = wrangler.geo_data
     traversal = wrangler.traversal
-    tree = traversal.tree
 
     template_ary = src_weight_vecs[0]
 
@@ -432,6 +462,9 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
 
     src_weight_vecs = [wrangler.reorder_sources(weight)
         for weight in src_weight_vecs]
+
+    src_weight_vecs = wrangler.distribute_source_weights(
+        src_weight_vecs, wrangler.geo_data.src_idx_all_ranks())
 
     # {{{ construct local multipoles
 
@@ -452,6 +485,12 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
             mpole_exps)
 
     recorder.add("coarsen_multipoles", timing_future)
+
+    # }}}
+
+    # {{{ Communicate mpoles
+
+    wrangler.communicate_mpoles(mpole_exps)
 
     # }}}
 
@@ -581,23 +620,11 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
 
     # {{{ reorder potentials
 
-    nqbtl = geo_data.non_qbx_box_target_lists()
+    non_qbx_potentials = wrangler.gather_non_qbx_potentials(non_qbx_potentials)
+    qbx_potentials = wrangler.gather_qbx_potentials(qbx_potentials)
 
-    all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
-
-    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
-        ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
-
-    all_potentials_in_tree_order += qbx_potentials
-
-    def reorder_and_finalize_potentials(x):
-        # "finalize" gives host FMMs (like FMMlib) a chance to turn the
-        # potential back into a CL array.
-        return wrangler.finalize_potentials(x[tree.sorted_target_ids], template_ary)
-
-    from pytools.obj_array import obj_array_vectorize
-    result = obj_array_vectorize(
-            reorder_and_finalize_potentials, all_potentials_in_tree_order)
+    result = wrangler.reorder_and_finalize_potentials(
+        non_qbx_potentials, qbx_potentials, template_ary)
 
     # }}}
 

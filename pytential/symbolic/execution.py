@@ -358,6 +358,88 @@ class EvaluationMapper(EvaluationMapperBase):
 
         return result
 
+
+class DistributedEvaluationMapper(EvaluationMapper):
+    def __init__(self, comm, bound_expr, actx, context=None, timing_data=None):
+        self.comm = comm
+
+        if self.comm.Get_rank() == 0:
+            super().__init__(bound_expr, actx, context, timing_data)
+        else:
+            self.bound_expr = bound_expr
+            self.array_context = actx
+            self.context = context
+            self.places = None
+            self.timing_data = timing_data
+
+    def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+        if self.comm.Get_rank() == 0:
+            return super().exec_assign(actx, insn, bound_expr, evaluate)
+        else:
+            return [(name, None) for name in insn.names]
+
+    def exec_compute_potential_insn(
+            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+        from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
+
+        mpi_rank = self.comm.Get_rank()
+        use_target_specific_qbx = None
+        fmm_backend = None
+        qbx_order = None
+        fmm_level_to_order = None
+        expansion_factory = None
+
+        if mpi_rank == 0:
+            source: DistributedQBXLayerPotentialSource = \
+                bound_expr.places.get_geometry(insn.source.geometry)
+            if not isinstance(source, DistributedQBXLayerPotentialSource):
+                raise TypeError("Distributed execution mapper can only process"
+                                "distributed layer potential source")
+
+            use_target_specific_qbx = source._use_target_specific_qbx
+            fmm_backend = source.fmm_backend
+            qbx_order = source.qbx_order
+            fmm_level_to_order = source.fmm_level_to_order
+            expansion_factory = source.expansion_factory
+
+        use_target_specific_qbx = self.comm.bcast(
+            use_target_specific_qbx, root=0)
+        fmm_backend = self.comm.bcast(fmm_backend, root=0)
+        qbx_order = self.comm.bcast(qbx_order, root=0)
+        fmm_level_to_order = self.comm.bcast(fmm_level_to_order, root=0)
+        expansion_factory = self.comm.bcast(expansion_factory, root=0)
+
+        assert isinstance(fmm_backend, str)
+
+        if mpi_rank != 0:
+            source = DistributedQBXLayerPotentialSource(
+                self.comm,
+                actx.context,
+                qbx_order=qbx_order,
+                fmm_level_to_order=fmm_level_to_order,
+                _use_target_specific_qbx=use_target_specific_qbx,
+                fmm_backend=fmm_backend,
+                expansion_factory=expansion_factory)
+
+        return_timing_data = self.timing_data is not None
+        result, timing_data = (
+                source.exec_compute_potential_insn(
+                    actx, insn, bound_expr, evaluate, return_timing_data))
+
+        if return_timing_data:
+            # The compiler ensures this.
+            assert insn not in self.timing_data
+
+            self.timing_data[insn] = timing_data
+
+        return result
+
+    def __call__(self, expr, *args, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().__call__(expr, *args, **kwargs)
+        else:
+            return None
+
 # }}}
 
 
@@ -881,6 +963,55 @@ class BoundExpression:
         return self.eval(kwargs, array_context=array_context)
 
 
+class DistributedBoundExpression(BoundExpression):
+    def __init__(self, comm, places, sym_op_expr):
+        self.comm = comm
+        self._code = None
+        self._geo_data_cache = {}
+
+        if self.comm.Get_rank() == 0:
+            super().__init__(places, sym_op_expr)
+            self._code = super().code
+
+        self._code = self.comm.bcast(self._code, root=0)
+
+    @property
+    def code(self):
+        return self._code
+
+    def cost_per_stage(self, calibration_params, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().cost_per_stage(calibration_params, **kwargs)
+        else:
+            raise RuntimeError("Cost model is not available on worker ranks")
+
+    def cost_per_box(self, calibration_params, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().cost_per_box(calibration_params, **kwargs)
+        else:
+            raise RuntimeError("Cost model is not available on worker ranks")
+
+    def scipy_op(
+            self, actx: PyOpenCLArrayContext, arg_name, dtype,
+            domains=None, **extra_args):
+        raise NotImplementedError
+
+    def eval(self, context=None, timing_data=None,
+            array_context: Optional[PyOpenCLArrayContext] = None):
+        if context is None:
+            context = {}
+
+        array_context = _find_array_context_from_args_in_context(
+            context, array_context)
+
+        exec_mapper = DistributedEvaluationMapper(
+                self.comm, self, array_context, context, timing_data=timing_data)
+        return execute(self.code, exec_mapper)
+
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError
+
+
 def bind(places, expr, auto_where=None):
     """
     :arg places: a :class:`pytential.collection.GeometryCollection`.
@@ -904,6 +1035,28 @@ def bind(places, expr, auto_where=None):
 
     expr = _prepare_expr(places, expr, auto_where=auto_where)
     return BoundExpression(places, expr)
+
+
+def bind_distributed(comm, places, expr, auto_where=None):
+    """Distributed version of `bind`.
+
+    Overall, this function accepts the same argument as the non-distributed version
+    on the root rank, with the addition of a MPI communicator. On the worker rank,
+    only the `comm` argument is significant.
+
+    :arg comm: MPI communicator.
+    :arg places: a :class:`pytential.collection.GeometryCollection`. Only significant
+        on the root rank. Worker ranks could simply pass `None`.
+    """
+    if comm.Get_rank() == 0:
+        from pytential import GeometryCollection
+        if not isinstance(places, GeometryCollection):
+            places = GeometryCollection(places, auto_where=auto_where)
+            auto_where = places.auto_where
+
+        expr = _prepare_expr(places, expr, auto_where=auto_where)
+
+    return DistributedBoundExpression(comm, places, expr)
 
 # }}}
 
