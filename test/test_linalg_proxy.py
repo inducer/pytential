@@ -29,7 +29,7 @@ import numpy.linalg as la
 from arraycontext import flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.linalg import ProxyGenerator, QBXProxyGenerator
+from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
 from meshmode.mesh.generation import ellipse, NArmedStarfish
 
 from meshmode import _acf           # noqa: F401
@@ -214,7 +214,7 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    mindex = case.get_cluster_index(actx, places)
+    mindex, _ = case.get_cluster_index(actx, places)
 
     expected_indices = np.arange(0, density_discr.ndofs)
     assert mindex.starts[-1] == density_discr.ndofs
@@ -261,7 +261,7 @@ def test_proxy_generator(actx_factory, case,
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    cindex = case.get_cluster_index(actx, places)
+    cindex, _ = case.get_cluster_index(actx, places)
 
     generator = proxy_generator_cls(places,
             approx_nproxy=case.proxy_approx_count,
@@ -330,7 +330,7 @@ def test_neighbor_points(actx_factory, case,
     dofdesc = places.auto_source
 
     density_discr = places.get_discretization(dofdesc.geometry)
-    srcindex = case.get_cluster_index(actx, places)
+    srcindex, _ = case.get_cluster_index(actx, places)
 
     # generate proxy points
     generator = proxy_generator_cls(places,
@@ -339,7 +339,7 @@ def test_neighbor_points(actx_factory, case,
     pxy = generator(actx, dofdesc, srcindex)
 
     # get neighboring points
-    from pytential.linalg import gather_cluster_neighbor_points
+    from pytential.linalg.proxy import gather_cluster_neighbor_points
     nbrindex = gather_cluster_neighbor_points(actx, pxy)
 
     pxy = pxy.to_numpy(actx)
