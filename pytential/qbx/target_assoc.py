@@ -810,7 +810,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return target_flags
 
     def make_default_target_association(self, ntargets):
-        target_to_center = self.array_context.zeros(ntargets, dtype=np.int32)
+        target_to_center = self.array_context.np.zeros(ntargets, dtype=np.int32)
         target_to_center.fill(-1)
         target_to_center.finish()
 

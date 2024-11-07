@@ -102,10 +102,12 @@ class KernelTransformationRemover(IdentityMapper):
             if name not in source_args
         }
 
-        return expr.copy(target_kernel=target_kernel,
-                         source_kernels=source_kernels,
-                         densities=self.rec(expr.densities),
-                         kernel_arguments=kernel_arguments)
+        from dataclasses import replace
+        return replace(expr,
+                       target_kernel=target_kernel,
+                       source_kernels=source_kernels,
+                       densities=self.rec(expr.densities),
+                       kernel_arguments=kernel_arguments)
 
 # }}}
 

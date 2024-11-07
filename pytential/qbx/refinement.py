@@ -268,7 +268,7 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "ielement", 128, inner_tag="l.0", outer_tag="g.0")
-        return knl
+        return knl.executor(self.array_context.context)
 
     def get_wrangler(self):
         return RefinerWrangler(self.array_context, self)
@@ -388,8 +388,8 @@ class RefinerWrangler(TreeWranglerBase):
                     sym.ElementwiseMax(
                         sym._source_danger_zone_radii(
                             stage2_density_discr.ambient_dim,
-                            dofdesc=sym.QBX_SOURCE_STAGE2),
-                        dofdesc=sym.GRANULARITY_ELEMENT)
+                            dofdesc=sym.as_dofdesc(sym.QBX_SOURCE_STAGE2)),
+                        dofdesc=sym.as_dofdesc(sym.GRANULARITY_ELEMENT))
                     )(self.array_context), self.array_context)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
@@ -633,7 +633,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                 quad_resolution_by_element = bind(stage1_density_discr,
                         sym.ElementwiseMax(
                             sym._quad_resolution(stage1_density_discr.ambient_dim),
-                            dofdesc=sym.GRANULARITY_ELEMENT))(actx)
+                            dofdesc=sym.as_dofdesc(sym.GRANULARITY_ELEMENT)
+                            ))(actx)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
@@ -653,7 +654,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                 scaled_max_curvature_by_element = bind(stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
-                        dofdesc=sym.GRANULARITY_ELEMENT))(actx)
+                        dofdesc=sym.as_dofdesc(sym.GRANULARITY_ELEMENT)
+                        ))(actx)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(

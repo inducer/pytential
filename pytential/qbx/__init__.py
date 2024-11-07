@@ -414,8 +414,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
         result = (
-                expr.source, *sort_arrays_together(expr.source_kernels,
-                expr.densities, key=str)
+                expr.source,
+                *sort_arrays_together(expr.source_kernels, expr.densities, key=str)
                 )
 
         return result

@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Expression, Variable
+from pymbolic.primitives import cse_scope, Expression, Variable, Subscript
 from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
@@ -87,7 +87,7 @@ class Assign(Statement):
         return {
                 dep
                 for dep in deps
-                if dep.name not in self.names}
+                if isinstance(dep, Variable) and dep.name not in self.names}
 
     def __str__(self):
         comment = self.comment
@@ -190,12 +190,12 @@ class ComputePotential(Statement):
         return {o.name for o in self.outputs}
 
     def get_dependencies(self, dep_mapper: DependencyMapper) -> set[Expression]:
-        result = set(dep_mapper(self.densities[0]))
+        result = dep_mapper(self.densities[0])
         for density in self.densities[1:]:
-            result.update(dep_mapper(density))
+            result = result | dep_mapper(density)
 
         for arg_expr in self.kernel_arguments.values():
-            result.update(dep_mapper(arg_expr))
+            result = result | dep_mapper(arg_expr)
 
         return result
 
@@ -546,9 +546,7 @@ class OperatorCompiler(CachedIdentityMapper):
 
     def assign_to_new_var(
             self, expr: Expression, priority: int = 0, prefix: str | None = None,
-            ) -> Variable:
-        from pymbolic.primitives import Subscript
-
+            ) -> Variable | Subscript:
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
         # their scalar components.
