@@ -90,11 +90,17 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 :class:`~pyopencl.array.Array` is used.
 
 .. autoclass:: Expression
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
 
 Diagnostics
 ^^^^^^^^^^^
 
 .. autoclass:: ErrorExpression
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
 
 .. _placeholders:
 
@@ -102,7 +108,12 @@ Placeholders
 ^^^^^^^^^^^^
 
 .. autoclass:: var
+
 .. autoclass:: SpatialConstant
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: make_sym_mv
 .. autofunction:: make_sym_surface_mv
 
@@ -139,8 +150,21 @@ Functions
 Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: DiscretizationProperty
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: IsShapeClass
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: QWeight
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
 .. autofunction:: parametrization_derivative_matrix
@@ -162,28 +186,66 @@ Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: NumReferenceDerivative
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: NodeSum
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: NodeMax
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: NodeMin
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: ElementwiseSum
+    :undoc-members:
+    :members: mapper_method
+
+.. autoclass:: ElementwiseMin
+    :undoc-members:
+    :members: mapper_method
+
 .. autoclass:: ElementwiseMax
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: integral
+
 .. autoclass:: Ones
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: ones_vec
 .. autofunction:: area
 .. autofunction:: mean
+
 .. autoclass:: IterativeInverse
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 
 Operators
 ^^^^^^^^^
 
 .. autoclass:: Interpolation
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: interp
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: Derivative
+    :undoc-members:
 
 Conventional Calculus
 ^^^^^^^^^^^^^^^^^^^^^
@@ -200,6 +262,10 @@ Layer potentials
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: IntG
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
 .. autofunction:: int_g_dsource
 .. autofunction:: int_g_vec
 
@@ -310,9 +376,7 @@ def array_to_tuple(ary):
 
 @expr_dataclass()
 class Expression(ExpressionBase):
-    """Bases: :class:`~pymbolic.primitives.Expression`.
-
-    A subclass of :class:`~pymbolic.primitives.Expression` for use with
+    """A subclass of :class:`pymbolic.primitives.Expression` for use with
     :mod:`pytential` mappers.
     """
 
@@ -338,7 +402,7 @@ class ErrorExpression(Expression):
     """The error message to raise when this expression is encountered."""
 
 
-def make_sym_mv(name, num_components):
+def make_sym_mv(name: str, num_components: int) -> MultiVector[Expression]:
     return MultiVector(make_sym_vector(name, num_components))
 
 
@@ -346,8 +410,8 @@ def make_sym_surface_mv(name, ambient_dim, dim, dofdesc=None):
     par_grad = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
 
     return sum(
-            var("%s%d" % (name, i))
-            * cse(MultiVector(vec), "tangent%d" % i, cse_scope.DISCRETIZATION)
+            var(f"{name}{i}")
+            * cse(MultiVector(vec), f"tangent{i}", cse_scope.DISCRETIZATION)
             for i, vec in enumerate(par_grad.T))
 
 
@@ -1128,17 +1192,26 @@ class SingleScalarOperandExpression(Expression):
 
 @expr_dataclass()
 class NodeSum(SingleScalarOperandExpression):
-    """Implements a global sum over all discretization nodes."""
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Implements a global sum over all discretization nodes.
+    """
 
 
 @expr_dataclass()
 class NodeMax(SingleScalarOperandExpression):
-    """Implements a global maximum over all discretization nodes."""
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Implements a global maximum over all discretization nodes.
+    """
 
 
 @expr_dataclass()
 class NodeMin(SingleScalarOperandExpression):
-    """Implements a global minimum over all discretization nodes."""
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Implements a global minimum over all discretization nodes.
+    """
 
 
 def integral(ambient_dim, dim, operand, dofdesc=None):
@@ -1191,21 +1264,27 @@ class SingleScalarOperandExpressionWithWhere(Expression):
 
 @expr_dataclass()
 class ElementwiseSum(SingleScalarOperandExpressionWithWhere):
-    """Returns a vector of DOFs with all entries on each element set
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Returns a vector of DOFs with all entries on each element set
     to the sum of DOFs on that element.
     """
 
 
 @expr_dataclass()
 class ElementwiseMin(SingleScalarOperandExpressionWithWhere):
-    """Returns a vector of DOFs with all entries on each element set
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Returns a vector of DOFs with all entries on each element set
     to the minimum of DOFs on that element.
     """
 
 
 @expr_dataclass()
 class ElementwiseMax(SingleScalarOperandExpressionWithWhere):
-    """Returns a vector of DOFs with all entries on each element set
+    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+
+    Returns a vector of DOFs with all entries on each element set
     to the maximum of DOFs on that element.
     """
 
@@ -1281,6 +1360,15 @@ class IterativeInverse(Expression):
 
 
 class Derivative(DerivativeBase):
+    """A symbolic derivative.
+
+    This mechanism cannot be used to take more than one derivative at a time.
+
+    .. automethod:: __call__
+    .. automethod:: dnabla
+    .. automethod:: resolve
+    """
+
     @property
     def nabla(self):
         raise ValueError("Derivative.nabla should not be used"
@@ -1364,7 +1452,7 @@ class IntG(Expression):
     r"""
     .. math::
 
-        \int_\Gamma T (\sum S_k[G](x-y) \sigma_k(y)) dS_y
+        \int_\Gamma T \left[\sum S_k[G](x-y) \sigma_k(y)\right] \,\mathrm{d} S_y
 
     where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
     function, :math:`S_k` are source derivative operators and :math:`T` is a
