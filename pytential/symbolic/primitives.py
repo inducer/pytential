@@ -558,7 +558,8 @@ class NumReferenceDerivative(DiscretizationProperty):
     def __new__(cls,
                 ref_axes: int | tuple[tuple[int, int], ...] | None = None,
                 operand: Operand | None = None,
-                dofdesc: DOFDescriptor | None = None) -> "NumReferenceDerivative":
+                dofdesc: DOFDescriptor | None = None,
+                ) -> "NumReferenceDerivative":
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
@@ -567,7 +568,9 @@ class NumReferenceDerivative(DiscretizationProperty):
             def make_op(operand_i):
                 return cls(ref_axes, operand_i, as_dofdesc(dofdesc))
 
-            return componentwise(make_op, operand)
+            # FIXME: mypy is right: new should return `cls` instances and we're
+            # abusing it to vectorize the call like this.
+            return componentwise(make_op, operand)  # type: ignore[return-value]
         else:
             return DiscretizationProperty.__new__(cls)
 
@@ -1140,7 +1143,7 @@ class Interpolation(Expression):
             def make_op(operand_i):
                 return cls(from_dd, to_dd, operand_i)
 
-            return componentwise(make_op, operand)
+            return componentwise(make_op, operand)  # type: ignore[return-value]
         else:
             return Expression.__new__(cls)
 
@@ -1185,7 +1188,7 @@ class SingleScalarOperandExpression(Expression):
             def make_op(operand_i):
                 return cls(operand_i)
 
-            return componentwise(make_op, operand)
+            return componentwise(make_op, operand)  # type: ignore[return-value]
         else:
             return Expression.__new__(cls)
 
@@ -1248,7 +1251,7 @@ class SingleScalarOperandExpressionWithWhere(Expression):
             def make_op(operand_i):
                 return cls(operand_i, as_dofdesc(dofdesc))
 
-            return componentwise(make_op, operand)
+            return componentwise(make_op, operand)  # type: ignore[return-value]
         else:
             return Expression.__new__(cls)
 
