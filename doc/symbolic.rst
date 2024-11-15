@@ -13,6 +13,11 @@ Basic objects
 
 .. automodule:: pytential.symbolic.primitives
 
+Matrix Builders
+---------------
+
+.. automodule:: pytential.symbolic.matrix
+
 Binding an operator to a discretization
 ---------------------------------------
 
