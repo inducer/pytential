@@ -24,7 +24,8 @@ THE SOFTWARE.
 """
 
 import sys
-from typing import Any, Dict, Callable, Iterable, Tuple
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import sumpy.symbolic as sym
 
@@ -46,7 +47,7 @@ def chop(expr: sym.Basic, tol) -> sym.Basic:
     tolerance by the integer.
     """
     nums = expr.atoms(sym.Number)
-    replace_dict: Dict[Any, float] = {}
+    replace_dict: dict[Any, float] = {}
     for num in nums:
         if float(abs(num)) < tol:
             replace_dict[num] = 0
@@ -99,7 +100,7 @@ def backward_substitution(
 def solve_from_lu(
             L: sym.Matrix,
             U: sym.Matrix,
-            perm: Iterable[Tuple[int, int]],
+            perm: Iterable[tuple[int, int]],
             b: sym.Matrix,
             postprocess_division: Callable[[sym.Basic], sym.Basic]
         ) -> sym.Matrix:
