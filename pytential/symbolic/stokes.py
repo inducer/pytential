@@ -26,10 +26,10 @@ THE SOFTWARE.
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Optional
 
 import numpy as np
 from pytools import MovedFunctionDeprecationWrapper
+from pymbolic.typing import ArithmeticExpressionT
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           BiharmonicKernel, LaplaceKernel,
                           TargetPointMultiplier)
@@ -40,7 +40,6 @@ from pytential.symbolic.elasticity import (
     Method, _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
     _ElasticityWrapperNaiveOrBiharmonic)
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from pytential.symbolic.typing import ExpressionT
 
 __doc__ = """
 .. autofunction:: make_stokeslet_wrapper
@@ -334,8 +333,8 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
     """
 
     dim: int
-    mu: ExpressionT
-    nu: ExpressionT
+    mu: ArithmeticExpressionT
+    nu: ArithmeticExpressionT
 
     def __post_init__(self):
         if self.nu != 0.5:
@@ -360,8 +359,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
     """
 
     dim: int
-    mu: ExpressionT
-    nu: ExpressionT
+    mu: ArithmeticExpressionT
+    nu: ArithmeticExpressionT
 
     def __post_init__(self):
         if self.nu != 0.5:
@@ -384,7 +383,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                       qbx_forced_limit):
         new_source_kernels = []
         new_densities = []
-        for source_kernel, density in zip(source_kernels, densities):
+        for source_kernel, density in zip(source_kernels, densities, strict=True):
             if density != 0.0:
                 new_source_kernels.append(source_kernel)
                 new_densities.append(density)
@@ -473,8 +472,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 def make_stokeslet_wrapper(
         dim: int,
-        mu: ExpressionT = _MU_SYM_DEFAULT,
-        method: Optional[Method] = None
+        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        method: Method | None = None
         ) -> StokesletWrapperBase:
     """Creates an appropriate :class:`StokesletWrapperBase` object.
 
@@ -503,8 +502,8 @@ def make_stokeslet_wrapper(
 
 def make_stresslet_wrapper(
         dim: int,
-        mu: ExpressionT = _MU_SYM_DEFAULT,
-        method: Optional[Method] = None
+        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        method: Method | None = None
         ) -> StressletWrapperBase:
     """Creates an appropriate :class:`StressletWrapperBase` object.
 

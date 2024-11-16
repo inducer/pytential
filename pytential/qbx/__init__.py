@@ -973,7 +973,7 @@ def get_flat_strengths_from_densities(
 
     density_dofarrays = [evaluate(density) for density in densities]
     for i, ary in enumerate(density_dofarrays):
-        if not isinstance(ary, (DOFArray, Number)):
+        if not isinstance(ary, DOFArray | Number):
             raise ValueError(
                 f"DOFArray expected for density '{densities[i]}', "
                 f"{type(ary)} received instead")
