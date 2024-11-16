@@ -29,6 +29,7 @@ from enum import Enum
 from functools import cached_property
 
 import numpy as np
+from pymbolic.typing import ArithmeticExpressionT
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           BiharmonicKernel, ElasticityKernel, Kernel,
                           LaplaceKernel, StokesletKernel, StressletKernel,
@@ -37,7 +38,6 @@ from sumpy.symbolic import SpatialConstant
 
 from pytential import sym
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from pytential.symbolic.typing import ExpressionT
 
 __doc__ = """
 .. autoclass:: Method
@@ -95,9 +95,9 @@ class ElasticityWrapperBase(ABC):
 
     dim: int
     """Ambient dimension of the representation."""
-    mu: ExpressionT
+    mu: ArithmeticExpressionT
     r"""Expression or value for the shear modulus :math:`\mu`."""
-    nu: ExpressionT
+    nu: ArithmeticExpressionT
     r"""Expression or value for Poisson's ratio :math:`\nu`."""
 
     @abstractmethod
@@ -159,9 +159,9 @@ class ElasticityDoubleLayerWrapperBase(ABC):
 
     dim: int
     """Ambient dimension of the representation."""
-    mu: ExpressionT
+    mu: ArithmeticExpressionT
     r"""Expression or value for the shear modulus :math:`\mu`."""
-    nu: ExpressionT
+    nu: ArithmeticExpressionT
     r"""Expression or value for Poisson's ration :math:`\nu`."""
 
     @abstractmethod
@@ -227,8 +227,8 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 @dataclass
 class _ElasticityWrapperNaiveOrBiharmonic:
     dim: int
-    mu: ExpressionT
-    nu: ExpressionT
+    mu: ArithmeticExpressionT
+    nu: ArithmeticExpressionT
     base_kernel: Kernel
 
     def __post_init__(self):
@@ -315,8 +315,8 @@ class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
 @dataclass
 class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
     dim: int
-    mu: ExpressionT
-    nu: ExpressionT
+    mu: ArithmeticExpressionT
+    nu: ArithmeticExpressionT
     base_kernel: Kernel
 
     def __post_init__(self):
@@ -373,16 +373,20 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
             coeffs[-1] = 0
 
         result = 0
-        for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in \
-                zip(kernel_indices, dir_vec_indices, coeffs,
-                        extra_deriv_dirs_vec):
+        for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in zip(
+                    kernel_indices,
+                    dir_vec_indices,
+                    coeffs,
+                    extra_deriv_dirs_vec, strict=True):
             if coeff == 0:
                 continue
+
             knl = self.kernel_dict[kernel_idx]
-            result += _create_int_g(knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
+            result += coeff * _create_int_g(
+                    knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
                     density=density_sym*dir_vec_sym[dir_vec_idx],
-                    qbx_forced_limit=qbx_forced_limit, mu=self.mu, nu=self.nu) * \
-                            coeff
+                    qbx_forced_limit=qbx_forced_limit, mu=self.mu, nu=self.nu)
+
         return result/(2*(1 - nu))
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
@@ -470,8 +474,8 @@ class Method(Enum):
 
 def make_elasticity_wrapper(
         dim: int,
-        mu: ExpressionT = _MU_SYM_DEFAULT,
-        nu: ExpressionT = _NU_SYM_DEFAULT,
+        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        nu: ArithmeticExpressionT = _NU_SYM_DEFAULT,
         method: Method = Method.Naive) -> ElasticityWrapperBase:
     """Creates an appropriate :class:`ElasticityWrapperBase` object.
 
@@ -498,8 +502,8 @@ def make_elasticity_wrapper(
 
 def make_elasticity_double_layer_wrapper(
         dim: int,
-        mu: ExpressionT = _MU_SYM_DEFAULT,
-        nu: ExpressionT = _NU_SYM_DEFAULT,
+        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        nu: ArithmeticExpressionT = _NU_SYM_DEFAULT,
         method: Method = Method.Naive) -> ElasticityDoubleLayerWrapperBase:
     """Creates an appropriate :class:`ElasticityDoubleLayerWrapperBase` object.
 

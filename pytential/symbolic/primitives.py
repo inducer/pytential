@@ -520,7 +520,9 @@ class NodeCoordinateComponent(DiscretizationProperty):
     """The axis index this node coordinate represents, i.e. 0 for $x$, etc."""
 
     # FIXME: this is added for backwards compatibility with pre-dataclass expressions
-    def __init__(self, ambient_axis: int, dofdesc: DOFDescriptorLike) -> None:
+    def __init__(self,
+                 ambient_axis: int,
+                 dofdesc: DOFDescriptorLike | None = None) -> None:
         object.__setattr__(self, "ambient_axis", ambient_axis)
         super().__init__(dofdesc)   # type: ignore[arg-type]
 

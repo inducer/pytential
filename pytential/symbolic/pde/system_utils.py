@@ -22,8 +22,9 @@ THE SOFTWARE.
 
 import logging
 import warnings
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pymbolic
@@ -34,13 +35,13 @@ from pytools import memoize_on_first_arg
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           DirectionalSourceDerivative, ExpressionKernel,
                           Kernel, KernelWrapper, TargetPointMultiplier)
+from pymbolic.typing import ExpressionT, ArithmeticExpressionT
 
 import pytential
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.symbolic.primitives import (DEFAULT_SOURCE, IntG,
                                            NodeCoordinateComponent,
                                            hashable_kernel_args)
-from pytential.symbolic.typing import ExpressionT
 from pytential.utils import chop, solve_from_lu
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ class RewriteFailedError(RuntimeError):
 
 def rewrite_using_base_kernel(
         exprs: Sequence[ExpressionT],
-        base_kernel: Kernel = _NO_ARG_SENTINEL) -> List[ExpressionT]:
+        base_kernel: Kernel = _NO_ARG_SENTINEL) -> list[ExpressionT]:
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*.
@@ -130,7 +131,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_gs)
 
 
-def _get_sympy_kernel_expression(expr: ExpressionT,
+def _get_sympy_kernel_expression(expr: ArithmeticExpressionT,
         kernel_arguments: Mapping[str, Any]) -> sym.Basic:
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
     after substituting kernel arguments.
@@ -148,14 +149,14 @@ def _get_sympy_kernel_expression(expr: ExpressionT,
 
 
 def _monom_to_expr(monom: Sequence[int],
-        variables: Sequence[Union[sym.Basic, ExpressionT]]) \
-        -> Union[sym.Basic, ExpressionT]:
+        variables: Sequence[sym.Basic | ArithmeticExpressionT]
+        ) -> sym.Basic | ArithmeticExpressionT:
     """Convert a monomial to an expression using given variables.
 
     For example, ``[3, 2, 1]`` with variables ``[x, y, z]`` is converted to
     ``x^3 y^2 z``.
     """
-    prod: ExpressionT = 1
+    prod: ArithmeticExpressionT = 1
     for i, nrepeats in enumerate(monom):
         for _ in range(nrepeats):
             prod *= variables[i]
@@ -163,7 +164,7 @@ def _monom_to_expr(monom: Sequence[int],
     return prod
 
 
-def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
+def convert_target_transformation_to_source(int_g: IntG) -> list[IntG]:
     r"""Convert an ``IntG`` with :class:`~sumpy.kernel.AxisTargetDerivative`
     or :class:`~sumpy.kernel.TargetPointMultiplier` to a list
     of ``IntG``\ s without them and only source dependent transformations.
@@ -189,7 +190,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
     ds = sympy.symbols(f"d0:{knl.dim}")
     sources = sympy.symbols(f"y0:{knl.dim}")
     # instead of just x, we use x = (d + y)
-    targets = [d + source for d, source in zip(ds, sources)]
+    targets = [d + source for d, source in zip(ds, sources, strict=True)]
     orig_expr = sympy.Function("f")(*ds)  # pylint: disable=not-callable
     expr = orig_expr
     found = False
@@ -272,7 +273,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
 
 
 def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
-        density_multiplier: ExpressionT) -> List[IntG]:
+        density_multiplier: ArithmeticExpressionT) -> list[IntG]:
     """Multiply the expression in ``IntG`` with the *expr_multiplier*
     which is a symbolic (:mod:`sympy` or :mod:`symengine`) expression and
     multiply the densities with *density_multiplier* which is a :mod:`pymbolic`
@@ -293,7 +294,7 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
         return [int_g.copy(densities=tuple(density*density_multiplier
             for density in int_g.densities))]
 
-    for knl, density in zip(int_g.source_kernels, int_g.densities):
+    for knl, density in zip(int_g.source_kernels, int_g.densities, strict=True):
         if expr_multiplier == 1:
             new_knl = knl.get_base_kernel()
         else:
@@ -310,12 +311,12 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
 
 
 def rewrite_int_g_using_base_kernel(
-        int_g: IntG, base_kernel: ExpressionKernel) -> ExpressionT:
+        int_g: IntG, base_kernel: ExpressionKernel) -> ArithmeticExpressionT:
     r"""Rewrite an ``IntG`` to an expression with ``IntG``\ s having the
     base kernel *base_kernel*.
     """
-    result: ExpressionT = 0
-    for knl, density in zip(int_g.source_kernels, int_g.densities):
+    result: ArithmeticExpressionT = 0
+    for knl, density in zip(int_g.source_kernels, int_g.densities, strict=True):
         result += _rewrite_int_g_using_base_kernel(
                 int_g.copy(source_kernels=(knl,), densities=(density,)),
                 base_kernel)
@@ -324,14 +325,14 @@ def rewrite_int_g_using_base_kernel(
 
 
 def _rewrite_int_g_using_base_kernel(
-        int_g: IntG, base_kernel: ExpressionKernel) -> ExpressionT:
+        int_g: IntG, base_kernel: ExpressionKernel) -> ArithmeticExpressionT:
     r"""Rewrites an ``IntG`` with only one source kernel to an expression with
     ``IntG``\ s having the base kernel *base_kernel*.
     """
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
     dim = target_kernel.dim
 
-    result = 0
+    result: ArithmeticExpressionT = 0
 
     density, = int_g.densities
     source_kernel, = int_g.source_kernels
@@ -360,7 +361,7 @@ def _rewrite_int_g_using_base_kernel(
         knl = source_kernel
         while isinstance(knl, KernelWrapper):
             if not isinstance(knl,
-                              (AxisSourceDerivative, DirectionalSourceDerivative)):
+                              AxisSourceDerivative | DirectionalSourceDerivative):
                 return int_g
             knl = knl.inner_kernel
         const = 0
@@ -393,18 +394,19 @@ class DerivRelation:
     .. autoattribute:: linear_combination
     """
 
-    const: ExpressionT
+    const: ArithmeticExpressionT
     """A constant to add to the combination."""
-    linear_combination: Sequence[Tuple[Tuple[int, ...], ExpressionT]]
+    linear_combination: Sequence[tuple[tuple[int, ...], ArithmeticExpressionT]]
     """A list of pairs ``(mi, coeffs)``."""
 
 
-def get_deriv_relation(kernels: Sequence[ExpressionKernel],
+def get_deriv_relation(
+        kernels: Sequence[ExpressionKernel],
         base_kernel: ExpressionKernel,
         kernel_arguments: Mapping[str, Any],
         tol: float = 1e-10,
-        order: Optional[int] = None) \
-        -> List[DerivRelation]:
+        order: int | None = None,
+        ) -> list[DerivRelation]:
     r"""
     Given a sequence of *kernels*, a *base_kernel* and an *order*, this
     gives a relation between the *base_kernel* and each of the *kernels*.
@@ -436,12 +438,13 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
 
 
 @memoize_on_first_arg
-def get_deriv_relation_kernel(kernel: ExpressionKernel,
+def get_deriv_relation_kernel(
+        kernel: ExpressionKernel,
         base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[str, Any], ...],
+        hashable_kernel_arguments: tuple[tuple[str, Any], ...],
         tol: float = 1e-10,
-        order: Optional[int] = None) \
-        -> DerivRelation:
+        order: int | None = None,
+        ) -> DerivRelation:
     """Takes a *kernel* and a base_kernel* as input and re-writes the
     *kernel* as a linear combination of derivatives of *base_kernel* up-to
     order *order* and a constant.
@@ -463,7 +466,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     expr = _get_sympy_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
     for i in range(len(mis)):
-        vec.append(evalf(expr.xreplace(dict(zip(sym_vec, rand[:, i])))))
+        vec.append(evalf(expr.xreplace(dict(zip(sym_vec, rand[:, i], strict=True)))))
     vec = sym.Matrix(vec)
     result = []
     const = 0
@@ -492,15 +495,16 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
 class LUFactorization:
     L: sym.Matrix
     U: sym.Matrix
-    perm: Sequence[Tuple[int, int]]
+    perm: Sequence[tuple[int, int]]
 
 
 @memoize_on_first_arg
 def _get_base_kernel_matrix_lu_factorization(
         base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[str, Any], ...],
-        order: Optional[int] = None, retries: int = 3) \
-        -> Tuple[LUFactorization, np.ndarray, List[Tuple[int, ...]]]:
+        hashable_kernel_arguments: tuple[tuple[str, Any], ...],
+        order: int | None = None,
+        retries: int = 3,
+        ) -> tuple[LUFactorization, np.ndarray, list[tuple[int, ...]]]:
     """
     Takes a *base_kernel* and samples the kernel and its derivatives upto
     order *order*.
@@ -550,7 +554,7 @@ def _get_base_kernel_matrix_lu_factorization(
                 if nderivs == 0:
                     continue
                 expr = expr.diff(sym_vec[var_idx], nderivs)
-            replace_dict = dict(zip(sym_vec, rand[:, rand_vec_idx]))
+            replace_dict = dict(zip(sym_vec, rand[:, rand_vec_idx], strict=True))
             eval_expr = evalf(expr.xreplace(replace_dict))
             row.append(eval_expr)
         row.append(1)

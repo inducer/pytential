@@ -803,7 +803,7 @@ def test_elasticity_pde(actx_factory, dim, method, nu, is_double_layer,
                 resolution=resolution,
                 visualize=visualize)
 
-        for eoc, e in zip(eocs, errors):
+        for eoc, e in zip(eocs, errors, strict=True):
             eoc.add_data_point(h_max, e)
 
     for eoc in eocs:
