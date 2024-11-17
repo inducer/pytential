@@ -241,9 +241,9 @@ class MatrixBuilderBase(EvaluationMapperBase):
 
         actx = self.array_context
         dofdesc = expr.dofdesc
-        op = sym.NumReferenceDerivative(
-                ref_axes=expr.ref_axes,
-                operand=sym.var("u"),
+        op = sym.num_reference_derivative(
+                sym.var("u"),
+                expr.ref_axes,
                 dofdesc=dofdesc)
 
         discr = self.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)

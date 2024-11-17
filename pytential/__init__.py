@@ -92,7 +92,7 @@ def _norm_inf_op(discr, num_components):
     else:
         max_arg = sym.abs(sym.var("arg"))
 
-    return bind(discr, sym.NodeMax(max_arg))
+    return bind(discr, sym.node_max(max_arg))
 
 
 def norm(discr, x, p=2):
