@@ -258,7 +258,7 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
     places = GeometryCollection(qbx, auto_where=where)
 
     sigma_sym = sym.var("sigma")
-    op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
+    op_sym = sym.sin(sym.interpolate(sigma_sym, from_dd, to_dd))
     bound_op = bind(places, op_sym, auto_where=where)
 
     def discr_and_nodes(stage):
@@ -327,6 +327,9 @@ def test_node_reduction(actx_factory):
 
     n = discr.ndofs
     for func, expected in [
+            (sym.node_sum, n * (n + 1) // 2),
+            (sym.node_max, n),
+            (sym.node_min, 1),
             (sym.NodeSum, n * (n + 1) // 2),
             (sym.NodeMax, n),
             (sym.NodeMin, 1),
@@ -341,8 +344,12 @@ def test_node_reduction(actx_factory):
 
     from meshmode.dof_array import flat_norm
     for func, np_func in [
+            (sym.elementwise_sum, np.sum),
+            (sym.elementwise_max, np.max),
+            (sym.elementwise_min, np.min),
             (sym.ElementwiseSum, np.sum),
-            (sym.ElementwiseMax, np.max)
+            (sym.ElementwiseMax, np.max),
+            (sym.ElementwiseMin, np.min),
             ]:
         expected = DOFArray(actx, data=tuple(
             actx.from_numpy(np.tile(np_func(xi, axis=1, keepdims=True), xi.shape[1]))

@@ -99,6 +99,8 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 
 .. autofunction:: for_each_expression
 
+.. autoclass:: OperandT
+
 .. class:: P
 
     See :class:`pytools.P`
@@ -262,7 +264,7 @@ Operators
     :undoc-members:
     :members: mapper_method
 
-.. autofunction:: interp
+.. autofunction:: interpolate
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -342,7 +344,7 @@ __all__ = (
     "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
     "IterativeInverse",
 
-    "Interpolation", "interp",
+    "Interpolation", "interpolate",
 
     "Derivative",
 
@@ -388,7 +390,7 @@ Operand: TypeAlias = (
     ArithmeticExpressionT | np.ndarray[Any, np.dtype[Any]] | MultiVector)
 QBXForcedLimit = int | Literal["avg"] | None
 
-ArithmeticOperandT = TypeVar("ArithmeticOperandT", bound=ArithmeticExpressionT)
+OperandT = TypeVar("OperandT", bound=ArithmeticExpressionT)
 
 
 class _NoArgSentinel:
@@ -676,7 +678,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     for i in range(output_dim):
         func_component = func[i]
         for j in range(dim):
-            jac[i, j] = NumReferenceDerivative(((j, 1),), func_component, dofdesc)
+            jac[i, j] = num_reference_derivative(func_component, j, dofdesc)
 
     return jac
 
@@ -804,11 +806,9 @@ def second_fundamental_form(ambient_dim, dim=None, dofdesc=None):
 
     # https://en.wikipedia.org/w/index.php?title=Second_fundamental_form&oldid=821047433#Classical_notation
 
-    from functools import partial
-    d = partial(NumReferenceDerivative, dofdesc=dofdesc)
-    ruu = d(((0, 2),), r)
-    ruv = d(((0, 1), (1, 1)), r)
-    rvv = d(((1, 2),), r)
+    ruu = num_reference_derivative(r, ((0, 2),), dofdesc)
+    ruv = num_reference_derivative(r, ((0, 1), (1, 1)), dofdesc)
+    rvv = num_reference_derivative(r, ((1, 2),), dofdesc)
 
     nrml = normal(ambient_dim, dim, dofdesc).as_vector()
 
@@ -852,9 +852,9 @@ def _element_size(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    return ElementwiseSum(
-            area_element(ambient_dim=ambient_dim, dim=dim)
-            * QWeight())**(1/dim)
+    return elementwise_sum(
+            area_element(ambient_dim=ambient_dim, dim=dim) * QWeight(),
+            dofdesc)**(1/dim)
 
 
 def _small_mat_inverse(mat):
@@ -1082,7 +1082,7 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     to_dd = from_dd.copy(granularity=granularity)
 
     stretch = _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=from_dd)
-    return interp(from_dd, to_dd, stretch)
+    return interpolate(stretch, from_dd, to_dd)
 
 
 def _source_danger_zone_radii(ambient_dim, dim=None,
@@ -1136,7 +1136,7 @@ def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
 
     source = as_dofdesc(dofdesc)
     target = source.copy(granularity=GRANULARITY_CENTER)
-    return interp(source, target, centers)
+    return interpolate(centers, source, target)
 
 
 def h_max(ambient_dim, dim=None, dofdesc=None):
@@ -1196,6 +1196,9 @@ class Interpolation(Expression):
         from_dd = as_dofdesc(from_dd)
         to_dd = as_dofdesc(to_dd)
 
+        if from_dd == to_dd:
+            return operand  # type: ignore[return-value]
+
         if isinstance(operand, np.ndarray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
@@ -1236,9 +1239,9 @@ def interp(from_dd, to_dd, operand):
 
 
 @for_each_expression
-def interpolate(operand: ArithmeticOperandT,
+def interpolate(operand: OperandT,
                 from_dd: DOFDescriptorLike,
-                to_dd: DOFDescriptorLike) -> ArithmeticOperandT | Interpolation:
+                to_dd: DOFDescriptorLike) -> OperandT | Interpolation:
     from_dd = as_dofdesc(from_dd)
     to_dd = as_dofdesc(to_dd)
 
@@ -1317,7 +1320,7 @@ def integral(ambient_dim, dim, operand, dofdesc=None):
     """A volume integral of *operand*."""
 
     dofdesc = as_dofdesc(dofdesc)
-    return NodeSum(
+    return node_sum(
             area_element(ambient_dim, dim, dofdesc)
             * QWeight(dofdesc)
             * operand)
