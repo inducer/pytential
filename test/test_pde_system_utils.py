@@ -18,160 +18,205 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytential.symbolic.pde.system_utils import (
-    convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
-from pytential.symbolic.primitives import IntG
-from pytential import sym
-import pytential
+from functools import partial
+
 import numpy as np
 
+import pymbolic.primitives as prim
 from sumpy.kernel import (
     LaplaceKernel, HelmholtzKernel, ExpressionKernel, BiharmonicKernel,
     StokesletKernel,
     AxisTargetDerivative, TargetPointMultiplier, AxisSourceDerivative)
 from sumpy.symbolic import USE_SYMENGINE
 
-from pymbolic.primitives import make_sym_vector
-import pymbolic.primitives as prim
+from pytential import sym
+from pytential.symbolic.mappers import flatten
+from pytential.symbolic.pde.system_utils import (
+    convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
 
 
 def test_convert_target_deriv():
     knl = LaplaceKernel(2)
-    int_g = IntG(AxisTargetDerivative(0, knl), [AxisSourceDerivative(1, knl), knl],
-        [1, 2], qbx_forced_limit=1)
-    expected_int_g = IntG(knl,
-        [AxisSourceDerivative(0, AxisSourceDerivative(1, knl)),
-        AxisSourceDerivative(0, knl)], [-1, -2], qbx_forced_limit=1)
+    dsource = partial(AxisSourceDerivative, inner_kernel=knl)
 
-    assert sum(convert_target_transformation_to_source(int_g)) == expected_int_g
+    int_g = sym.IntG(
+        AxisTargetDerivative(0, knl),
+        (dsource(1), knl),
+        (1, 2), qbx_forced_limit=1)
+    expected_int_g = sym.IntG(
+        knl,
+        (AxisSourceDerivative(0, dsource(1)), dsource(0)),
+        (-1, -2), qbx_forced_limit=1)
+
+    expr = sum(convert_target_transformation_to_source(int_g))
+    assert flatten(expr) == expected_int_g
 
 
 def test_convert_target_point_multiplier():
-    xs = sym.nodes(3).as_vector()
+    ambient_dim = 3
+    knl = LaplaceKernel(ambient_dim)
+    dsource = partial(AxisSourceDerivative, inner_kernel=knl)
 
-    knl = LaplaceKernel(3)
-    int_g = IntG(TargetPointMultiplier(0, knl), [AxisSourceDerivative(1, knl), knl],
-        [1, 2], qbx_forced_limit=1)
+    int_g = sym.IntG(
+        TargetPointMultiplier(0, knl),
+        (dsource(1), knl),
+        (1, 2), qbx_forced_limit=1)
 
-    d = make_sym_vector("d", 3)
-
+    d = sym.make_sym_vector("d", ambient_dim)
     r2 = d[2]**2 + d[1]**2 + d[0]**2
-    eknl0 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
-            knl.global_scaling_const, False)
-    eknl2 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
-        knl.global_scaling_const, False)
+
+    eknl0 = ExpressionKernel(ambient_dim,
+                             d[1]*d[0]*r2**prim.Quotient(-3, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
+    eknl2 = ExpressionKernel(ambient_dim,
+                             d[0]*r2**prim.Quotient(-1, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
 
     r2 = d[0]**2 + d[1]**2 + d[2]**2
-    eknl1 = ExpressionKernel(3, d[0]*d[1]*r2**prim.Quotient(-3, 2),
-            knl.global_scaling_const, False)
-    eknl3 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
-        knl.global_scaling_const, False)
 
-    possible_int_g1 = IntG(eknl0, [eknl0], [1], qbx_forced_limit=1) + \
-        IntG(eknl2, [eknl2], [2], qbx_forced_limit=1) + \
-        IntG(knl, [AxisSourceDerivative(1, knl), knl],
-        [xs[0], 2*xs[0]], qbx_forced_limit=1)
+    eknl1 = ExpressionKernel(ambient_dim,
+                             d[0]*d[1]*r2**prim.Quotient(-3, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
+    eknl3 = ExpressionKernel(ambient_dim,
+                             d[0]*r2**prim.Quotient(-1, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
 
-    possible_int_g2 = IntG(eknl1, [eknl1], [1], qbx_forced_limit=1) + \
-        IntG(eknl3, [eknl3], [2], qbx_forced_limit=1) + \
-        IntG(knl, [AxisSourceDerivative(1, knl), knl],
-        [xs[0], 2*xs[0]], qbx_forced_limit=1)
+    xs = sym.nodes(3).as_vector()
 
-    assert sum(convert_target_transformation_to_source(int_g)) in \
-            [possible_int_g1, possible_int_g2]
+    possible_int_g1 = flatten(
+        sym.IntG(eknl0, (eknl0,), (1,), qbx_forced_limit=1)
+        + sym.IntG(eknl2, (eknl2,), (2,), qbx_forced_limit=1)
+        + sym.IntG(knl, (dsource(1), knl), (xs[0], 2*xs[0]), qbx_forced_limit=1))
+    possible_int_g2 = flatten(
+        sym.IntG(eknl1, (eknl1,), (1,), qbx_forced_limit=1)
+        + sym.IntG(eknl3, (eknl3,), (2,), qbx_forced_limit=1)
+        + sym.IntG(knl, (dsource(1), knl), (xs[0], 2*xs[0]), qbx_forced_limit=1))
+
+    expr = flatten(sum(convert_target_transformation_to_source(int_g)))
+    assert expr in (possible_int_g1, possible_int_g2)
 
 
 def test_product_rule():
+    ambient_dim = 3
+    knl = LaplaceKernel(ambient_dim)
+    dsource = partial(AxisSourceDerivative, inner_kernel=knl)
+
+    int_g = sym.IntG(
+        AxisTargetDerivative(0, TargetPointMultiplier(0, knl)),
+        (knl,), (1,), qbx_forced_limit=1)
+
+    d = sym.make_sym_vector("d", 3)
+    r2 = d[2]**2 + d[1]**2 + d[0]**2
+
+    eknl0 = ExpressionKernel(ambient_dim,
+                             d[0]**2*r2**prim.Quotient(-3, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
+
+    r2 = d[0]**2 + d[1]**2 + d[2]**2
+
+    eknl1 = ExpressionKernel(ambient_dim,
+                             d[0]**2*r2**prim.Quotient(-3, 2),
+                             knl.global_scaling_const, is_complex_valued=False)
+
     xs = sym.nodes(3).as_vector()
 
-    knl = LaplaceKernel(3)
-    int_g = IntG(AxisTargetDerivative(0, TargetPointMultiplier(0, knl)), [knl], [1],
-        qbx_forced_limit=1)
+    possible_int_g1 = flatten(
+        sym.IntG(eknl0, (eknl0,), (-1,), qbx_forced_limit=1)
+        + sym.IntG(knl, (dsource(0),), (xs[0]*(-1),), qbx_forced_limit=1)
+        )
+    possible_int_g2 = flatten(
+        sym.IntG(eknl1, (eknl1,), (-1,), qbx_forced_limit=1)
+        + sym.IntG(knl, (dsource(0),), (xs[0]*(-1),), qbx_forced_limit=1))
 
-    d = make_sym_vector("d", 3)
-    r2 = d[2]**2 + d[1]**2 + d[0]**2
-    eknl0 = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
-        knl.global_scaling_const, False)
-    r2 = d[0]**2 + d[1]**2 + d[2]**2
-    eknl1 = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
-        knl.global_scaling_const, False)
-
-    possible_int_g1 = IntG(eknl0, [eknl0], [-1], qbx_forced_limit=1) + \
-        IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
-    possible_int_g2 = IntG(eknl1, [eknl1], [-1], qbx_forced_limit=1) + \
-        IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
-
-    assert sum(convert_target_transformation_to_source(int_g)) in \
-            [possible_int_g1, possible_int_g2]
+    expr = flatten(sum(convert_target_transformation_to_source(int_g)))
+    assert expr in [possible_int_g1, possible_int_g2]
 
 
 def test_convert_helmholtz():
-    xs = sym.nodes(3).as_vector()
+    ambient_dim = 3
+    knl = HelmholtzKernel(ambient_dim)
+    int_g = sym.IntG(
+        TargetPointMultiplier(0, knl),
+        (knl,), (1,), qbx_forced_limit=1, kernel_arguments={"k": 1})
 
-    knl = HelmholtzKernel(3)
-    int_g = IntG(TargetPointMultiplier(0, knl), [knl], [1],
-        qbx_forced_limit=1, k=1)
-
-    d = make_sym_vector("d", 3)
+    d = sym.make_sym_vector("d", 3)
     exp = prim.Variable("exp")
 
     if USE_SYMENGINE:
         r2 = d[2]**2 + d[1]**2 + d[0]**2
-        eknl = ExpressionKernel(3, exp(1j*r2**prim.Quotient(1, 2))*d[0]
-            * r2**prim.Quotient(-1, 2),
-            knl.global_scaling_const, knl.is_complex_valued)
+        eknl = ExpressionKernel(ambient_dim,
+                                exp(1j*r2**prim.Quotient(1, 2))*d[0]
+                                * r2**prim.Quotient(-1, 2),
+                                knl.global_scaling_const,
+                                is_complex_valued=knl.is_complex_valued)
     else:
         r2 = d[0]**2 + d[1]**2 + d[2]**2
-        eknl = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2)
-            * exp(1j*r2**prim.Quotient(1, 2)),
-            knl.global_scaling_const, knl.is_complex_valued)
+        eknl = ExpressionKernel(ambient_dim,
+                                d[0]*r2**prim.Quotient(-1, 2)
+                                * exp(1j*r2**prim.Quotient(1, 2)),
+                                knl.global_scaling_const,
+                                is_complex_valued=knl.is_complex_valued)
 
-    expected_int_g = IntG(eknl, [eknl], [1], qbx_forced_limit=1,
-            kernel_arguments={"k": 1}) + \
-        IntG(knl, [knl], [xs[0]], qbx_forced_limit=1, k=1)
+    xs = sym.nodes(3).as_vector()
+    expected_int_g = flatten(
+        sym.IntG(eknl, (eknl,), (1,), qbx_forced_limit=1, kernel_arguments={"k": 1})
+        + sym.IntG(knl, (knl,), (xs[0],), qbx_forced_limit=1, kernel_arguments={"k": 1})
+    )
 
-    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
+    expr = flatten(sum(convert_target_transformation_to_source(int_g)))
+    assert expr == expected_int_g
 
 
 def test_convert_int_g_base():
-    knl = LaplaceKernel(3)
-    int_g = IntG(knl, [knl], [1], qbx_forced_limit=1)
+    ambient_dim = 3
+    knl = LaplaceKernel(ambient_dim)
+    int_g = sym.IntG(knl, (knl,), (1,), qbx_forced_limit=1)
 
-    base_knl = BiharmonicKernel(3)
-    expected_int_g = sum(
-        IntG(base_knl, [AxisSourceDerivative(d, AxisSourceDerivative(d, base_knl))],
-            [-1], qbx_forced_limit=1) for d in range(3))
+    base_knl = BiharmonicKernel(ambient_dim)
+    expected_int_g = sum(sym.IntG(
+        base_knl,
+        (AxisSourceDerivative(d, AxisSourceDerivative(d, base_knl)),),
+        (-1,), qbx_forced_limit=1)
+        for d in range(ambient_dim))
 
-    assert expected_int_g == rewrite_int_g_using_base_kernel(int_g,
-                                                             base_kernel=base_knl)
+    expr = flatten(rewrite_int_g_using_base_kernel(int_g, base_kernel=base_knl))
+    assert expr == flatten(expected_int_g)
 
 
 def test_convert_int_g_base_with_const():
-    knl = StokesletKernel(2, 0, 0)
-    int_g = IntG(knl, [knl], [1], qbx_forced_limit=1, mu=2)
+    ambient_dim = 2
+    knl = StokesletKernel(ambient_dim, 0, 0)
+    base_knl = BiharmonicKernel(ambient_dim)
 
-    base_knl = BiharmonicKernel(2)
-    dim = 2
-    dd = pytential.sym.DOFDescriptor(geometry=pytential.sym.DEFAULT_SOURCE)
+    dd = sym.DOFDescriptor(sym.DEFAULT_SOURCE)
+    int_g = sym.IntG(knl, (knl,), (1,), qbx_forced_limit=1, kernel_arguments={"mu": 2})
 
-    expected_int_g = (-0.1875) / np.pi * \
-        pytential.sym.integral(dim, dim-1, 1, dofdesc=dd) + \
-        IntG(base_knl,
-            [AxisSourceDerivative(1, AxisSourceDerivative(1, base_knl))], [0.5],
-            qbx_forced_limit=1)
-    assert rewrite_int_g_using_base_kernel(int_g,
-                                           base_kernel=base_knl) == expected_int_g
+    expected_int_g = flatten(
+        (-0.1875) / np.pi * sym.integral(ambient_dim, ambient_dim - 1, 1, dofdesc=dd)
+        + sym.IntG(base_knl,
+                   (AxisSourceDerivative(1, AxisSourceDerivative(1, base_knl)),),
+                   (0.5,), qbx_forced_limit=1))
+
+    expr = flatten(rewrite_int_g_using_base_kernel(int_g, base_kernel=base_knl))
+    assert expr == expected_int_g
 
 
 def test_convert_int_g_base_with_const_and_deriv():
-    knl = StokesletKernel(2, 0, 0)
-    int_g = IntG(knl, [AxisSourceDerivative(0, knl)], [1], qbx_forced_limit=1, mu=2)
+    ambient_dim = 2
+    knl = StokesletKernel(ambient_dim, 0, 0)
+    base_knl = BiharmonicKernel(ambient_dim)
 
-    base_knl = BiharmonicKernel(2)
+    int_g = sym.IntG(
+        knl,
+        (AxisSourceDerivative(0, knl),), (1,), qbx_forced_limit=1,
+        kernel_arguments={"mu": 2})
 
-    expected_int_g = IntG(base_knl,
-            [AxisSourceDerivative(1, AxisSourceDerivative(1,
-                AxisSourceDerivative(0, base_knl)))], [0.5],
-            qbx_forced_limit=1)
-    assert rewrite_int_g_using_base_kernel(int_g,
-                                           base_kernel=base_knl) == expected_int_g
+    expected_int_g = sym.IntG(
+        base_knl,
+        (AxisSourceDerivative(
+            1, AxisSourceDerivative(
+                1, AxisSourceDerivative(0, base_knl))),),
+        (0.5,), qbx_forced_limit=1)
+
+    expr = flatten(rewrite_int_g_using_base_kernel(int_g, base_kernel=base_knl))
+    assert expr == expected_int_g
