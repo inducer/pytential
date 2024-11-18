@@ -29,7 +29,7 @@ from enum import Enum
 from functools import cached_property
 
 import numpy as np
-from pymbolic.typing import ArithmeticExpressionT
+from pymbolic.typing import ArithmeticExpression
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           BiharmonicKernel, ElasticityKernel, Kernel,
                           LaplaceKernel, StokesletKernel, StressletKernel,
@@ -95,9 +95,9 @@ class ElasticityWrapperBase(ABC):
 
     dim: int
     """Ambient dimension of the representation."""
-    mu: ArithmeticExpressionT
+    mu: ArithmeticExpression
     r"""Expression or value for the shear modulus :math:`\mu`."""
-    nu: ArithmeticExpressionT
+    nu: ArithmeticExpression
     r"""Expression or value for Poisson's ratio :math:`\nu`."""
 
     @abstractmethod
@@ -159,9 +159,9 @@ class ElasticityDoubleLayerWrapperBase(ABC):
 
     dim: int
     """Ambient dimension of the representation."""
-    mu: ArithmeticExpressionT
+    mu: ArithmeticExpression
     r"""Expression or value for the shear modulus :math:`\mu`."""
-    nu: ArithmeticExpressionT
+    nu: ArithmeticExpression
     r"""Expression or value for Poisson's ration :math:`\nu`."""
 
     @abstractmethod
@@ -227,8 +227,8 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 @dataclass
 class _ElasticityWrapperNaiveOrBiharmonic:
     dim: int
-    mu: ArithmeticExpressionT
-    nu: ArithmeticExpressionT
+    mu: ArithmeticExpression
+    nu: ArithmeticExpression
     base_kernel: Kernel
 
     def __post_init__(self):
@@ -315,8 +315,8 @@ class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
 @dataclass
 class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
     dim: int
-    mu: ArithmeticExpressionT
-    nu: ArithmeticExpressionT
+    mu: ArithmeticExpression
+    nu: ArithmeticExpression
     base_kernel: Kernel
 
     def __post_init__(self):
@@ -474,8 +474,8 @@ class Method(Enum):
 
 def make_elasticity_wrapper(
         dim: int,
-        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
-        nu: ArithmeticExpressionT = _NU_SYM_DEFAULT,
+        mu: ArithmeticExpression = _MU_SYM_DEFAULT,
+        nu: ArithmeticExpression = _NU_SYM_DEFAULT,
         method: Method = Method.Naive) -> ElasticityWrapperBase:
     """Creates an appropriate :class:`ElasticityWrapperBase` object.
 
@@ -502,8 +502,8 @@ def make_elasticity_wrapper(
 
 def make_elasticity_double_layer_wrapper(
         dim: int,
-        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
-        nu: ArithmeticExpressionT = _NU_SYM_DEFAULT,
+        mu: ArithmeticExpression = _MU_SYM_DEFAULT,
+        nu: ArithmeticExpression = _NU_SYM_DEFAULT,
         method: Method = Method.Naive) -> ElasticityDoubleLayerWrapperBase:
     """Creates an appropriate :class:`ElasticityDoubleLayerWrapperBase` object.
 

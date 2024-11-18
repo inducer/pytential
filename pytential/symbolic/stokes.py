@@ -29,7 +29,7 @@ from functools import cached_property
 
 import numpy as np
 from pytools import MovedFunctionDeprecationWrapper
-from pymbolic.typing import ArithmeticExpressionT
+from pymbolic.typing import ArithmeticExpression
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           BiharmonicKernel, LaplaceKernel,
                           TargetPointMultiplier)
@@ -333,8 +333,8 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
     """
 
     dim: int
-    mu: ArithmeticExpressionT
-    nu: ArithmeticExpressionT
+    mu: ArithmeticExpression
+    nu: ArithmeticExpression
 
     def __post_init__(self):
         if self.nu != 0.5:
@@ -359,8 +359,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
     """
 
     dim: int
-    mu: ArithmeticExpressionT
-    nu: ArithmeticExpressionT
+    mu: ArithmeticExpression
+    nu: ArithmeticExpression
 
     def __post_init__(self):
         if self.nu != 0.5:
@@ -472,7 +472,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 def make_stokeslet_wrapper(
         dim: int,
-        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        mu: ArithmeticExpression = _MU_SYM_DEFAULT,
         method: Method | None = None
         ) -> StokesletWrapperBase:
     """Creates an appropriate :class:`StokesletWrapperBase` object.
@@ -502,7 +502,7 @@ def make_stokeslet_wrapper(
 
 def make_stresslet_wrapper(
         dim: int,
-        mu: ArithmeticExpressionT = _MU_SYM_DEFAULT,
+        mu: ArithmeticExpression = _MU_SYM_DEFAULT,
         method: Method | None = None
         ) -> StressletWrapperBase:
     """Creates an appropriate :class:`StressletWrapperBase` object.

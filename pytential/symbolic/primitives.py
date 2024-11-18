@@ -1625,7 +1625,7 @@ class IntG(Expression):
     derivatives attached. k-th elements represents the k-th source derivative
     operator above.
     """
-    densities: tuple[Expression, ...]
+    densities: tuple[ArithmeticExpression, ...]
     """A tuple of density expressions. Length of this tuple must match the length
     of the *source_kernels* arguments.
     """
