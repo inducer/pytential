@@ -61,7 +61,7 @@ def rec_int_g_arguments(mapper, expr):
             name: mapper.rec(arg) for name, arg in expr.kernel_arguments.items()
             }
 
-    changed = (
+    changed = not (
             all(d is orig for d, orig in zip(densities, expr.densities, strict=True))
             and all(
                 arg is orig for arg, orig in zip(
@@ -280,7 +280,12 @@ class EvaluationMapper(EvaluationMapperBase):
 # {{{ FlattenMapper
 
 class FlattenMapper(FlattenMapperBase, IdentityMapper):
-    pass
+    def map_int_g(self, expr):
+        densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
+        if not changed:
+            return expr
+
+        return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
 
 def flatten(expr):

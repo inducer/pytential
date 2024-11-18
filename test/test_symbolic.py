@@ -500,7 +500,7 @@ def test_mapper_int_g_term_collector(op_name, k=0):
         raise ValueError(f"unknown operator name: {op_name}")
 
     from pytential.symbolic.mappers import flatten
-    assert expr_only_intgs == flatten(expected_expr)
+    assert flatten(expr_only_intgs) == flatten(expected_expr)
 
 # }}}
 
