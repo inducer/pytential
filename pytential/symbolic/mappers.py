@@ -61,7 +61,7 @@ def rec_int_g_arguments(mapper, expr):
             name: mapper.rec(arg) for name, arg in expr.kernel_arguments.items()
             }
 
-    changed = (
+    changed = not (
             all(d is orig for d, orig in zip(densities, expr.densities, strict=True))
             and all(
                 arg is orig for arg, orig in zip(
