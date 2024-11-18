@@ -612,13 +612,13 @@ def run_stokes_pde(actx_factory, case, identity, resolution, visualize=False):
             identity.apply_pde_using_pytential())(actx))
 
     m = np.max([np.linalg.norm(p, ord=np.inf) for p in potential_host])
-    error = [0.0] * places.ambient_dim
-    error[:places.ambient_dim] = [np.linalg.norm(x, ord=np.inf)/m for x in result]
+    error = (
+        [np.linalg.norm(x, ord=np.inf)/m for x in result]
+        + [np.linalg.norm(x, ord=np.inf)/m for x in result_pytential])
 
-    error += [np.linalg.norm(x, ord=np.inf)/m for x in result_pytential]
     logger.info(
-            "resolution %4d h_min %.5e h_max %.5e error %.5e %.5e %.5e",
-            resolution, h_min, h_max, *error)
+            "resolution %4d h_min %.5e h_max %.5e error %s",
+            resolution, h_min, h_max, *error[:places.ambient_dim])
 
     return h_max, error
 
@@ -627,6 +627,10 @@ class StokesPDE:
     def __init__(self, ambient_dim, wrapper):
         self.ambient_dim = ambient_dim
         self.wrapper = wrapper
+
+    @property
+    def dim(self) -> int:
+        return self.ambient_dim + 1
 
     def apply_operator(self):
         dim = self.ambient_dim
@@ -674,6 +678,10 @@ class ElasticityPDE:
     def __init__(self, ambient_dim, wrapper):
         self.ambient_dim = ambient_dim
         self.wrapper = wrapper
+
+    @property
+    def dim(self) -> int:
+        return self.ambient_dim
 
     def apply_operator(self):
         dim = self.ambient_dim
@@ -795,7 +803,7 @@ def test_elasticity_pde(actx_factory, dim, method, nu, is_double_layer,
             case.ambient_dim, mu=1, nu=nu, method=Method[method]))
 
     from pytools.convergence import EOCRecorder
-    eocs = [EOCRecorder() for _ in range(2*case.ambient_dim)]
+    eocs = [EOCRecorder() for _ in range(2*identity.dim)]
 
     for resolution in case.resolutions:
         h_max, errors = run_stokes_pde(
