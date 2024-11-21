@@ -38,6 +38,7 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (
         NablaComponent, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector
+from pymbolic.typing import ArithmeticExpressionT
 
 from pytools.obj_array import make_obj_array, flat_obj_array
 from sumpy.kernel import Kernel, SpatialConstant
@@ -341,7 +342,7 @@ __all__ = (
 
     # re-exported symbols, maybe questionable
     "flat_obj_array",
-    "DEFAULT_SOURCE", "DEFAULT_TARGET",
+    "DEFAULT_SOURCE", "DEFAULT_TARGET", "DEFAULT_DOFDESC",
     "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
     "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
     "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
@@ -1493,7 +1494,7 @@ class IntG(Expression):
     derivatives attached. k-th elements represents the k-th source derivative
     operator above.
     """
-    densities: tuple[Expression, ...]
+    densities: tuple[ArithmeticExpressionT, ...]
     """A tuple of density expressions. Length of this tuple must match the length
     of the *source_kernels* arguments.
     """
