@@ -29,8 +29,9 @@ from typing import Any, Concatenate, Literal, TypeAlias, TypeVar
 import numpy as np
 
 import modepy as mp
+from pymbolic import ExpressionNode, Variable
 from pymbolic.primitives import (  # noqa: N813
-        Expression as ExpressionBase, Variable, Variable as var,
+        Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse,
         expr_dataclass)
@@ -38,7 +39,7 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (
         NablaComponent, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector
-from pymbolic.typing import ArithmeticExpressionT
+from pymbolic.typing import ArithmeticExpression
 
 from pytools import P
 from pytools.obj_array import make_obj_array, flat_obj_array
@@ -99,11 +100,17 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 
 .. autofunction:: for_each_expression
 
-.. autoclass:: OperandT
+.. autoclass:: Operand
+
+.. autoclass:: ArithmeticExpressionT
 
 .. class:: P
 
     See :class:`pytools.P`
+
+.. class:: ExpressionNode
+
+    See :class:`pymbolic.ExpressionNode`.
 
 Diagnostics
 ^^^^^^^^^^^
@@ -376,8 +383,8 @@ __all__ = (
 
 
 @expr_dataclass()
-class Expression(ExpressionBase):
-    """A subclass of :class:`pymbolic.primitives.Expression` for use with
+class Expression(ExpressionNode):
+    """A subclass of :class:`pymbolic.primitives.ExpressionNode` for use with
     :mod:`pytential` mappers.
     """
 
@@ -387,10 +394,11 @@ class Expression(ExpressionBase):
 
 
 Operand: TypeAlias = (
-    ArithmeticExpressionT | np.ndarray[Any, np.dtype[Any]] | MultiVector)
+    ArithmeticExpression | np.ndarray[Any, np.dtype[Any]] | MultiVector)
 QBXForcedLimit = int | Literal["avg"] | None
 
-OperandT = TypeVar("OperandT", bound=ArithmeticExpressionT)
+# NOTE: this will likely live in pymbolic at some point, but for now we take it!
+ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
 
 
 class _NoArgSentinel:
@@ -402,7 +410,7 @@ class cse_scope(cse_scope_base):  # noqa: N801
 
 
 def for_each_expression(
-        f: Callable[Concatenate[ArithmeticExpressionT, P], ArithmeticExpressionT]
+        f: Callable[Concatenate[ArithmeticExpression, P], ArithmeticExpression]
         ) -> Callable[Concatenate[Operand, P], Operand]:
     """A decorator that takes a function that can only work on expressions
     and transforms it into a function that can be applied componentwise on
@@ -414,7 +422,7 @@ def for_each_expression(
     @wraps(f)
     def wrapper(operand: Operand, *args: P.args, **kwargs: P.kwargs) -> Operand:
         if isinstance(operand, np.ndarray | MultiVector):
-            def func(operand_i: ArithmeticExpressionT) -> ArithmeticExpressionT:
+            def func(operand_i: ArithmeticExpression) -> ArithmeticExpression:
                 return f(operand_i, *args, **kwargs)
 
             return componentwise(func, operand)
@@ -631,7 +639,7 @@ class NumReferenceDerivative(DiscretizationProperty):
     # different..
     def __init__(self,
                  ref_axes: tuple[tuple[int, int], ...],
-                 operand: ArithmeticExpressionT,
+                 operand: ArithmeticExpression,
                  dofdesc: DOFDescriptorLike) -> None:
         if not isinstance(ref_axes, tuple):
             raise ValueError(f"'ref_axes' must be a tuple: {type(ref_axes)}")
@@ -653,7 +661,7 @@ class NumReferenceDerivative(DiscretizationProperty):
 
 @for_each_expression
 def num_reference_derivative(
-        expr: ArithmeticExpressionT,
+        expr: ArithmeticExpression,
         ref_axes: tuple[tuple[int, int], ...] | int,
         dofdesc: DOFDescriptorLike | None) -> NumReferenceDerivative:
     """Take a derivative of *expr* with respect to the the element reference
@@ -1239,9 +1247,9 @@ def interp(from_dd, to_dd, operand):
 
 
 @for_each_expression
-def interpolate(operand: OperandT,
+def interpolate(operand: ArithmeticExpressionT,
                 from_dd: DOFDescriptorLike,
-                to_dd: DOFDescriptorLike) -> OperandT | Interpolation:
+                to_dd: DOFDescriptorLike) -> ArithmeticExpressionT | Interpolation:
     from_dd = as_dofdesc(from_dd)
     to_dd = as_dofdesc(to_dd)
 
@@ -1286,7 +1294,7 @@ class NodeSum(SingleScalarOperandExpression):
 
 
 @for_each_expression
-def node_sum(expr: ArithmeticExpressionT) -> NodeSum:
+def node_sum(expr: ArithmeticExpression) -> NodeSum:
     return NodeSum(expr)
 
 
@@ -1299,7 +1307,7 @@ class NodeMax(SingleScalarOperandExpression):
 
 
 @for_each_expression
-def node_max(expr: ArithmeticExpressionT) -> NodeMax:
+def node_max(expr: ArithmeticExpression) -> NodeMax:
     return NodeMax(expr)
 
 
@@ -1312,7 +1320,7 @@ class NodeMin(SingleScalarOperandExpression):
 
 
 @for_each_expression
-def node_min(expr: ArithmeticExpressionT) -> NodeMin:
+def node_min(expr: ArithmeticExpression) -> NodeMin:
     return NodeMin(expr)
 
 
@@ -1378,7 +1386,7 @@ class ElementwiseSum(SingleScalarOperandExpressionWithWhere):
 
 
 @for_each_expression
-def elementwise_sum(expr: ArithmeticExpressionT,
+def elementwise_sum(expr: ArithmeticExpression,
                     dofdesc: DOFDescriptorLike = None) -> ElementwiseSum:
     return ElementwiseSum(expr, as_dofdesc(dofdesc))
 
@@ -1393,7 +1401,7 @@ class ElementwiseMin(SingleScalarOperandExpressionWithWhere):
 
 
 @for_each_expression
-def elementwise_min(expr: ArithmeticExpressionT,
+def elementwise_min(expr: ArithmeticExpression,
                     dofdesc: DOFDescriptorLike = None) -> ElementwiseMin:
     return ElementwiseMin(expr, as_dofdesc(dofdesc))
 
@@ -1408,7 +1416,7 @@ class ElementwiseMax(SingleScalarOperandExpressionWithWhere):
 
 
 @for_each_expression
-def elementwise_max(expr: ArithmeticExpressionT,
+def elementwise_max(expr: ArithmeticExpression,
                     dofdesc: DOFDescriptorLike = None) -> ElementwiseMax:
     return ElementwiseMax(expr, as_dofdesc(dofdesc))
 
@@ -1462,9 +1470,9 @@ class IterativeInverse(Expression):
     .. autoattribute:: dofdesc
     """
 
-    expression: ArithmeticExpressionT
+    expression: ArithmeticExpression
     """The operator *A* used in the linear solve."""
-    rhs: ArithmeticExpressionT
+    rhs: ArithmeticExpression
     """The right-hand side variable used in the linear solve."""
     variable_name: str
     """The name of the variable to solve for."""

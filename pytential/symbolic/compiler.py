@@ -27,7 +27,8 @@ from typing import Any
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Expression, Variable, Subscript
+from pymbolic.primitives import cse_scope, Variable, Subscript
+from pymbolic.typing import Expression
 from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
