@@ -51,7 +51,7 @@ from pymbolic.geometric_algebra.mapper import (
         as DerivativeSourceFinderBase,
 
         GraphvizMapper as GraphvizMapperBase)
-from pymbolic.typing import ExpressionT
+from pymbolic.typing import Expression
 import pytential.symbolic.primitives as prim
 
 
@@ -291,7 +291,7 @@ def flatten(expr):
 
 # {{{ LocationTagger
 
-class LocationTagger(CSECachingMapperMixin[ExpressionT, []],
+class LocationTagger(CSECachingMapperMixin[Expression, []],
                      IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
 
@@ -299,7 +299,7 @@ class LocationTagger(CSECachingMapperMixin[ExpressionT, []],
         self.default_source = default_source
         self.default_target = default_target
 
-    def map_common_subexpression_uncached(self, expr) -> ExpressionT:
+    def map_common_subexpression_uncached(self, expr) -> Expression:
         # Mypy 1.13 complains about this:
         # error: Too few arguments for "map_common_subexpression" of "IdentityMapper"  [call-arg]  # noqa: E501
         # error: Argument 1 to "map_common_subexpression" of "IdentityMapper" has incompatible type "LocationTagger"; expected "IdentityMapper[P]"  [arg-type]  # noqa: E501

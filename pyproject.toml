@@ -37,9 +37,9 @@ dependencies = [
     "loopy>=2024.1",
     "meshmode>=2021.2",
     "modepy>=2021.1",
-    "pymbolic>=2022.2",
+    "pymbolic>=2024.2",
     "pyopencl>=2022.1",
-    "pytools>=2022.1",
+    "pytools>=2024.1",
     "scipy>=1.2",
     "sumpy>=2022.1",
 ]
