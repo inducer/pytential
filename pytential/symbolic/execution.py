@@ -300,10 +300,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             raise NotImplementedError(
                     "non-homogeneous element groups are not supported")
 
-        from meshmode.mesh import _ModepyElementGroup
+        from meshmode.mesh import ModepyElementGroup
         meg = discr.groups[0].mesh_el_group
-        if isinstance(meg, _ModepyElementGroup):
-            return isinstance(meg._modepy_shape, expr.shape)
+        if isinstance(meg, ModepyElementGroup):
+            return isinstance(meg.shape, expr.shape)
         else:
             raise TypeError(f"element type not supported: '{type(meg).__name__}'")
 
