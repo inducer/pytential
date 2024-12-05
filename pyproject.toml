@@ -98,6 +98,7 @@ extend-ignore = [
     "N806", # variable name should be lowercase
     "RUF012", # ClassVar for mutable class attributes
     "RUF022", # __all__ is not sorted
+    "RUF052", # underscored variable is used
     "UP031", # use f-strings instead of %
     "UP032", # use f-strings instead of .format
 ]
