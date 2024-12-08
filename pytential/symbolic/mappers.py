@@ -296,8 +296,8 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     """Used internally by :class:`ToTargetTagger`."""
 
     def __init__(self, default_target, default_source):
-        self.default_source = default_source
-        self.default_target = default_target
+        self.default_source = prim.as_dofdesc(default_source)
+        self.default_target = prim.as_dofdesc(default_target)
 
     def map_common_subexpression_uncached(self, expr) -> Expression:
         # Mypy 1.13 complains about this:
