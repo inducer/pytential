@@ -27,7 +27,7 @@ def main(mesh_name="torus", visualize=False):
     import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
 
     if mesh_name == "torus":
         rout = 10

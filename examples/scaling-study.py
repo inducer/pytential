@@ -58,7 +58,7 @@ def timing_run(nx, ny, visualize=False):
     import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
 
     mesh = make_mesh(nx=nx, ny=ny, visualize=visualize)
 

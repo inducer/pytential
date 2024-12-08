@@ -29,7 +29,7 @@ def main(mesh_name="ellipse", visualize=False):
     import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
 
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
