@@ -129,7 +129,7 @@ def h3dall_wrapper(nterms, z, scale, hs, hders):
 
 # {{{ helpers
 
-cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
+cdef void legvals(double x, int n, double[] vals, double[] derivs) noexcept nogil:
     """Compute the values of the Legendre polynomial up to order n at x.
     Optionally, if derivs is non-NULL, compute the values of the derivative too.
 
@@ -189,7 +189,7 @@ cdef void ts_helmholtz_precompute(
         double complex k,
         double complex[] jvals,
         double complex[] jderivs,
-        double *jscale) nogil:
+        double *jscale) noexcept nogil:
     """Evaluate the source-invariant Bessel terms of the Helmholtz target-specific
     expansion."""
 
@@ -224,7 +224,7 @@ cdef double complex ts_laplace_s(
         double[3] center,
         double[3] target,
         double complex charge,
-        int order) nogil:
+        int order) noexcept nogil:
     """Evaluate the target-specific expansion of the Laplace single-layer kernel."""
 
     cdef:
@@ -278,7 +278,7 @@ cdef void ts_laplace_sp(
         double[3] center,
         double[3] target,
         double complex charge,
-        int order) nogil:
+        int order) noexcept nogil:
     """Evaluate the target-specific expansion of the gradient of the Laplace
     single-layer kernel."""
 
@@ -324,7 +324,7 @@ cdef double complex ts_laplace_d(
         double[3] target,
         double[3] dipole,
         double complex dipstr,
-        int order) nogil:
+        int order) noexcept nogil:
     """Evaluate the target-specific expansion of the Laplace double-layer kernel."""
 
     cdef:
@@ -370,7 +370,7 @@ cdef double complex ts_helmholtz_s(
         int order,
         double complex k,
         double complex[] jvals,
-        double jscale) nogil:
+        double jscale) noexcept nogil:
     """Evaluate the target-specific expansion of the Helmholtz single-layer
     kernel."""
 
@@ -429,7 +429,7 @@ cdef void ts_helmholtz_sp(
         double complex k,
         double complex[] jvals,
         double complex[] jderivs,
-        double jscale) nogil:
+        double jscale) noexcept nogil:
     """Evaluate the target-specific expansion of the gradient of the Helmholtz
     single-layer kernel."""
 
@@ -501,7 +501,7 @@ cdef double complex ts_helmholtz_d(
         int order,
         double complex k,
         double complex[] jvals,
-        double jscale) nogil:
+        double jscale) noexcept nogil:
     """Evaluate the target-specific expansion of the Helmholtz double-layer
     kernel."""
 
