@@ -115,7 +115,7 @@ def get_test_density(actx, density_discr):
 
 def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
     cost_model = QBXCostModel()
 
     model_results = []
@@ -153,7 +153,7 @@ def calibrate_cost_model(ctx):
 
 def test_cost_model(ctx, calibration_params):
     queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
+    actx = PyOpenCLArrayContext(queue)
     cost_model = QBXCostModel()
 
     for lpot_source in test_geometries(actx):
