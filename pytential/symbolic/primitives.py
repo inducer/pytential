@@ -856,12 +856,13 @@ def shape_operator(ambient_dim, dim=None, dofdesc=None):
 
 def _element_size(ambient_dim, dim=None, dofdesc=None):
     # A broken quasi-1D approximation of 1D element size. Do not use.
-
     if dim is None:
         dim = ambient_dim - 1
 
+    dofdesc = as_dofdesc(dofdesc)
     return elementwise_sum(
-            area_element(ambient_dim=ambient_dim, dim=dim) * QWeight(),
+            area_element(ambient_dim=ambient_dim, dim=dim, dofdesc=dofdesc)
+            * QWeight(dofdesc),
             dofdesc)**(1/dim)
 
 
@@ -1167,8 +1168,9 @@ def h_min(ambient_dim, dim=None, dofdesc=None):
 
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
     """Combines :func:`area_element` and :class:`QWeight`."""
-
+    dofdesc = as_dofdesc(dofdesc)
     area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
+
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",
             cse_scope.DISCRETIZATION)
