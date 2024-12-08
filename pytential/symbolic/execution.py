@@ -249,7 +249,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         if isinstance(operand,
                 (*self.array_context.array_types,
-                 list, np.ndarray, DOFArray)):
+                 list, tuple, np.ndarray, DOFArray)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             return conn(operand)
         elif isinstance(operand, int | float | complex | np.number):
