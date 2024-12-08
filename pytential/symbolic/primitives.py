@@ -1144,10 +1144,10 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 
 
 def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
-    centers = [
+    centers = (
             expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
             expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
-            ]
+            )
 
     source = as_dofdesc(dofdesc)
     target = source.copy(granularity=GRANULARITY_CENTER)
