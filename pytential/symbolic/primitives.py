@@ -611,14 +611,6 @@ class NumReferenceDerivative(DiscretizationProperty):
                 operand: Operand | None = None,
                 dofdesc: DOFDescriptor | None = None,
                 ) -> "NumReferenceDerivative":
-        if isinstance(ref_axes, int):
-            warn(f"Passing an 'int' as 'ref_axes' to {cls.__name__!r} "
-                 "is deprecated and will result in an error in 2025. Pass the "
-                 "well-formatted tuple '((ref_axes, 1),)' instead.",
-                 DeprecationWarning, stacklevel=2)
-
-            ref_axes = ((ref_axes, 1),)
-
         if isinstance(operand, np.ndarray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
@@ -641,6 +633,14 @@ class NumReferenceDerivative(DiscretizationProperty):
                  ref_axes: tuple[tuple[int, int], ...],
                  operand: ArithmeticExpression,
                  dofdesc: DOFDescriptorLike) -> None:
+        if isinstance(ref_axes, int):
+            warn(f"Passing an 'int' as 'ref_axes' to {type(self).__name__!r} "
+                 "is deprecated and will result in an error in 2025. Pass the "
+                 "well-formatted tuple '((ref_axes, 1),)' instead.",
+                 DeprecationWarning, stacklevel=2)
+
+            ref_axes = ((ref_axes, 1),)
+
         if not isinstance(ref_axes, tuple):
             raise ValueError(f"'ref_axes' must be a tuple: {type(ref_axes)}")
 
