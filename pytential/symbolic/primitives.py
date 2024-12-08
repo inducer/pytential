@@ -104,6 +104,8 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 
 .. autoclass:: ArithmeticExpressionT
 
+.. autoclass:: QBXForcedLimit
+
 .. class:: P
 
     See :class:`pytools.P`
@@ -329,6 +331,10 @@ Pretty-printing expressions
 
 __all__ = (
     "Expression",
+    "Operand",
+    "ArithmeticExpressionT",
+    "QBXForcedLimit",
+    "for_each_expression",
 
     "ErrorExpression",
 
@@ -395,7 +401,7 @@ class Expression(ExpressionNode):
 
 Operand: TypeAlias = (
     ArithmeticExpression | np.ndarray[Any, np.dtype[Any]] | MultiVector)
-QBXForcedLimit = int | Literal["avg"] | None
+QBXForcedLimit: TypeAlias = int | Literal["avg"] | None
 
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
 ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
