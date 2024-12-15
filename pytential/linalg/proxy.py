@@ -378,10 +378,10 @@ class ProxyGeneratorBase:
         :param norm_type: type of the norm used to compute the centers of
             each cluster. Supported values are ``"linf"`` and ``"l2"``.
         """
-        if _generate_ref_proxies is None:
+        generate_ref_proxies = _generate_ref_proxies
+        if generate_ref_proxies is None:
             from functools import partial
-            _generate_ref_proxies = partial(
-                    _generate_unit_sphere, places.ambient_dim)
+            generate_ref_proxies = partial(_generate_unit_sphere, places.ambient_dim)
 
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
@@ -404,7 +404,7 @@ class ProxyGeneratorBase:
         self.radius_factor = radius_factor
         self.norm_type = norm_type
 
-        self.ref_points = _generate_ref_proxies(approx_nproxy)
+        self.ref_points = generate_ref_proxies(approx_nproxy)
 
     @property
     def ambient_dim(self) -> int:

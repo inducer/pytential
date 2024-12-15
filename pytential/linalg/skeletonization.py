@@ -438,14 +438,17 @@ def make_skeletonization_wrangler(
     from pytential.symbolic.matrix import (
             P2PClusterMatrixBuilder, QBXClusterMatrixBuilder)
 
-    if _neighbor_cluster_builder is None:
-        _neighbor_cluster_builder = QBXClusterMatrixBuilder
+    neighbor_cluster_builder = _neighbor_cluster_builder
+    if neighbor_cluster_builder is None:
+        neighbor_cluster_builder = QBXClusterMatrixBuilder
 
-    if _proxy_source_cluster_builder is None:
-        _proxy_source_cluster_builder = P2PClusterMatrixBuilder
+    proxy_source_cluster_builder = _proxy_source_cluster_builder
+    if proxy_source_cluster_builder is None:
+        proxy_source_cluster_builder = P2PClusterMatrixBuilder
 
-    if _proxy_target_cluster_builder is None:
-        _proxy_target_cluster_builder = QBXClusterMatrixBuilder
+    proxy_target_cluster_builder = _proxy_target_cluster_builder
+    if proxy_target_cluster_builder is None:
+        proxy_target_cluster_builder = QBXClusterMatrixBuilder
 
     # }}}
 
@@ -455,15 +458,15 @@ def make_skeletonization_wrangler(
             input_exprs=tuple(input_exprs),
             domains=tuple(domains),
             context=context,
-            neighbor_cluster_builder=_neighbor_cluster_builder,
+            neighbor_cluster_builder=neighbor_cluster_builder,
             # source
             weighted_sources=weighted_sources,
             source_proxy_exprs=source_proxy_exprs,
-            proxy_source_cluster_builder=_proxy_source_cluster_builder,
+            proxy_source_cluster_builder=proxy_source_cluster_builder,
             # target
             weighted_targets=weighted_targets,
             target_proxy_exprs=target_proxy_exprs,
-            proxy_target_cluster_builder=_proxy_target_cluster_builder,
+            proxy_target_cluster_builder=proxy_target_cluster_builder,
             )
 
 # }}}
