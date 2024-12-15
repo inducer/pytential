@@ -132,7 +132,7 @@ Target association driver
 
 class target_status_enum(Enum):  # noqa
     c_name = "TargetStatus"
-    dtype = np.int32
+    dtype = np.dtype(np.int32)
     c_value_prefix = ""
 
     UNMARKED = 0
@@ -142,7 +142,7 @@ class target_status_enum(Enum):  # noqa
 
 class target_flag_enum(Enum):  # noqa
     c_name = "TargetFlag"
-    dtype = np.int32
+    dtype = np.dtype(np.int32)
     c_value_prefix = ""
 
     INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
