@@ -796,7 +796,8 @@ def skeletonize_by_proxy(
     skels: np.ndarray = np.empty((wrangler.nrows, wrangler.ncols), dtype=object)
     for ibrow in range(wrangler.nrows):
         for ibcol in range(wrangler.ncols):
-            skels[ibrow, ibcol] = _skeletonize_block_by_proxy_with_mats(
+            # NOTE: type annotations for object arrays are not there yet
+            skels[ibrow, ibcol] = _skeletonize_block_by_proxy_with_mats(  # type: ignore[call-overload]
                     actx, ibrow, ibcol, places, proxy, wrangler, tgt_src_index,
                     id_eps=id_eps, id_rank=id_rank,
                     max_particles_in_box=max_particles_in_box)
