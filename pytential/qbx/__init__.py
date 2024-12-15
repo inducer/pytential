@@ -185,15 +185,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise TypeError(
                 "must specify exactly one of 'fmm_order' or 'fmm_level_to_order'.")
 
-        if _box_extent_norm is None:
-            _box_extent_norm = "l2"
-        assert isinstance(_box_extent_norm, str)
+        box_extent_norm = _box_extent_norm
+        if box_extent_norm is None:
+            box_extent_norm = "l2"
+        assert isinstance(box_extent_norm, str)
 
-        if _from_sep_smaller_crit is None:
+        from_sep_smaller_crit = _from_sep_smaller_crit
+        if from_sep_smaller_crit is None:
             # This seems to win no matter what the box extent norm is
             # https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/10
-            _from_sep_smaller_crit = "precise_linf"
-        assert isinstance(_from_sep_smaller_crit, str)
+            from_sep_smaller_crit = "precise_linf"
+        assert isinstance(from_sep_smaller_crit, str)
 
         if fmm_level_to_order is None:
             if fmm_order is False:
@@ -206,10 +208,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     return fmm_order
         assert isinstance(fmm_level_to_order, bool) or callable(fmm_level_to_order)
 
-        if _max_leaf_refine_weight is None:
+        max_leaf_refine_weight = _max_leaf_refine_weight
+        if max_leaf_refine_weight is None:
             if density_discr.ambient_dim == 2:
                 # FIXME: This should be verified now that l^2 is the default.
-                _max_leaf_refine_weight = 64
+                max_leaf_refine_weight = 64
             elif density_discr.ambient_dim == 3:
                 # FIXME: this is likely no longer up to date as the translation
                 # operators have changed (as of 07-07-2022)
@@ -217,20 +220,21 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 #   https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009
                 # For static_l2/l2 (private url):
                 #   https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12
-                _max_leaf_refine_weight = 512
+                max_leaf_refine_weight = 512
             else:
                 # Just guessing...
-                _max_leaf_refine_weight = 64
-        assert isinstance(_max_leaf_refine_weight, int)
+                max_leaf_refine_weight = 64
+        assert isinstance(max_leaf_refine_weight, int)
 
-        if _from_sep_smaller_min_nsources_cumul is None:
+        from_sep_smaller_min_nsources_cumul = _from_sep_smaller_min_nsources_cumul
+        if from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
             # https://gitlab.tiker.net/inducer/boxtree/merge_requests/28#note_18661
             if density_discr.dim == 1:
-                _from_sep_smaller_min_nsources_cumul = 15
+                from_sep_smaller_min_nsources_cumul = 15
             else:
-                _from_sep_smaller_min_nsources_cumul = 30
-        assert isinstance(_from_sep_smaller_min_nsources_cumul, int)
+                from_sep_smaller_min_nsources_cumul = 30
+        assert isinstance(from_sep_smaller_min_nsources_cumul, int)
 
         if expansion_factory is None:
             expansion_factory = DefaultExpansionFactory()
@@ -258,15 +262,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         self.debug = debug
         self._disable_refinement = _disable_refinement
-        self._expansions_in_tree_have_extent = \
-                _expansions_in_tree_have_extent
+        self._expansions_in_tree_have_extent = _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
         self._well_sep_is_n_away = _well_sep_is_n_away
-        self._max_leaf_refine_weight = _max_leaf_refine_weight
-        self._box_extent_norm = _box_extent_norm
-        self._from_sep_smaller_crit = _from_sep_smaller_crit
-        self._from_sep_smaller_min_nsources_cumul = \
-                _from_sep_smaller_min_nsources_cumul
+        self._max_leaf_refine_weight = max_leaf_refine_weight
+        self._box_extent_norm = box_extent_norm
+        self._from_sep_smaller_crit = from_sep_smaller_crit
+        self._from_sep_smaller_min_nsources_cumul = from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
         self._use_target_specific_qbx = _use_target_specific_qbx
 
