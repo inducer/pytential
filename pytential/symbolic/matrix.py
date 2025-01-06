@@ -120,7 +120,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             that the builder is evaluating.
         :arg other_dep_exprs: symbolic expressions for the remaining input
             block columns.
-        :arg dep_discr: a concerete :class:`~meshmode.discretization.Discretization`
+        :arg dep_discr: a concrete :class:`~meshmode.discretization.Discretization`
             for the given *dep_expr*.
         :arg places: a :class:`~pytential.collection.GeometryCollection`
             for all the sources and targets the builder is expected to
