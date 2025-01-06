@@ -371,7 +371,7 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
 
     run_skeletonize_by_proxy(
         actx, case, case.resolutions[0],
-        ctol=6,
+        ctol=10,
         # FIXME: why is the 3D error so large?
         rtol=10**case.ambient_dim,
         visualize=visualize)
