@@ -147,9 +147,12 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 
     from pytential.linalg.skeletonization import (
             _skeletonize_block_by_proxy_with_mats)
+
+    rng = np.random.default_rng(42)
     _skeletonize_block_by_proxy_with_mats(
         actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
-        id_eps=1.0e-8
+        id_eps=1.0e-8,
+        rng=rng,
     )
 
 # }}}
@@ -161,6 +164,7 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 def run_skeletonize_by_proxy(actx, case, resolution,
                              places=None, mat=None,
                              ctol=None, rtol=None,
+                             rng=None,
                              suffix="", visualize=False):
     from pytools import ProcessTimer
 
@@ -238,7 +242,8 @@ def run_skeletonize_by_proxy(actx, case, resolution,
         skeleton = _skeletonize_block_by_proxy_with_mats(
                 actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
                 id_eps=case.id_eps,
-                max_particles_in_box=case.max_particles_in_box)
+                max_particles_in_box=case.max_particles_in_box,
+                rng=rng)
 
     logger.info("[time] skeletonization by proxy: %s", p)
 
@@ -359,7 +364,9 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     """
 
     import scipy.linalg.interpolative as sli
+
     sli.seed(42)
+    rng = np.random.default_rng(42)
 
     actx = actx_factory()
 
@@ -374,6 +381,7 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
         ctol=10,
         # FIXME: why is the 3D error so large?
         rtol=10**case.ambient_dim,
+        rng=rng,
         visualize=visualize)
 
 # }}}
@@ -406,7 +414,9 @@ def test_skeletonize_by_proxy_convergence(
     (the ID tolerance).
     """
     import scipy.linalg.interpolative as sli
+
     sli.seed(42)
+    rng = np.random.default_rng(42)
 
     actx = actx_factory()
 
@@ -440,7 +450,7 @@ def test_skeletonize_by_proxy_convergence(
         case = replace(case, id_eps=id_eps[i], weighted_proxy=weighted)
         rec_error[i], (places, mat) = run_skeletonize_by_proxy(
             actx, case, r, places=places, mat=mat,
-            suffix=f"{suffix}_{i:04d}", visualize=False)
+            suffix=f"{suffix}_{i:04d}", rng=rng, visualize=False)
 
         was_zero = rec_error[i] == 0.0
         eoc.add_data_point(id_eps[i], rec_error[i])
