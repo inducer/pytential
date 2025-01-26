@@ -681,8 +681,6 @@ def _find_array_context_from_args_in_context(
         elif isinstance(ary, np.ndarray) and ary.dtype.char == "O":
             for idx in np.ndindex(ary.shape):
                 look_for_array_contexts(ary[idx])
-        else:
-            pass
 
     for val in context.values():
         look_for_array_contexts(val)
