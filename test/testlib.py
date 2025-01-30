@@ -40,3 +40,13 @@ class DOFDescriptorCollector(Collector):
                 | reduce(operator.or_,
                     (self.rec(v) for v in expr.kernel_arguments.values()), set())
                 )
+
+
+def spherical_harmonic_y(n, m, theta, phi):
+    try:
+        from scipy.special import sph_harm_y
+        return sph_harm_y(n, m, theta, phi)
+    except ImportError:
+        # NOTE: this was deprecated in v1.15 and (will be) removed in v1.17
+        from scipy.special import sph_harm
+        return sph_harm(m, n, phi, theta)

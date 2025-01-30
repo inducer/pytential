@@ -75,10 +75,11 @@ def evaluate_sphere_eigf(actx, discr, m: int, n: int) -> DOFArray:
 
     # {{{ evaluate Y^m_n
 
-    from scipy.special import sph_harm      # pylint: disable=no-name-in-module
+    from testlib import spherical_harmonic_y
+
     y_mn = []
     for gtheta, gphi in zip(theta, phi, strict=True):
-        result = sph_harm(m, n, actx.to_numpy(gphi), actx.to_numpy(gtheta))
+        result = spherical_harmonic_y(n, m, actx.to_numpy(gtheta), actx.to_numpy(gphi))
 
         y_mn.append(actx.from_numpy(result.real.copy()))
 
@@ -162,6 +163,9 @@ class YukawaBeltramiSolution(LaplaceBeltramiSolution):
         marks=pytest.mark.slowtest),
     ])
 def test_beltrami_convergence(actx_factory, operator, solution, visualize=False):
+    if operator.ambient_dim == 3:
+        pytest.importorskip("scipy")
+
     if visualize:
         logging.basicConfig(level=logging.INFO)
     actx = actx_factory()
