@@ -260,9 +260,12 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
     ])
 def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         fmm_backend):
-    special = pytest.importorskip("scipy.special")
+    pytest.importorskip("scipy")
+
     if fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
+
+    from testlib import spherical_harmonic_y
 
     logging.basicConfig(level=logging.INFO)
 
@@ -304,13 +307,13 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         density_discr = places.get_discretization(places.auto_source.geometry)
         nodes = actx.thaw(density_discr.nodes())
         r = actx.np.sqrt(nodes[0]*nodes[0] + nodes[1]*nodes[1] + nodes[2]*nodes[2])
-        phi = actx.np.arccos(nodes[2]/r)
-        theta = actx.np.arctan2(nodes[0], nodes[1])
+        theta = actx.np.arccos(nodes[2]/r)
+        phi = actx.np.arctan2(nodes[0], nodes[1])
 
         ymn = unflatten(theta,
                 actx.from_numpy(
-                    special.sph_harm(
-                        mode_m, mode_n,
+                    spherical_harmonic_y(
+                        mode_n, mode_m,
                         actx.to_numpy(flatten(theta, actx)),
                         actx.to_numpy(flatten(phi, actx)))),
                     actx, strict=False)
