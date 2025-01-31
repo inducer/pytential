@@ -28,7 +28,7 @@ THE SOFTWARE.
 from collections.abc import Hashable, Mapping
 from typing import Any
 
-import immutables
+from constantdict import constantdict
 
 from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
 import pytential.symbolic.primitives as sym
@@ -145,10 +145,10 @@ class GeometryCollection:
 
         # {{{ construct dict
 
-        places_dict: Mapping[Hashable, GeometryLike] = {}
-
         from pytential.symbolic.execution import _prepare_auto_where
         auto_source, auto_target = _prepare_auto_where(auto_where)
+
+        places_dict: Mapping[Hashable, GeometryLike]
         if isinstance(places, QBXLayerPotentialSource):
             places_dict = {auto_source.geometry: places}
             auto_target = auto_source
@@ -170,33 +170,28 @@ class GeometryCollection:
             assert isinstance(places, Mapping)
             places_dict = places
 
-        self.places = immutables.Map(places_dict)
-        self.auto_where = (auto_source, auto_target)
-
-        self._caches: dict[str, Any] = {}
-
         # }}}
 
         # {{{ validate
 
         # check auto_where
-        if auto_source.geometry not in self.places:
+        if auto_source.geometry not in places_dict:
             raise ValueError("'auto_where' source geometry is not in the "
                 f"collection: '{auto_source.geometry}'")
 
-        if auto_target.geometry not in self.places:
+        if auto_target.geometry not in places_dict:
             raise ValueError("'auto_where' target geometry is not in the "
                 f"collection: '{auto_target.geometry}'")
 
         # check allowed identifiers
-        for name in self.places:
+        for name in places_dict:
             if not isinstance(name, str):
                 continue
             if not _is_valid_identifier(name):
                 raise ValueError(f"'{name}' is not a valid identifier")
 
         # check allowed types
-        for p in self.places.values():
+        for p in places_dict.values():
             if not isinstance(p, PotentialSource | TargetBase | Discretization):
                 raise TypeError(
                     "Values in 'places' must be discretization, targets "
@@ -204,13 +199,18 @@ class GeometryCollection:
 
         # check ambient_dim
         from pytools import is_single_valued
-        ambient_dims = [p.ambient_dim for p in self.places.values()]
+
+        ambient_dims = [p.ambient_dim for p in places_dict.values()]
         if not is_single_valued(ambient_dims):
             raise RuntimeError("All 'places' must have the same ambient dimension.")
 
-        self.ambient_dim = ambient_dims[0]
-
         # }}}
+
+        self.ambient_dim = ambient_dims[0]
+        self.places = constantdict(places_dict)
+        self.auto_where = (auto_source, auto_target)
+
+        self._caches: dict[str, Any] = {}
 
     @property
     def auto_source(self) -> sym.DOFDescriptor:
