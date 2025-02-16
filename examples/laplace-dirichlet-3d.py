@@ -36,7 +36,7 @@ def main(mesh_name="torus", visualize=False):
         from meshmode.mesh.generation import generate_torus
         base_mesh = generate_torus(
                 rout, rin, 40, 4,
-                mesh_order)
+                order=mesh_order)
 
         from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
         # nx = 1
