@@ -32,3 +32,9 @@ intersphinx_mapping = {
     "sumpy": ("https://documen.tician.de/sumpy", None),
     "sympy": ("https://docs.sympy.org/latest/", None),
 }
+
+nitpick_ignore_regex = [
+    # Sphinx started complaining about these in 8.2.1(-ish)
+    # -AK, 2025-02-24
+    ["py:class", r"TypeAliasForwardRef"],
+]
