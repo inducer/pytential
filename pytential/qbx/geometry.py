@@ -20,21 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
 
 import numpy as np
 
 from pytools import memoize_method, memoize_in, log_process
-from arraycontext import PyOpenCLArrayContext, flatten
+from arraycontext import Array, flatten
 from meshmode.dof_array import DOFArray
-
-from boxtree.tools import DeviceDataRecord
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
-from cgen import Enum
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from cgen import Enum
 
 from pytential.qbx.utils import TreeCodeContainerMixin
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 
 import logging
 logger = logging.getLogger(__name__)
@@ -58,9 +57,9 @@ Geometry data
 Subordinate data structures
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: TargetInfo()
+.. autoclass:: TargetInfo
 
-.. autoclass:: CenterToTargetList()
+.. autoclass:: CenterToTargetList
 
 Enums of special values
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -129,7 +128,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
                 targets[dim, i] = points[dim, i]
                 """,
             default_offset=lp.auto, name="copy_targets",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
@@ -145,7 +144,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
         return FMMTraversalBuilder(
-                self._setup_actx.context,
+                self._setup_actx,
                 well_sep_is_n_away=self._well_sep_is_n_away,
                 from_sep_smaller_crit=self._from_sep_smaller_crit,
                 )
@@ -188,7 +187,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
                 ],
             name="qbx_center_to_target_box_lookup",
             silenced_warnings="write_race(tgt_write)",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "ibox", 128,
                 inner_tag="l.0", outer_tag="g.0")
@@ -199,7 +198,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
     @memoize_method
     def build_leaf_to_ball_lookup(self):
         from boxtree.area_query import LeavesToBallsLookupBuilder
-        return LeavesToBallsLookupBuilder(self._setup_actx.context)
+        return LeavesToBallsLookupBuilder(self._setup_actx)
 
     @property
     @memoize_method
@@ -251,7 +250,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
             ],
             name="pick_used_centers",
             silenced_warnings="write_race(center_is_used_write)",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
         return knl.executor(self._setup_actx.context)
@@ -260,7 +259,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
     @memoize_method
     def rotation_classes_builder(self):
         from boxtree.rotation_classes import RotationClassesBuilder
-        return RotationClassesBuilder(self._setup_actx.context)
+        return RotationClassesBuilder(self._setup_actx)
 
 
 def qbx_fmm_geometry_data_code_container(
@@ -287,7 +286,8 @@ def qbx_fmm_geometry_data_code_container(
 
 # {{{ geometry data
 
-class TargetInfo(DeviceDataRecord):
+@dataclass(frozen=True)
+class TargetInfo:
     """Describes the internal structure of the QBX FMM's list of :attr:`targets`.
     The list consists of QBX centers, then target
     points for each target discretization. The starts of the target points for
@@ -310,8 +310,14 @@ class TargetInfo(DeviceDataRecord):
     .. attribute:: ntargets
     """
 
+    targets: Array
+    target_discr_starts: Array
+    ntargets: int
 
-class CenterToTargetList(DeviceDataRecord):
+
+@dataclass_array_container
+@dataclass(frozen=True)
+class CenterToTargetList:
     """A lookup table of targets covered by each QBX disk. Indexed by global
     number of QBX center, ``lists[start[i]:start[i+1]]`` indicates numbers
     of the overlapped targets in tree target order.
@@ -326,6 +332,9 @@ class CenterToTargetList(DeviceDataRecord):
 
         Lists of targets in tree order. Use with :attr:`starts`.
     """
+
+    starts: Array
+    lists: Array
 
 
 class QBXFMMGeometryData(FMMLibRotationDataInterface):
@@ -563,7 +572,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         refine_weights.finish()
 
-        tree, _ = code_getter.build_tree()(actx.queue,
+        tree, _ = code_getter.build_tree()(actx,
                 particles=flatten(
                     quad_stage2_discr.nodes(), actx, leaf_class=DOFArray
                     ),
@@ -580,7 +589,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             tgt_count_2 = actx.to_numpy(actx.np.sum(tree.box_target_counts_nonchild))
             assert (tree.ntargets == tgt_count_2), (tree.ntargets, tgt_count_2)
 
-        return tree.with_queue(None)
+        return actx.freeze(tree)
 
     # }}}
 
@@ -595,15 +604,15 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
 
         actx = self._setup_actx
-        trav, _ = self.code_getter.build_traversal(actx.queue, self.tree(),
+        trav, _ = self.code_getter.build_traversal(actx, self.tree(),
                 debug=self.debug,
                 _from_sep_smaller_min_nsources_cumul=(
                     self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
         if merge_close_lists and self.lpot_source._expansions_in_tree_have_extent:
-            trav = trav.merge_close_lists(actx.queue)
+            trav = trav.merge_close_lists(actx)
 
-        return trav.with_queue(None)
+        return actx.freeze(trav)
 
     @memoize_method
     def qbx_center_to_target_box(self):
@@ -859,9 +868,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         tree = self.tree()
         plfilt = self.code_getter.particle_list_filter()
-        result = plfilt.filter_target_lists_in_tree_order(actx.queue, tree, flags)
+        result = plfilt.filter_target_lists_in_tree_order(actx, tree, flags)
 
-        return result.with_queue(None)
+        return actx.freeze(result)
 
     @memoize_method
     def build_rotation_classes_lists(self):
@@ -869,8 +878,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         trav = self.traversal()
         tree = self.tree()
 
-        result = self.code_getter.rotation_classes_builder(actx.queue, trav, tree)
-        return result[0].get(queue=actx.queue)
+        result = self.code_getter.rotation_classes_builder(actx, trav, tree)
+        return actx.to_numpy(result[0])
 
     @memoize_method
     def m2l_rotation_lists(self):
@@ -916,7 +925,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         global_flags = actx.to_numpy(self.global_qbx_flags())
 
-        tree = self.tree().get(queue=actx.queue)
+        tree = actx.to_numpy(self.tree())
         from boxtree.visualization import TreePlotter
         tp = TreePlotter(tree)
         tp.draw_tree()
