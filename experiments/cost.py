@@ -28,7 +28,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from meshmode.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext
 
 from pytential import sym, bind
 from pytential.qbx.cost import QBXCostModel
@@ -138,8 +138,7 @@ def calibrate_cost_model(ctx):
 
         for _ in range(RUNS):
             timing_data = {}
-            bound_op.eval({"sigma": sigma}, array_context=actx,
-                    timing_data=timing_data)
+            bound_op.eval({"sigma": sigma}, array_context=actx)
 
             model_results.append(modeled_cost)
             timing_results.append(timing_data)
@@ -175,8 +174,7 @@ def test_cost_model(ctx, calibration_params):
         temp_timing_results = []
         for _ in range(RUNS):
             timing_data = {}
-            bound_op.eval({"sigma": sigma},
-                    array_context=actx, timing_data=timing_data)
+            bound_op.eval({"sigma": sigma}, array_context=actx)
             temp_timing_results.append(one(timing_data.values()))
 
         timing_result = {}
