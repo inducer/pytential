@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import field
 from warnings import warn
 from functools import partial
@@ -400,15 +400,14 @@ class Expression(ExpressionNode):
 
 
 Operand: TypeAlias = (
-    ArithmeticExpression | np.ndarray[Any, np.dtype[Any]] | MultiVector)
-QBXForcedLimit: TypeAlias = int | Literal["avg"] | None
+    ArithmeticExpression
+        | np.ndarray[Any, np.dtype[Any]]
+        | MultiVector[ArithmeticExpression])
+
+QBXForcedLimit: TypeAlias = Literal[-2, -1, 1, 1, "avg"] | None
 
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
 ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
-
-
-class _NoArgSentinel:
-    pass
 
 
 class cse_scope(cse_scope_base):  # noqa: N801
@@ -457,7 +456,7 @@ class ErrorExpression(Expression):
     """The error message to raise when this expression is encountered."""
 
 
-def make_sym_mv(name: str, num_components: int) -> MultiVector[Expression]:
+def make_sym_mv(name: str, num_components: int) -> MultiVector[ArithmeticExpression]:
     return MultiVector(make_sym_vector(name, num_components))
 
 
@@ -637,7 +636,7 @@ class NumReferenceDerivative(DiscretizationProperty):
     # different..
     def __init__(self,
                  ref_axes: tuple[tuple[int, int], ...],
-                 operand: ArithmeticExpression,
+                 operand: Operand | None,
                  dofdesc: DOFDescriptorLike) -> None:
         if isinstance(ref_axes, int):
             warn(f"Passing an 'int' as 'ref_axes' to {type(self).__name__!r} "
@@ -682,7 +681,11 @@ def num_reference_derivative(
     return NumReferenceDerivative(ref_axes, expr, as_dofdesc(dofdesc))
 
 
-def reference_jacobian(func, output_dim, dim, dofdesc=None):
+def reference_jacobian(
+            func: Sequence[ArithmeticExpression],
+            output_dim: int,
+            dim: int,
+            dofdesc: DOFDescriptorLike = None):
     """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
     """
@@ -697,7 +700,10 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     return jac
 
 
-def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
+def parametrization_derivative_matrix(
+            ambient_dim: int,
+            dim: int,
+            dofdesc: DOFDescriptorLike = None):
     """Return a :class:`numpy.ndarray` representing the derivative of the
     reference-to-global parametrization.
     """
@@ -710,7 +716,10 @@ def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
             "pd_matrix", cse_scope.DISCRETIZATION)
 
 
-def parametrization_derivative(ambient_dim, dim, dofdesc=None):
+def parametrization_derivative(
+            ambient_dim: int,
+            dim: int,
+            dofdesc: DOFDescriptorLike = None):
     """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
     the derivative of the reference-to-global parametrization.
     """
@@ -718,10 +727,13 @@ def parametrization_derivative(ambient_dim, dim, dofdesc=None):
     par_grad = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
 
     from pytools import product
-    return product(MultiVector(vec) for vec in par_grad.T)
+    return product(MultiVector[ArithmeticExpression](vec) for vec in par_grad.T)
 
 
-def pseudoscalar(ambient_dim, dim=None, dofdesc=None):
+def pseudoscalar(
+            ambient_dim: int,
+            dim: int | None = None,
+            dofdesc: DOFDescriptorLike = None):
     """
     Same as the outer product of all parametrization derivative columns.
     """

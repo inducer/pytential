@@ -30,7 +30,7 @@ from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
 from sumpy.fmm import UnableToCollectTimingData
 from sumpy.kernel import Kernel
-from sumpy.p2p import P2PBase
+from sumpy.p2p import P2P, P2PBase
 
 from pytential import sym
 
@@ -112,10 +112,10 @@ class _SumpyP2PMixin:
     def get_p2p(self,
                 actx: PyOpenCLArrayContext,
                 target_kernels: tuple[Kernel, ...],
-                source_kernels: tuple[Kernel, ...] | None = None) -> P2PBase:
+                source_kernels: tuple[Kernel, ...] | None = None) -> P2P:
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
         def p2p(target_kernels: tuple[Kernel, ...],
-                source_kernels: tuple[Kernel, ...] | None) -> P2PBase:
+                source_kernels: tuple[Kernel, ...] | None) -> P2P:
             if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype    # type: ignore[attr-defined]
             else:

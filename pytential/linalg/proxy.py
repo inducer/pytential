@@ -22,15 +22,16 @@ THE SOFTWARE.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import PyOpenCLArrayContext, flatten
+from arraycontext import Array, ArrayContainer, PyOpenCLArrayContext, flatten
 from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
 
+from numpy.typing import NDArray
 from pytools import memoize_in
 from pytential import GeometryCollection, bind, sym
 from pytential.symbolic.dof_desc import DOFDescriptorLike
@@ -151,7 +152,7 @@ class ProxyPointSource(PointPotentialSource):
 
     def __init__(self,
             lpot_source: QBXLayerPotentialSource,
-            proxies: np.ndarray) -> None:
+            proxies: Array) -> None:
         """
         :arg lpot_source: the layer potential for which the proxy are constructed.
         :arg proxies: an array of shape ``(ambient_dim, nproxies)`` containing
@@ -174,7 +175,7 @@ class ProxyPointSource(PointPotentialSource):
 class ProxyPointTarget(PointsTarget):
     def __init__(self,
             lpot_source: QBXLayerPotentialSource,
-            proxies: np.ndarray) -> None:
+            proxies: Array) -> None:
         """
         :arg lpot_source: the layer potential for which the proxy are constructed.
             This argument is kept for symmetry with :class:`ProxyPointSource`.
@@ -227,9 +228,9 @@ class ProxyClusterGeometryData:
     srcindex: IndexList
     pxyindex: IndexList
 
-    points: np.ndarray
-    centers: np.ndarray
-    radii: np.ndarray
+    points: NDArray[Any]
+    centers: NDArray[Any]
+    radii: NDArray[Any]
 
     _cluster_radii: np.ndarray | None = None
 
@@ -260,13 +261,13 @@ class ProxyClusterGeometryData:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
         assert isinstance(lpot_source, QBXLayerPotentialSource)
 
-        return ProxyPointSource(lpot_source, self.points)
+        return ProxyPointSource(lpot_source, cast("Array", self.points))
 
     def as_targets(self) -> ProxyPointTarget:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
         assert isinstance(lpot_source, QBXLayerPotentialSource)
 
-        return ProxyPointTarget(lpot_source, self.points)
+        return ProxyPointTarget(lpot_source, cast("Array", self.points))
 
 # }}}
 
@@ -632,12 +633,12 @@ class QBXProxyGenerator(ProxyGeneratorBase):
             source_dd = self.places.auto_source
         source_dd = sym.as_dofdesc(source_dd)
 
-        radii = bind(self.places, sym.expansion_radii(
-            self.ambient_dim, dofdesc=source_dd))(actx)
-        center_int = bind(self.places, sym.expansion_centers(
-            self.ambient_dim, -1, dofdesc=source_dd))(actx)
-        center_ext = bind(self.places, sym.expansion_centers(
-            self.ambient_dim, +1, dofdesc=source_dd))(actx)
+        radii = cast(ArrayContainer, bind(self.places, sym.expansion_radii(
+            self.ambient_dim, dofdesc=source_dd))(actx))
+        center_int = cast(ArrayContainer, bind(self.places, sym.expansion_centers(
+            self.ambient_dim, -1, dofdesc=source_dd))(actx))
+        center_ext = cast(ArrayContainer, bind(self.places, sym.expansion_centers(
+            self.ambient_dim, +1, dofdesc=source_dd))(actx))
 
         return super().__call__(actx, source_dd, dof_index,
                 expansion_radii=flatten(radii, actx),
