@@ -93,7 +93,9 @@ class PointsTarget(TargetBase):
 
     @property
     def ambient_dim(self) -> int:
-        return self._nodes.shape[0]
+        adim = self._nodes.shape[0]
+        assert isinstance(adim, int)
+        return adim
 
     @property
     def ndofs(self) -> int:

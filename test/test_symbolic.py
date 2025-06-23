@@ -439,9 +439,9 @@ def test_derivative_binder_expr():
 # {{{ test_mapper_kernel_transformation_remover
 
 def _make_operator(ambient_dim: int, op_name: str, k: float, *, side: int = +1):
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, Kernel
     if k == 0:
-        kernel = LaplaceKernel(ambient_dim)
+        kernel: Kernel = LaplaceKernel(ambient_dim)
         kernel_arguments = {}
     else:
         kernel = HelmholtzKernel(ambient_dim)
