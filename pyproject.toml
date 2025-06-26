@@ -1,9 +1,6 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = [
-    "cython>=0.25",
-    "setuptools>=63",
-]
+requires = ["scikit-build-core", "cython", "cython-cmake"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "pytential"
