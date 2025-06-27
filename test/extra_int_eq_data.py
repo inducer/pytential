@@ -1,3 +1,4 @@
+# pyright: reportIncompatibleVariableOverride=none, reportAssignmentType=none
 __copyright__ = "Copyright (C) 2014 Andreas Kloeckner"
 
 __license__ = """
