@@ -39,7 +39,7 @@ from pymbolic.geometric_algebra.mapper import (
         IdentityMapper as IdentityMapperBase,
         Collector as CollectorBase,
         DerivativeBinder as DerivativeBinderBase,
-        EvaluationMapper as EvaluationMapperBase,
+        EvaluationRewriter as EvaluationRewriterBase,
 
         StringifyMapper as BaseStringifyMapper,
 
@@ -213,9 +213,9 @@ class DependencyMapper(DependencyMapperBase, Collector):
 # }}}
 
 
-# {{{ EvaluationMapper
+# {{{ EvaluationRewriter
 
-class EvaluationMapper(EvaluationMapperBase):
+class EvaluationRewriter(EvaluationRewriterBase):
     """Unlike :mod:`pymbolic.mapper.evaluation.EvaluationMapper`, this class
     does evaluation mostly to get :class:`pymbolic.geometric_algebra.MultiVector`
     instances to do their thing, and perhaps to automatically kill terms
@@ -553,13 +553,13 @@ class DerivativeSourceAndNablaComponentCollector(
 
 
 class NablaComponentToUnitVector(
-        EvaluationMapper,
+        EvaluationRewriter,
         NablaComponentToUnitVectorBase):
     pass
 
 
 class DerivativeSourceFinder(
-        EvaluationMapper,
+        EvaluationRewriter,
         DerivativeSourceFinderBase):
     pass
 
