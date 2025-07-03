@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2017 Matt Wala
 """
@@ -22,21 +25,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any
+import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-
-from pytools import memoize_method
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
-from meshmode.dof_array import DOFArray
-
 from boxtree.tools import DeviceDataRecord
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.dof_array import DOFArray
+from pytools import memoize_method
+
 from pytential.source import LayerPotentialSourceBase
 
-import logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from meshmode.discretization import Discretization
+    from sumpy.expansion import ExpansionFactoryBase
+
+    from pytential.collection import GeometryLike
+    from pytential.target import TargetOrDiscretization
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,10 +67,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     .. attribute:: fmm_level_to_order
     """
 
-    def __init__(self, density_discr,
-            fmm_order=False,
-            fmm_level_to_order=None,
-            expansion_factory=None,
+    density_discr: Discretization
+    fmm_level_to_order: Literal[False] | Callable[..., int]
+    expansion_factory: ExpansionFactoryBase
+
+    debug: bool
+
+    def __init__(self, density_discr: Discretization,
+            fmm_order: Literal[False] | int | None = False,
+            fmm_level_to_order: Literal[False] | Callable[..., int] | None = None,
+            expansion_factory: ExpansionFactoryBase | None = None,
             # begin undocumented arguments
             # FIXME default debug=False once everything works
             debug=True):
@@ -102,6 +121,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
+
             from pytential.source import UnableToCollectTimingData
             warn(
                    "Timing data collection not supported.",
@@ -220,8 +240,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate):
         # {{{ gather unique target discretizations used
 
-        from pytential.collection import GeometryLike
-
         target_name_to_index = {}
         targets: tuple[GeometryLike, ...] = ()
 
@@ -307,12 +325,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
 # {{{ fmm tools
 
+@dataclass(frozen=True)
 class _FMMGeometryDataCodeContainer:
-
-    def __init__(self, actx, ambient_dim, debug):
-        self.array_context = actx
-        self.ambient_dim = ambient_dim
-        self.debug = debug
+    array_context: PyOpenCLArrayContext
+    ambient_dim: int
+    debug: bool
 
     @property
     def cl_context(self):
@@ -367,13 +384,12 @@ class _TargetInfo(DeviceDataRecord):
     """
 
 
+@dataclass(frozen=True)
 class _FMMGeometryData:
-
-    def __init__(self, lpot_source, code_getter, target_discrs, debug=True):
-        self.lpot_source = lpot_source
-        self.code_getter = code_getter
-        self.target_discrs = target_discrs
-        self.debug = debug
+    lpot_source: UnregularizedLayerPotentialSource
+    code_getter: _FMMGeometryDataCodeContainer
+    target_discrs: Sequence[TargetOrDiscretization]
+    debug: bool
 
     @property
     def cl_context(self):

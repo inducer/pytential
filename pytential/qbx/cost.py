@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Matt Wala
@@ -24,26 +27,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from abc import abstractmethod
+from functools import partial
+
 import numpy as np
+from mako.template import Template
+
 import pyopencl as cl
 import pyopencl.array
+from boxtree.cost import (
+    AbstractFMMCostModel as BaseAbstractFMMCostModel,
+    FMMCostModel,
+    FMMTranslationCostModel,
+    _PythonFMMCostModel,
+)
+from pymbolic import evaluate, var
 from pyopencl.array import take
 from pyopencl.elementwise import ElementwiseKernel
 from pyopencl.tools import dtype_to_ctype
-from mako.template import Template
-from pymbolic import var, evaluate
 from pytools import memoize_method
-from functools import partial
 
-from boxtree.cost import (
-    FMMTranslationCostModel, AbstractFMMCostModel as BaseAbstractFMMCostModel,
-    FMMCostModel, _PythonFMMCostModel
-)
-from abc import abstractmethod
 
 Template = partial(Template, strict_undefined=True)
 
 import logging
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -924,8 +933,8 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
                          calibration_params):
         """This function transfers *geo_data* to host if necessary
         """
-        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         from pytential.qbx.geometry import QBXFMMGeometryData
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
 
         if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
             assert isinstance(geo_data, QBXFMMGeometryData)
@@ -939,8 +948,8 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
                            calibration_params):
         """This function additionally transfers geo_data to host if necessary
         """
-        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         from pytential.qbx.geometry import QBXFMMGeometryData
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
 
         if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
             assert isinstance(geo_data, QBXFMMGeometryData)

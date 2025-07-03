@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,39 +23,52 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Set
 from dataclasses import replace
 from functools import reduce
+from typing import TYPE_CHECKING, cast
 
-from pymbolic.mapper.stringifier import (
-        CSESplittingStringifyMapperMixin,
-        PREC_NONE, PREC_PRODUCT)
-from pymbolic.mapper import (
-        Mapper,
-        CachedMapper,
-        CSECachingMapperMixin,
-        )
-from pymbolic.mapper.dependency import (
-        DependencyMapper as DependencyMapperBase)
-from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
+from typing_extensions import override
+
+import pymbolic.primitives as p
+from pymbolic import ArithmeticExpression, ExpressionNode
 from pymbolic.geometric_algebra.mapper import (
-        CombineMapper as CombineMapperBase,
-        IdentityMapper as IdentityMapperBase,
-        Collector as CollectorBase,
-        DerivativeBinder as DerivativeBinderBase,
-        EvaluationRewriter as EvaluationRewriterBase,
-
-        StringifyMapper as BaseStringifyMapper,
-
-        DerivativeSourceAndNablaComponentCollector
-        as DerivativeSourceAndNablaComponentCollectorBase,
-        NablaComponentToUnitVector
-        as NablaComponentToUnitVectorBase,
-        DerivativeSourceFinder
-        as DerivativeSourceFinderBase,
-
-        GraphvizMapper as GraphvizMapperBase)
+    Collector as CollectorBase,
+    CombineMapper as CombineMapperBase,
+    DerivativeBinder as DerivativeBinderBase,
+    DerivativeSourceAndNablaComponentCollector as DerivativeSourceAndNablaComponentCollectorBase,  # noqa: E501
+    DerivativeSourceFinder as DerivativeSourceFinderBase,
+    EvaluationRewriter as EvaluationRewriterBase,
+    GraphvizMapper as GraphvizMapperBase,
+    IdentityMapper as IdentityMapperBase,
+    NablaComponentToUnitVector as NablaComponentToUnitVectorBase,
+    StringifyMapper as BaseStringifyMapper,
+)
+from pymbolic.mapper import (
+    CachedMapper,
+    CollectedT,
+    CSECachingMapperMixin,
+    Mapper,
+    ResultT,
+)
+from pymbolic.mapper.dependency import (
+    Dependency,
+    DependencyMapper as DependencyMapperBase,
+)
+from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
+from pymbolic.mapper.stringifier import (
+    PREC_NONE,
+    PREC_PRODUCT,
+    CSESplittingStringifyMapperMixin,
+)
 from pymbolic.typing import Expression
+
 import pytential.symbolic.primitives as prim
+
+
+if TYPE_CHECKING:
+    from pytential.collection import GeometryCollection
+    from pytential.symbolic.dof_desc import DOFDescriptor, DOFDescriptorLike, GeometryId
 
 
 def rec_int_g_arguments(mapper, expr):
@@ -142,7 +158,7 @@ class IdentityMapper(IdentityMapperBase[[]]):
         return type(expr)(expr.from_dd, expr.to_dd, operand)
 
 
-class CachedIdentityMapper(CachedMapper, IdentityMapper):
+class CachedIdentityMapper(CachedMapper[Expression, []], IdentityMapper):
     def __call__(self, expr):
         try:
             return CachedMapper.__call__(self, expr)
@@ -158,7 +174,7 @@ class CachedIdentityMapper(CachedMapper, IdentityMapper):
 
 # {{{ CombineMapper
 
-class CombineMapper(CombineMapperBase):
+class CombineMapper(CombineMapperBase[ResultT, []]):
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
@@ -170,44 +186,45 @@ class CombineMapper(CombineMapperBase):
     map_elementwise_max = map_node_sum
     map_interpolation = map_node_sum
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: prim.IntG) -> ResultT:
         from pytential.symbolic.primitives import hashable_kernel_args
         return self.combine(
                 [self.rec(density) for density in expr.densities]
                 + [self.rec(arg_expr)
                     for _, arg_expr in hashable_kernel_args(expr.kernel_arguments)])
 
-    def map_inverse(self, expr):
+    def map_inverse(self, expr: prim.IterativeInverse) -> ResultT:
         return self.combine([
             self.rec(expr.rhs),
             *(self.rec(name_expr) for name_expr in expr.extra_vars.values())
             ])
-
-    def map_is_shape_class(self, expr):
-        return set()
-
-    map_error_expression = map_is_shape_class
 
 # }}}
 
 
 # {{{ Collector
 
-class Collector(CollectorBase, CombineMapper):
-    def map_ones(self, expr):
+class Collector(CollectorBase[CollectedT, []], CombineMapper[Set[CollectedT]]):
+    def map_ones(self,
+                expr: prim.Ones | prim.ErrorExpression | prim.IsShapeClass
+            ) -> Set[CollectedT]:
         return set()
+
+    map_is_shape_class = map_ones
+    map_error_expression = map_ones
 
     map_node_coordinate_component = map_ones
     map_parametrization_derivative = map_ones
     map_q_weight = map_ones
 
 
-class OperatorCollector(Collector):
-    def map_int_g(self, expr):
+class OperatorCollector(Collector[prim.IntG]):
+    @override
+    def map_int_g(self, expr: prim.IntG):
         return {expr} | Collector.map_int_g(self, expr)
 
 
-class DependencyMapper(DependencyMapperBase, Collector):
+class DependencyMapper(DependencyMapperBase[[]], Collector[Dependency]):
     pass
 
 # }}}
@@ -223,16 +240,18 @@ class EvaluationRewriter(EvaluationRewriterBase):
     the structure of the input expression.
     """
 
+    @override
     def map_variable(self, expr):
         return expr
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: p.Subscript):
         aggregate = self.rec(expr.aggregate)
         index = self.rec(expr.index)
         if aggregate is expr.aggregate and index is expr.index:
             return expr
 
-        return aggregate[index]
+        return cast("ExpressionNode", aggregate)[index]
 
     map_q_weight = map_variable
     map_ones = map_variable
@@ -247,24 +266,25 @@ class EvaluationRewriter(EvaluationRewriterBase):
     map_node_max = map_node_sum
     map_node_min = map_node_sum
 
-    def map_node_coordinate_component(self, expr):
+    def map_node_coordinate_component(self, expr: prim.NodeCoordinateComponent):
         return expr
 
-    def map_num_reference_derivative(self, expr):
+    def map_num_reference_derivative(self, expr: prim.NumReferenceDerivative):
         operand = self.rec(expr.operand)
         if operand is expr.operand:
             return expr
 
         return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: prim.IntG):
         densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
         if not changed:
             return expr
 
         return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
-    def map_common_subexpression(self, expr):
+    @override
+    def map_common_subexpression(self, expr: p.CommonSubexpression):
         child = self.rec(expr.child)
         if child is expr.child:
             return expr
@@ -295,9 +315,12 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                      IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
 
-    def __init__(self, default_target, default_source):
-        self.default_source = prim.as_dofdesc(default_source)
-        self.default_target = prim.as_dofdesc(default_target)
+    def __init__(self,
+                default_target: DOFDescriptorLike,
+                default_source: DOFDescriptorLike
+            ):
+        self.default_source: DOFDescriptor = prim.as_dofdesc(default_source)
+        self.default_target: DOFDescriptor = prim.as_dofdesc(default_target)
 
     def map_common_subexpression_uncached(self, expr) -> Expression:
         # Mypy 1.13 complains about this:
@@ -354,7 +377,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: prim.IntG):
         source = expr.source
         if source.geometry is None:
             source = source.copy(geometry=self.default_source)
@@ -373,7 +396,8 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                     for name, arg_expr in expr.kernel_arguments.items()
                     })
 
-    def map_inverse(self, expr):
+    @override
+    def map_inverse(self, expr: prim.IterativeInverse):
         # NOTE: this doesn't use `_default_dofdesc` because it should be always
         # evaluated at the targets (ignores `discr_stage`)
         dofdesc = expr.dofdesc
@@ -384,13 +408,14 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                 # don't recurse into expression--it is a separate world that
                 # will be processed once it's executed.
 
-                expr.expression, self.rec(expr.rhs), expr.variable_name,
+                expr.expression, self.rec_arith(expr.rhs), expr.variable_name,
                 {
                     name: self.rec(name_expr)
                     for name, name_expr in expr.extra_vars.items()},
                 dofdesc)
 
-    def map_interpolation(self, expr):
+    @override
+    def map_interpolation(self, expr: prim.Interpolation):
         from_dd = expr.from_dd
         if from_dd.geometry is None:
             from_dd = from_dd.copy(geometry=self.default_source)
@@ -480,7 +505,7 @@ class DiscretizationStageTagger(IdentityMapper):
 
 # {{{ DerivativeBinder
 
-class _IsSptiallyVaryingMapper(CombineMapper):
+class _IsSptiallyVaryingMapper(CombineMapper[bool]):
     def combine(self, values):
         import operator
         from functools import reduce
@@ -503,9 +528,9 @@ class _DerivativeTakerUnsupoortedProductError(Exception):
     pass
 
 
-class DerivativeTaker(Mapper):
-    def __init__(self, ambient_axis):
-        self.ambient_axis = ambient_axis
+class DerivativeTaker(Mapper[ArithmeticExpression, []]):
+    def __init__(self, ambient_axis: int):
+        self.ambient_axis: int = ambient_axis
 
     def map_constant(self, expr):
         return 0
@@ -519,7 +544,7 @@ class DerivativeTaker(Mapper):
         from pymbolic.primitives import flattened_sum
         return flattened_sum(children)
 
-    def map_product(self, expr):
+    def map_product(self, expr: p.Product):
         const = []
         nonconst = []
         for subexpr in expr.children:
@@ -539,7 +564,7 @@ class DerivativeTaker(Mapper):
         from pytools import product
         return product(const) * self.rec(nonconst[0])
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: prim.IntG):
         from sumpy.kernel import AxisTargetDerivative
 
         target_kernel = AxisTargetDerivative(self.ambient_axis, expr.target_kernel)
@@ -630,7 +655,8 @@ class InterpolationPreprocessor(IdentityMapper):
                 if from_discr_stage is None else from_discr_stage)
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
-    def map_num_reference_derivative(self, expr):
+    @override
+    def map_num_reference_derivative(self, expr: prim.NumReferenceDerivative):
         to_dd = expr.dofdesc
         if to_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
@@ -643,7 +669,8 @@ class InterpolationPreprocessor(IdentityMapper):
         from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
         return prim.interpolate(self.rec(self.tagger(expr)), from_dd, to_dd)
 
-    def map_int_g(self, expr):
+    @override
+    def map_int_g(self, expr: prim.IntG):
         if expr.target.discr_stage is None:
             expr = replace(expr, target=expr.target.to_stage1())
 
@@ -678,11 +705,12 @@ class InterpolationPreprocessor(IdentityMapper):
 # {{{ QBXPreprocessor
 
 class QBXPreprocessor(IdentityMapper):
-    def __init__(self, geometry, places):
-        self.geometry = geometry
-        self.places = places
+    def __init__(self, geometry: GeometryId, places: GeometryCollection):
+        self.geometry: GeometryId = geometry
+        self.places: GeometryCollection = places
 
-    def map_int_g(self, expr):
+    @override
+    def map_int_g(self, expr: prim.IntG):
         if expr.source.geometry != self.geometry:
             return expr
 
@@ -738,7 +766,7 @@ class QBXPreprocessor(IdentityMapper):
 
 # {{{ StringifyMapper
 
-def stringify_where(where):
+def stringify_where(where: DOFDescriptorLike):
     return str(prim.as_dofdesc(where))
 
 
@@ -852,7 +880,7 @@ class StringifyMapper(BaseStringifyMapper):
 
 
 class PrettyStringifyMapper(
-        CSESplittingStringifyMapperMixin, StringifyMapper):
+        CSESplittingStringifyMapperMixin[[]], StringifyMapper):
     pass
 
 # }}}

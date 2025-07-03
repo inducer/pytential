@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2014 Andreas Kloeckner"
 
 __license__ = """
@@ -20,30 +23,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-
-import numpy as np
-import numpy.linalg as la
-
-from arraycontext import flatten
-from meshmode.discretization.visualization import make_visualizer
-
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
-
-from pytential import bind, sym
-from pytential import GeometryCollection
-from pytools import obj_array
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+import logging
 
 import extra_int_eq_data as inteq
-import logging
+import numpy as np
+import numpy.linalg as la
+import pytest
+
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.discretization.visualization import make_visualizer
+from pytools import obj_array
+from sumpy.kernel import BiharmonicKernel, HelmholtzKernel, LaplaceKernel
+
+from pytential import GeometryCollection, bind, sym
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -94,8 +94,8 @@ def run_int_eq_test(actx,
                 )
         vis_extend_factor = getattr(case, "vis_extend_factor", 0.2)
 
-        from sumpy.visualization import make_field_plotter_from_bbox
         from meshmode.mesh.processing import find_bounding_box
+        from sumpy.visualization import make_field_plotter_from_bbox
         fplot = make_field_plotter_from_bbox(
                 find_bounding_box(qbx.density_discr.mesh),
                 h=vis_grid_spacing,

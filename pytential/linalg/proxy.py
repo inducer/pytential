@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Alexandru Fikl"
 
 __license__ = """
@@ -20,28 +23,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.linalg as la
 
+import loopy as lp
 from arraycontext import Array, ArrayContainer, PyOpenCLArrayContext, flatten
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
-
-from numpy.typing import NDArray
 from pytools import memoize_in
+
 from pytential import GeometryCollection, bind, sym
-from pytential.symbolic.dof_desc import DOFDescriptorLike
-from pytential.linalg.utils import IndexList
+from pytential.qbx import QBXLayerPotentialSource
 from pytential.source import PointPotentialSource
 from pytential.target import PointsTarget
-from pytential.qbx import QBXLayerPotentialSource
 
-import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
+
+    from pytential.linalg.utils import IndexList
+    from pytential.symbolic.dof_desc import DOFDescriptorLike
 
 
 __doc__ = """
@@ -244,7 +251,7 @@ class ProxyClusterGeometryData:
                 self.dofdesc.geometry,
                 self.dofdesc.discr_stage)
 
-    def to_numpy(self, actx: PyOpenCLArrayContext) -> "ProxyClusterGeometryData":
+    def to_numpy(self, actx: PyOpenCLArrayContext) -> ProxyClusterGeometryData:
         if self._cluster_radii is not None:
             cluster_radii = actx.to_numpy(self._cluster_radii)
         else:
@@ -633,11 +640,11 @@ class QBXProxyGenerator(ProxyGeneratorBase):
             source_dd = self.places.auto_source
         source_dd = sym.as_dofdesc(source_dd)
 
-        radii = cast(ArrayContainer, bind(self.places, sym.expansion_radii(
+        radii = cast("ArrayContainer", bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(actx))
-        center_int = cast(ArrayContainer, bind(self.places, sym.expansion_centers(
+        center_int = cast("ArrayContainer", bind(self.places, sym.expansion_centers(
             self.ambient_dim, -1, dofdesc=source_dd))(actx))
-        center_ext = cast(ArrayContainer, bind(self.places, sym.expansion_centers(
+        center_ext = cast("ArrayContainer", bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx))
 
         return super().__call__(actx, source_dd, dof_index,

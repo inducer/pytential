@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,16 +25,17 @@ THE SOFTWARE.
 
 import numpy as np
 
-import pytential.symbolic.primitives as sym
-from pytential.symbolic.execution import bind
-from pytential.collection import GeometryCollection
-
 from pytools import memoize_on_first_arg
+
+import pytential.symbolic.primitives as sym
+from pytential.collection import GeometryCollection
+from pytential.symbolic.execution import bind
 
 
 def _set_up_logging_from_environment():
     import logging
     import os
+
     from pytential.log import set_up_logging
 
     for level_name, level in (
@@ -48,6 +52,7 @@ def _set_up_logging_from_environment():
 
 def _set_up_errors():
     import warnings
+
     from pytential.qbx.refinement import RefinerNotConvergedWarning
     warnings.filterwarnings("error", category=RefinerNotConvergedWarning)
 
@@ -58,7 +63,7 @@ _set_up_errors()
 
 @memoize_on_first_arg
 def _integral_op(discr):
-    from pytential import sym, bind
+    from pytential import bind, sym
     return bind(discr,
             sym.integral(
                 discr.ambient_dim, discr.dim, sym.var("integrand")))
@@ -70,7 +75,7 @@ def integral(discr, x):
 
 @memoize_on_first_arg
 def _norm_2_op(discr, num_components):
-    from pytential import sym, bind
+    from pytential import bind, sym
     if num_components is not None:
         from pymbolic.primitives import make_sym_vector
         v = make_sym_vector("integrand", num_components)
@@ -84,7 +89,7 @@ def _norm_2_op(discr, num_components):
 
 @memoize_on_first_arg
 def _norm_inf_op(discr, num_components):
-    from pytential import sym, bind
+    from pytential import bind, sym
     if num_components is not None:
         from pymbolic.primitives import make_sym_vector
         v = make_sym_vector("arg", num_components)

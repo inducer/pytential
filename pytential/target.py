@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -29,6 +32,8 @@ used as evaluation targets.
 
 .. autoclass:: TargetBase
 
+.. autoclass:: TargetOrDiscretization
+
 .. autoclass:: PointsTarget
 
 .. class:: Array
@@ -37,12 +42,17 @@ used as evaluation targets.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 from arraycontext import Array
+from meshmode.discretization import Discretization
 from pytools import T
 
+
 if TYPE_CHECKING:
+    from arraycontext import Array
+    from pytools import T
+
     from pytential.collection import GeometryCollection
 
 
@@ -110,12 +120,14 @@ class PointsTarget(TargetBase):
 
     def preprocess_optemplate(self,
                 name: str,
-                discretizations: "GeometryCollection",
+                discretizations: GeometryCollection,
                 # FIXME: replace this with a pymbolic TypeVar bound to an actual
                 # expression when that gets in
                 expr: T) -> T:
         """See :class:`~pytential.source.PotentialSource`."""
         return expr
 
+
+TargetOrDiscretization: TypeAlias = TargetBase | Discretization
 
 # vim: foldmethod=marker

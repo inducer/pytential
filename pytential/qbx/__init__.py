@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,22 +23,50 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable
+import logging
 from functools import partial
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import numpy as np
+from typing_extensions import override
 
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from arraycontext import (
+    ArrayContext,
+    ArrayOrArithContainer,
+    PyOpenCLArrayContext,
+    flatten,
+    unflatten,
+)
 from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
-from pytools import memoize_method, memoize_in, single_valued
-from sumpy.expansion import DefaultExpansionFactory as DefaultExpansionFactoryBase
+from pytools import memoize_in, memoize_method, obj_array, single_valued
+from sumpy.expansion import (
+    DefaultExpansionFactory as DefaultExpansionFactoryBase,
+    ExpansionFactoryBase,
+)
+from sumpy.expansion.local import LocalExpansionBase
 
-from pytential.qbx.cost import AbstractQBXCostModel
+from pytential.qbx.fmm import QBXExpansionFactory
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedError
 from pytential.source import LayerPotentialSourceBase
 
-import logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from boxtree.tree_build import ExtentNorm, TreeKind
+    from pymbolic import ArithmeticExpression
+    from sumpy.kernel import Kernel
+
+    from pytential.collection import GeometryCollection
+    from pytential.qbx.cost import AbstractQBXCostModel
+    from pytential.symbolic.compiler import ComputePotential
+    from pytential.symbolic.dof_desc import GeometryId
+    from pytential.symbolic.execution import BoundExpression
+    from pytential.symbolic.primitives import IntG, Operand, QBXForcedLimit
+    from pytential.target import TargetBase, TargetOrDiscretization
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,12 +81,16 @@ __doc__ = """
 """
 
 
+FMMBackend: TypeAlias = Literal["sumpy"] | Literal["fmmlib"]
+
+
 # {{{ QBX layer potential source
 
-class DefaultExpansionFactory(DefaultExpansionFactoryBase):
-    """A expansion factory to create QBX local, local and multipole expansions
+class DefaultExpansionFactory(QBXExpansionFactory, DefaultExpansionFactoryBase):
+    """An expansion factory to create QBX local, local and multipole expansions
     """
-    def get_qbx_local_expansion_class(self, kernel):
+    @override
+    def get_qbx_local_expansion_class(self, kernel: Kernel):
         local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
                 self, kernel)
         from sumpy.expansion.m2l import NonFFTM2LTranslationClassFactory
@@ -90,15 +125,41 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ constructor / copy
 
+    density_discr: Discretization
+    fmm_level_to_order: Literal[False] | Callable[..., int]
+
+    fine_order: int
+    qbx_order: int
+    fmm_backend: FMMBackend
+
+    expansion_factory: QBXExpansionFactory
+    target_association_tolerance: float
+
+    debug: bool
+    _disable_refinement: bool
+    _expansions_in_tree_have_extent: bool
+    _expansion_stick_out_factor: float
+    _well_sep_is_n_away: int
+    _max_leaf_refine_weight: int
+    _box_extent_norm: ExtentNorm
+    _from_sep_smaller_crit: int
+    _from_sep_smaller_min_nsources_cumul: int
+    _tree_kind: TreeKind
+    _use_target_specific_qbx: bool
+
+    geometry_data_inspector: Callable[..., bool] | None
+    cost_model: AbstractQBXCostModel
+
     def __init__(
             self,
             density_discr: Discretization,
             fine_order: int | None,
             qbx_order: int | None = None,
             fmm_order: bool | int | None = None,
-            fmm_level_to_order: bool | Callable[..., int] | None = None,
-            expansion_factory: DefaultExpansionFactoryBase | None = None,
-            target_association_tolerance: float | None = _not_provided,  # type: ignore[assignment]
+            fmm_level_to_order: Literal[False] | Callable[..., int] | None = None,
+            expansion_factory: QBXExpansionFactory | None = None,
+            target_association_tolerance: (
+                float | type[_not_provided] | None) = _not_provided,
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
@@ -107,7 +168,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent: bool = True,
             _expansion_stick_out_factor: float = 0.5,
             _max_leaf_refine_weight: int | None = None,
-            _box_extent_norm: str | None = None,
+            _box_extent_norm: ExtentNorm | None = None,
             _tree_kind: str = "adaptive",
             _well_sep_is_n_away: int = 2,
             _from_sep_smaller_crit: str | None = None,
@@ -115,7 +176,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _use_target_specific_qbx: bool | None = None,
             geometry_data_inspector: Callable[..., bool] | None = None,
             cost_model: AbstractQBXCostModel | None = None,
-            fmm_backend: str = "sumpy",
+            fmm_backend: FMMBackend = "sumpy",
             ) -> None:
         """
         :arg fine_order: The total degree to which the (upsampled)
@@ -268,7 +329,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._max_leaf_refine_weight = max_leaf_refine_weight
         self._box_extent_norm = box_extent_norm
         self._from_sep_smaller_crit = from_sep_smaller_crit
-        self._from_sep_smaller_min_nsources_cumul = from_sep_smaller_min_nsources_cumul
+        self._from_sep_smaller_min_nsources_cumul = \
+            from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
         self._use_target_specific_qbx = _use_target_specific_qbx
 
@@ -376,8 +438,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal API
 
     @memoize_method
-    def qbx_fmm_geometry_data(self, places, name,
-            target_discrs_and_qbx_sides):
+    def qbx_fmm_geometry_data(self,
+                places: GeometryCollection,
+                name: GeometryId,
+                target_discrs_and_qbx_sides: Sequence[
+                    tuple[TargetOrDiscretization, QBXForcedLimit]]):
         """
         :arg target_discrs_and_qbx_sides:
             a tuple of *(discr, qbx_forced_limit)*
@@ -405,7 +470,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ helpers for symbolic operator processing
 
-    def preprocess_optemplate(self, name, discretizations, expr):
+    @override
+    def preprocess_optemplate(self, name, discretizations, expr: ArithmeticExpression):
         """
         :arg name: The symbolic name for *self*, which the preprocessor
             should use to find which expressions it is allowed to modify.
@@ -413,7 +479,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import QBXPreprocessor
         return QBXPreprocessor(name, discretizations)(expr)
 
-    def op_group_features(self, expr):
+    @override
+    def op_group_features(self, expr: IntG):
         from pytential.utils import sort_arrays_together
         result = (
                 expr.source,
@@ -426,8 +493,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
-            return_timing_data):
+    def exec_compute_potential_insn(self,
+                actx: ArrayContext,
+                insn: ComputePotential,
+                bound_expr: BoundExpression[Operand],
+                evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
+                return_timing_data: bool
+            ):
         extra_args = {}
 
         if self.fmm_level_to_order is False:
@@ -485,7 +557,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     calibration_params
                 )
 
-            from pytools import obj_array
+            from functools import partial
+
             return (
                     obj_array.vectorize(
                         partial(wrangler.finalize_potentials,
@@ -535,8 +608,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         qbx_local_factory = partial(qbx_local_expn_class, base_kernel)
 
         if self.fmm_backend == "sumpy":
-            from pytential.qbx.fmm import \
-                    QBXSumpyTreeIndependentDataForWrangler
+            from pytential.qbx.fmm import QBXSumpyTreeIndependentDataForWrangler
             return QBXSumpyTreeIndependentDataForWrangler(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
@@ -548,8 +620,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_kernel.replace_base_kernel(source_kernel) for
                 target_kernel in target_kernels
             ]
-            from pytential.qbx.fmmlib import \
-                    QBXFMMLibTreeIndependentDataForWrangler
+            from pytential.qbx.fmmlib import QBXFMMLibTreeIndependentDataForWrangler
             return QBXFMMLibTreeIndependentDataForWrangler(
                     self.cl_context,
                     multipole_expansion_factory=fmm_mpole_factory,
@@ -561,14 +632,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
 
-    def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
+    def get_target_discrs_and_qbx_sides(self,
+                insn: ComputePotential,
+                bound_expr: BoundExpression[Operand]
+            ):
         """Build the list of unique target discretizations used by the
         provided instruction.
         """
         # map (name, qbx_side) to number in list
-        target_name_and_side_to_number = {}
+        target_name_and_side_to_number: dict[GeometryId, tuple[int, int]] = {}
         # list of tuples (discr, qbx_side)
-        target_discrs_and_qbx_sides = []
+        target_discrs_and_qbx_sides: list[tuple[TargetBase, int]] = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
@@ -590,8 +664,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate, fmm_driver):
+    def exec_compute_potential_insn_fmm(self,
+                actx: PyOpenCLArrayContext,
+                insn: ComputePotential,
+                bound_expr: BoundExpression[Operand],
+                evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
+                fmm_driver):
         """
         :arg fmm_driver: A function that accepts four arguments:
             *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
@@ -734,8 +812,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
-        from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
+
+        from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         return LayerPotentialOnTargetAndCenterSubset(
                 self.cl_context,
                 expansion=VolumeTaylorLocalExpansion(base_kernel, self.qbx_order),
@@ -761,12 +840,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate,
             return_timing_data):
-        from pytential import bind, sym
         from meshmode.discretization import Discretization
 
+        from pytential import bind, sym
+
         if return_timing_data:
-            from pytential.source import UnableToCollectTimingData
             from warnings import warn
+
+            from pytential.source import UnableToCollectTimingData
             warn(
                     "Timing data collection not supported.",
                     category=UnableToCollectTimingData,
@@ -981,9 +1062,12 @@ def get_flat_strengths_from_densities(
 # }}}
 
 
-__all__ = (
+__all__ = [
         "QBXLayerPotentialSource",
         "QBXTargetAssociationFailedError",
-        )
+        "QBXExpansionFactory",
+        "ExpansionFactoryBase",
+        "LocalExpansionBase",
+        ]
 
 # vim: fdm=marker

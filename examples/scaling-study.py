@@ -2,11 +2,13 @@ import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
 
 from pytential import bind, sym
 from pytential.target import PointsTarget
+
 
 # {{{ set some constants for use below
 
@@ -22,8 +24,9 @@ k = 0
 
 
 def make_mesh(nx, ny, visualize=False):
-    from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
+
+    from meshmode.mesh.generation import ellipse, make_curve_mesh
 
     base_mesh = make_curve_mesh(
             partial(ellipse, 1),
@@ -66,8 +69,7 @@ def timing_run(nx, ny, visualize=False):
             actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
-    from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedError)
+    from pytential.qbx import QBXLayerPotentialSource, QBXTargetAssociationFailedError
     qbx = QBXLayerPotentialSource(
             density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order

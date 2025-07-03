@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,21 +23,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
 import numpy as np
 import numpy.linalg as la
+import pytest
 
-from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
-import logging
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -58,7 +62,7 @@ def test_gmres():
     A_func.shape = A.shape
     A_func.dtype = A.dtype
 
-    from pytential.linalg.gmres import gmres, ResidualPrinter
+    from pytential.linalg.gmres import ResidualPrinter, gmres
     tol = 1e-6
     sol = gmres(A_func, b, callback=ResidualPrinter(),
             maxiter=5*n, tol=tol).solution
@@ -74,7 +78,7 @@ def test_interpolatory_error_reporting(actx_factory):
     actx = actx_factory()
 
     h = 0.2
-    from meshmode.mesh.io import generate_gmsh, FileSource
+    from meshmode.mesh.io import FileSource, generate_gmsh
     mesh = generate_gmsh(
             FileSource("circle.step"), 2, order=4, force_ambient_dim=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h],
@@ -86,8 +90,7 @@ def test_interpolatory_error_reporting(actx_factory):
     # {{{ discretizations and connections
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
 
     vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
@@ -123,11 +126,12 @@ def test_geometry_collection_caching(actx_factory):
     ngeometry = 3
 
     # construct discretizations
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from meshmode.mesh.processing import affine_map
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
 
     discrs = []
     radius = 1.0

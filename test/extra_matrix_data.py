@@ -1,15 +1,20 @@
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
+from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+import extra_int_eq_data as extra
 import numpy as np
 
 from pytools import obj_array
 
 from pytential import sym
-from pytential.symbolic.dof_desc import DiscretizationStages
 
-import extra_int_eq_data as extra
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pytential.symbolic.dof_desc import DiscretizationStages
 
 
 # {{{ MatrixTestCase

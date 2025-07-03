@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 Alexandru Fikl"
 
 __license__ = """
@@ -22,8 +25,8 @@ THE SOFTWARE.
 
 from pytools import obj_array
 
-from pytential.symbolic.mappers import (
-        IdentityMapper, OperatorCollector, LocationTagger)
+from pytential.symbolic.mappers import IdentityMapper, LocationTagger, OperatorCollector
+
 
 __doc__ = """
 .. autoclass:: KernelTransformationRemover
@@ -81,8 +84,9 @@ class KernelTransformationRemover(IdentityMapper):
 
     def __init__(self):
         from sumpy.kernel import (
-                TargetTransformationRemover,
-                SourceTransformationRemover)
+            SourceTransformationRemover,
+            TargetTransformationRemover,
+        )
         self.sxr = SourceTransformationRemover()
         self.txr = TargetTransformationRemover()
 

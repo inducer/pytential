@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -20,21 +23,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Hashable
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
 from sumpy.fmm import UnableToCollectTimingData
-from sumpy.kernel import Kernel
-from sumpy.p2p import P2P, P2PBase
 
-from pytential import sym
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable
+
+    from meshmode.discretization import Discretization
+    from sumpy.kernel import Kernel
+    from sumpy.p2p import P2P, P2PBase
+
+    from pytential import sym
     from pytential.collection import GeometryCollection
 
 __doc__ = """
@@ -97,7 +104,7 @@ class PotentialSource(ABC):
 
     def preprocess_optemplate(self,
                 name: str,
-                discretizations: "GeometryCollection",
+                discretizations: GeometryCollection,
                 expr: T) -> T:
         """
         :returns: a processed *expr*, where each
@@ -274,7 +281,7 @@ def _entry_dtype(actx, ary):
         raise TypeError(f"unexpected type: '{type(ary).__name__}'")
 
 
-class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
+class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource, ABC):
     """A discretization of a layer potential using element-based geometry, with
     support for refinement and upsampling.
 
@@ -283,8 +290,8 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     .. attribute:: density_discr
     """
 
-    def __init__(self, density_discr):
-        self.density_discr = density_discr
+    def __init__(self, density_discr: Discretization):
+        self.density_discr: Discretization = density_discr
 
     @property
     def _setup_actx(self):
@@ -292,7 +299,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
     @property
     def cl_context(self):
-        return self._setup_actx.context
+        return cast("PyOpenCLArrayContext", self._setup_actx).context
 
     @property
     def ambient_dim(self):
@@ -356,8 +363,8 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         kernel_extra_kwargs = {}
         source_extra_kwargs = {}
 
-        from sumpy.tools import gather_arguments, gather_source_arguments
         from arraycontext import rec_map_array_container
+        from sumpy.tools import gather_arguments, gather_source_arguments
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),

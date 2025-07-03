@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013-7 Andreas Kloeckner"
 
 __license__ = """
@@ -20,25 +23,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
 import numpy as np
+import pytest
 
-from arraycontext import flatten, unflatten
-from pytential import bind, sym, norm
-from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
-import logging
+from pytential import GeometryCollection, bind, norm, sym
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -71,10 +73,12 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
     target_order = 8
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
-    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     from pytools.convergence import EOCRecorder
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     s_eoc_rec = EOCRecorder()
     d_eoc_rec = EOCRecorder()
@@ -274,10 +278,12 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
     target_order = 8
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
-    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     from pytools.convergence import EOCRecorder
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     s_eoc_rec = EOCRecorder()
     d_eoc_rec = EOCRecorder()

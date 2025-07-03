@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Alexandru Fikl"
 
 __license__ = """
@@ -20,28 +23,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
+import extra_matrix_data as extra
 import numpy as np
 import numpy.linalg as la
+import pytest
 
-from arraycontext import flatten, unflatten
-from pytential import bind, sym
-from pytential import GeometryCollection
-from pytential.linalg import ProxyGenerator, QBXProxyGenerator
-from meshmode.mesh.generation import ellipse, NArmedStarfish
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.mesh.generation import NArmedStarfish, ellipse
 
-import extra_matrix_data as extra
-import logging
+from pytential import GeometryCollection, bind, sym
+from pytential.linalg import ProxyGenerator, QBXProxyGenerator
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -149,13 +151,12 @@ def plot_proxy_geometry(
         if pxy:
             # NOTE: this does not plot the actual proxy points, just sphere
             # with the same center and radius as the proxy balls
-            from meshmode.mesh.processing import (
-                    affine_map, merge_disjoint_meshes)
             from meshmode.discretization import Discretization
-            from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
-
+            from meshmode.discretization.poly_element import (
+                InterpolatoryQuadratureSimplexGroupFactory,
+            )
             from meshmode.mesh.generation import generate_sphere
+            from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
             ref_mesh = generate_sphere(1, 4, uniform_refinement_rounds=1)
 
             for i in range(cindex.nclusters):

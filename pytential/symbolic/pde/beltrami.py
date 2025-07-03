@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2021 Alexandru Fikl"
 
 __license__ = """
@@ -28,12 +31,15 @@ __doc__ = """
 """
 
 from functools import partial
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from pytential import sym
-from sumpy.kernel import Kernel
+
+
+if TYPE_CHECKING:
+    from sumpy.kernel import Kernel
 
 
 # {{{ beltrami operator
@@ -258,10 +264,10 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         D = partial(sym.D, knl, qbx_forced_limit="avg", kernel_arguments=context)
         Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", kernel_arguments=context)
 
-        def Wl(operand: sym.Expression) -> sym.Expression:
+        def Wl(operand: sym.ExpressionNode) -> sym.ExpressionNode:
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
-        def Wr(operand: sym.Expression) -> sym.Expression:
+        def Wr(operand: sym.ExpressionNode) -> sym.ExpressionNode:
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
         # }}}

@@ -1,11 +1,11 @@
 import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
-
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel, one_kernel_2d  # noqa
 from sumpy.visualization import FieldPlotter
-from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 from pytential import bind, sym
+
 
 target_order = 5
 qbx_order = 3
@@ -32,7 +32,7 @@ def main(mesh_name="ellipsoid"):
     else:
         raise ValueError("unknown mesh name: %s" % mesh_name)
 
-    from meshmode.mesh.io import generate_gmsh, FileSource
+    from meshmode.mesh.io import FileSource, generate_gmsh
     mesh = generate_gmsh(
             FileSource(cad_file_name), 2, order=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h],
@@ -49,10 +49,12 @@ def main(mesh_name="ellipsoid"):
 
     logger.info("%d elements", mesh.nelements)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))

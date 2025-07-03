@@ -2,11 +2,13 @@ import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
 
 from pytential import bind, sym
 from pytential.target import PointsTarget
+
 
 # {{{ set some constants for use below
 
@@ -30,8 +32,9 @@ def main(mesh_name="starfish", visualize=False):
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    from meshmode.mesh.generation import ellipse, make_curve_mesh, starfish
     from functools import partial
+
+    from meshmode.mesh.generation import ellipse, make_curve_mesh, starfish
 
     if mesh_name == "ellipse":
         mesh = make_curve_mesh(

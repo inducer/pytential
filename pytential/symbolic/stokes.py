@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Natalie Beams"
 
 __license__ = """
@@ -22,8 +25,10 @@ THE SOFTWARE.
 
 import numpy as np
 
+from sumpy.kernel import LaplaceKernel, StokesletKernel, StressletKernel
+
 from pytential import sym
-from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
+
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -377,6 +382,7 @@ class StressletWrapper:
         """Symbolic expression for pressure field associated with the Stresslet."""
 
         import itertools
+
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
 
@@ -418,6 +424,7 @@ class StressletWrapper:
         """
 
         import itertools
+
         from pytential.symbolic.mappers import DerivativeTaker
 
         sym_expr = np.empty((self.dim,), dtype=object)

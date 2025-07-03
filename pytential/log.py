@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Matt Wala"
 
 __license__ = """
@@ -21,6 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
+
 
 #
 # This file is based heavily on
