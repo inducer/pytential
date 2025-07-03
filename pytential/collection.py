@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -30,14 +31,18 @@ from typing import Any
 
 from constantdict import constantdict
 
-from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
-import pytential.symbolic.primitives as sym
-
-from pytential.target import PointsTarget, TargetBase
-from pytential.source import (
-    LayerPotentialSourceBase, PointPotentialSource, PotentialSource)
-from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
+
+import pytential.symbolic.primitives as sym
+from pytential.qbx import QBXLayerPotentialSource
+from pytential.source import (
+    LayerPotentialSourceBase,
+    PointPotentialSource,
+    PotentialSource,
+)
+from pytential.symbolic.dof_desc import DiscretizationStage, DOFDescriptorLike
+from pytential.target import PointsTarget, TargetBase
+
 
 __doc__ = """
 .. class:: AutoWhereLike
@@ -299,7 +304,7 @@ class GeometryCollection:
 
     def get_discretization(
             self, geometry: Hashable,
-            discr_stage: DiscretizationStages | None = None
+            discr_stage: DiscretizationStage | None = None
             ) -> GeometryLike:
         """Get the geometry or discretization in the collection.
 

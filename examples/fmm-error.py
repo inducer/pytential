@@ -1,11 +1,9 @@
 import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.mesh.generation import (  # noqa
-        make_curve_mesh, starfish, ellipse, drop)
-
+from meshmode.mesh.generation import drop, ellipse, make_curve_mesh, starfish  # noqa
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 from sumpy.visualization import FieldPlotter
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 
 def main():
@@ -34,10 +32,12 @@ def main():
             np.linspace(0, 1, nelements+1),
             target_order)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     pre_density_discr = Discretization(
             actx, mesh,

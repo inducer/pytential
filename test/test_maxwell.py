@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -20,27 +23,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 from functools import partial
-import pytest
 
 import numpy as np
+import pytest
 
-from pytential import bind, sym, norm
-from pytential.target import PointsTarget
-from sumpy.visualization import make_field_plotter_from_bbox
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.mesh.processing import find_bounding_box
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
-from meshmode.mesh.processing import find_bounding_box
+from sumpy.visualization import make_field_plotter_from_bbox
 
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from pytential import bind, norm, sym
+from pytential.target import PointsTarget
 
-import logging
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -97,14 +101,14 @@ class RoundedCubeTestCase(MaxwellTestCase):
     gmres_tol = 1e-10
 
     def get_mesh(self, resolution, target_order):
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("rounded-cube.step"), 2, order=3,
                 other_options=[
                     "-string",
                     "Mesh.CharacteristicLengthMax = %g;" % resolution])
 
-        from meshmode.mesh.processing import perform_flips, affine_map
+        from meshmode.mesh.processing import affine_map, perform_flips
         mesh = affine_map(mesh, b=np.array([-0.5, -0.5, -0.5]))
         mesh = affine_map(mesh, A=np.eye(3)*2)
 
@@ -146,7 +150,7 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
                 "https://raw.githubusercontent.com/inducer/geometries/master/"
                 "surface-3d/elliptiplane.brep")
 
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("elliptiplane.brep"), 2, order=2,
                 other_options=[
@@ -232,9 +236,10 @@ def test_pec_mfie_extinction(actx_factory, case,
     rho_sym = sym.var("rho")
 
     from pytential.symbolic.pde.maxwell import (
-            PECChargeCurrentMFIEOperator,
-            get_sym_maxwell_point_source,
-            get_sym_maxwell_plane_wave)
+        PECChargeCurrentMFIEOperator,
+        get_sym_maxwell_plane_wave,
+        get_sym_maxwell_point_source,
+    )
     mfie = PECChargeCurrentMFIEOperator()
 
     test_source = case.get_source(actx)
@@ -280,11 +285,13 @@ def test_pec_mfie_extinction(actx_factory, case,
     eoc_rec_e = EOCRecorder()
     eoc_rec_h = EOCRecorder()
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     for resolution in case.resolutions:
         places = {}

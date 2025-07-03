@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Andreas Kloeckner"
 
 __license__ = """
@@ -23,6 +26,7 @@ THE SOFTWARE.
 from importlib import metadata
 
 from pytools import find_module_git_revision
+
 
 VERSION_TEXT = metadata.version("pytential")
 VERSION = tuple(int(i) for i in VERSION_TEXT.split("."))

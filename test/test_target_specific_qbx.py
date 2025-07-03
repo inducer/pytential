@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Matt Wala"
 
 __license__ = """
@@ -20,23 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 
 import numpy as np
+import pytest
 
-from arraycontext import flatten
-from pytential import GeometryCollection, bind, sym
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
-import logging
+from pytential import GeometryCollection, bind, sym
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -145,8 +148,10 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
     mesh = generate_sphere(1, target_order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
     from pytential.qbx import QBXLayerPotentialSource
     pre_density_discr = Discretization(
             actx, mesh,

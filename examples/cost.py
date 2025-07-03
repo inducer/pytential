@@ -26,13 +26,13 @@ THE SOFTWARE.
 """Calibrates a cost model and reports on the accuracy."""
 
 import numpy as np
+
 import pyopencl as cl
-
 from meshmode.array_context import PyOpenCLArrayContext
-
-from pytential import sym, bind
-from pytential.qbx.cost import QBXCostModel
 from pytools import one
+
+from pytential import bind, sym
+from pytential.qbx.cost import QBXCostModel
 
 
 # {{{ global params
@@ -57,9 +57,9 @@ TESTING_ARMS = (20,)
 def starfish_lpot_source(actx, n_arms):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory)
-
-    from meshmode.mesh.generation import make_curve_mesh, NArmedStarfish
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+    from meshmode.mesh.generation import NArmedStarfish, make_curve_mesh
 
     mesh = make_curve_mesh(
             NArmedStarfish(n_arms, 0.8),

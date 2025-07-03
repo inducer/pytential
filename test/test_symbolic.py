@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Matt Wala"
 
 __license__ = """
@@ -20,28 +23,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
 import numpy as np
 import numpy.linalg as la
+import pytest
 
-from arraycontext import flatten, unflatten
 import meshmode.mesh.generation as mgen
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-    InterpolatoryQuadratureSimplexGroupFactory
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
+
 from pytential import bind, sym
 
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
-import logging
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -180,7 +184,8 @@ def test_tangential_onb(actx_factory):
 
 def test_expr_pickling():
     import pickle
-    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
+
+    from sumpy.kernel import AxisTargetDerivative, LaplaceKernel
 
     ops_for_testing = [
         sym.d_dx(
@@ -444,7 +449,7 @@ def test_derivative_binder_expr():
 # {{{ test_mapper_kernel_transformation_remover
 
 def _make_operator(ambient_dim: int, op_name: str, k: float, *, side: int = +1):
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, Kernel
+    from sumpy.kernel import HelmholtzKernel, Kernel, LaplaceKernel
     if k == 0:
         kernel: Kernel = LaplaceKernel(ambient_dim)
         kernel_arguments = {}
@@ -475,7 +480,9 @@ def test_mapper_kernel_transformation_remover(op_name, k):
     expr = op.operator(op.get_density_var("sigma"))
 
     from pytential.linalg.direct_solver_symbolic import (
-            OperatorCollector, KernelTransformationRemover)
+        KernelTransformationRemover,
+        OperatorCollector,
+    )
     expr_without_transformations = KernelTransformationRemover()(expr)
     intgs = OperatorCollector()(expr_without_transformations)
 
@@ -526,8 +533,8 @@ def test_mapper_dof_descriptor_replacer(op_name, k):
     op = _make_operator(ambient_dim, op_name, k)
     expr = op.operator(op.get_density_var("sigma"))
 
-    from pytential.symbolic.mappers import ToTargetTagger
     from pytential.linalg.direct_solver_symbolic import DOFDescriptorReplacer
+    from pytential.symbolic.mappers import ToTargetTagger
     source_dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
     target_dd = sym.as_dofdesc(sym.DEFAULT_TARGET)
     tagged_expr = ToTargetTagger(source_dd, target_dd)(expr)

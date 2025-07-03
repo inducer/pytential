@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018-2022 Alexandru Fikl"
 
 __license__ = """
@@ -22,19 +25,25 @@ THE SOFTWARE.
 
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from arraycontext import PyOpenCLArrayContext, Array
-
-from pytential import GeometryCollection, sym
-from pytential.symbolic.matrix import ClusterMatrixBuilderBase
-from pytential.linalg.utils import IndexList, TargetAndSourceClusterList
-from pytential.linalg.proxy import ProxyGeneratorBase, ProxyClusterGeometryData
 from pytential.linalg.direct_solver_symbolic import (
-        PROXY_SKELETONIZATION_TARGET, PROXY_SKELETONIZATION_SOURCE,
-        prepare_expr, prepare_proxy_expr)
+    PROXY_SKELETONIZATION_SOURCE,
+    PROXY_SKELETONIZATION_TARGET,
+    prepare_expr,
+    prepare_proxy_expr,
+)
+from pytential.linalg.utils import IndexList, TargetAndSourceClusterList
+
+
+if TYPE_CHECKING:
+    from arraycontext import Array, PyOpenCLArrayContext
+
+    from pytential import GeometryCollection, sym
+    from pytential.linalg.proxy import ProxyClusterGeometryData, ProxyGeneratorBase
+    from pytential.symbolic.matrix import ClusterMatrixBuilderBase
 
 
 __doc__ = """
@@ -107,7 +116,7 @@ Skeletonization
 def _approximate_geometry_waa_magnitude(
         actx: PyOpenCLArrayContext,
         places: GeometryCollection,
-        cluster_index: "IndexList",
+        cluster_index: IndexList,
         domain: sym.DOFDescriptor) -> Array:
     """
     :arg cluster_index: a :class:`~pytential.linalg.IndexList` representing the
@@ -120,6 +129,7 @@ def _approximate_geometry_waa_magnitude(
         this is a simple average.
     """
     from pytools import memoize_in
+
     from pytential import bind, sym
 
     @memoize_in(actx, (_approximate_geometry_waa_magnitude, "mean_over_cluster"))
@@ -436,7 +446,9 @@ def make_skeletonization_wrangler(
     # {{{ builders
 
     from pytential.symbolic.matrix import (
-            P2PClusterMatrixBuilder, QBXClusterMatrixBuilder)
+        P2PClusterMatrixBuilder,
+        QBXClusterMatrixBuilder,
+    )
 
     neighbor_cluster_builder = _neighbor_cluster_builder
     if neighbor_cluster_builder is None:
@@ -581,7 +593,7 @@ def _skeletonize_block_by_proxy_with_mats(
         id_rank: int | None = None,
         max_particles_in_box: int | None = None,
         rng: np.random.Generator | None = None,
-        ) -> "SkeletonizationResult":
+        ) -> SkeletonizationResult:
     nclusters = tgt_src_index.nclusters
     if nclusters == 1:
         raise ValueError("cannot make a proxy skeleton for a single cluster")

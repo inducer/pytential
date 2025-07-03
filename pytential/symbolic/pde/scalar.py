@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -31,10 +34,9 @@ from typing import Any
 
 import numpy as np
 
-from pytential import sym
+from sumpy.kernel import DirectionalSourceDerivative, Kernel
 
-from sumpy.kernel import Kernel
-from sumpy.kernel import DirectionalSourceDerivative
+from pytential import sym
 
 
 # {{{ L^2 weighting

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2015 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -23,28 +26,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
+import extra_matrix_data as extra
 import numpy as np
 import numpy.linalg as la
+import pytest
 
-from arraycontext import flatten, unflatten
-from pytential import bind, sym
-from pytential import GeometryCollection
-from pytools import obj_array
-from meshmode.mesh.generation import ellipse, NArmedStarfish
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.mesh.generation import NArmedStarfish, ellipse
+from pytools import obj_array
 
-import extra_matrix_data as extra
-import logging
+from pytential import GeometryCollection, bind, sym
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -356,13 +358,15 @@ def test_cluster_builder(actx_factory, ambient_dim,
             }
 
     if cluster_builder_type == "qbx":
-        from pytential.symbolic.matrix import MatrixBuilder
         from pytential.symbolic.matrix import (
-                QBXClusterMatrixBuilder as ClusterMatrixBuilder)
+            MatrixBuilder,
+            QBXClusterMatrixBuilder as ClusterMatrixBuilder,
+        )
     elif cluster_builder_type == "p2p":
-        from pytential.symbolic.matrix import P2PMatrixBuilder as MatrixBuilder
         from pytential.symbolic.matrix import (
-                P2PClusterMatrixBuilder as ClusterMatrixBuilder)
+            P2PClusterMatrixBuilder as ClusterMatrixBuilder,
+            P2PMatrixBuilder as MatrixBuilder,
+        )
         kwargs["exclude_self"] = True
     else:
         raise ValueError(f"unknown cluster builder type: '{cluster_builder_type}'")

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 """
@@ -22,17 +25,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast
+import logging
+from typing import TYPE_CHECKING, cast
+
 import numpy as np
 
-from pytools import memoize_method, memoize_in, log_process
-from arraycontext import PyOpenCLArrayContext
-from meshmode.dof_array import DOFArray
-
-from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
+from boxtree.tree import Tree
+from meshmode.dof_array import DOFArray
+from pytools import log_process, memoize_in, memoize_method
 
-import logging
+
+if TYPE_CHECKING:
+    import pyopencl.array as cl_array
+    from arraycontext import PyOpenCLArrayContext
+
+    from pytential.collection import GeometryCollection
 logger = logging.getLogger(__name__)
 
 
@@ -244,10 +252,15 @@ MAX_REFINE_WEIGHT = 64
 
 
 @log_process(logger)
-def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
-        places, tree_builder, particle_list_filter,
-        sources_list=(), targets_list=(),
-        use_stage2_discr=False):
+def build_tree_with_qbx_metadata(
+            actx: PyOpenCLArrayContext,
+            places: GeometryCollection,
+            tree_builder,
+            particle_list_filter,
+            sources_list=(),
+            targets_list=(),
+            use_stage2_discr: bool = False
+        ) -> TreeWithQBXMetadata:
     """Return a :class:`TreeWithQBXMetadata` built from the given layer
     potential source. This contains particles of four different types:
 
@@ -328,7 +341,6 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     # Build tree with sources and centers. Split boxes
     # only because of sources.
-    import pyopencl.array as cl_array
     refine_weights = cast("cl_array.Array", actx.np.zeros(nparticles, np.int32))
     refine_weights[:nsources].fill(1)
 

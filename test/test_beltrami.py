@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2021 Alexandru Fikl"
 
 __license__ = """
@@ -20,26 +23,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 from dataclasses import dataclass
+
+import extra_int_eq_data as eid
 import pytest
 
-import numpy as np
-
-from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.dof_array import DOFArray
 
 from pytential import bind, sym
 from pytential.symbolic.pde.beltrami import (
-        LaplaceBeltramiOperator, YukawaBeltramiOperator)
+    LaplaceBeltramiOperator,
+    YukawaBeltramiOperator,
+)
 
-import extra_int_eq_data as eid
-import logging
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from typing import TYPE_CHECKING
+
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
+
+if TYPE_CHECKING:
+    import numpy as np
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,

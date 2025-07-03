@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 """
@@ -23,25 +26,36 @@ THE SOFTWARE.
 """
 
 import numpy as np
-
-from pytools import memoize_method, memoize_in
-from boxtree.tools import DeviceDataRecord
-from boxtree.area_query import AreaQueryElementwiseTemplate
-from boxtree.tools import InlineBinarySearch
-
 from cgen import Enum
 
-from arraycontext import PyOpenCLArrayContext, flatten
+from arraycontext import Array, PyOpenCLArrayContext, flatten
+from boxtree.area_query import AreaQueryElementwiseTemplate
+from boxtree.tools import DeviceDataRecord, InlineBinarySearch
+from pytools import memoize_in, memoize_method
+
 from pytential.qbx.utils import (
-    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
-    TreeCodeContainerMixin)
+    QBX_TREE_C_PREAMBLE,
+    QBX_TREE_MAKO_DEFS,
+    TreeCodeContainerMixin,
+    TreeWithQBXMetadata,
+    TreeWranglerBase,
+)
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
+import logging
+from typing import TYPE_CHECKING
+
 from pytools import log_process
 
-import logging
+
+if TYPE_CHECKING:
+    from pyopencl import WaitList
+
+    from pytential.collection import GeometryCollection
+
+
 logger = logging.getLogger(__name__)
 
 __doc__ = """
@@ -513,9 +527,14 @@ def target_association_code_container(
 class TargetAssociationWrangler(TreeWranglerBase):
 
     @log_process(logger)
-    def mark_targets(self, places, dofdesc,
-            tree, peer_lists, target_status,
-            debug, wait_for=None):
+    def mark_targets(self,
+                places: GeometryCollection,
+                dofdesc,
+                tree: TreeWithQBXMetadata,
+                peer_lists,
+                target_status: Array,
+                debug,
+                wait_for=None):
         from pytential import bind, sym
         ambient_dim = places.ambient_dim
         actx = self.array_context
@@ -817,9 +836,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return QBXTargetAssociation(target_to_center=target_to_center)
 
 
-def associate_targets_to_qbx_centers(places, geometry, wrangler,
-        target_discrs_and_qbx_sides, target_association_tolerance,
-        debug=True, wait_for=None):
+def associate_targets_to_qbx_centers(
+            places: GeometryCollection,
+            geometry,
+            wrangler: TargetAssociationWrangler,
+            target_discrs_and_qbx_sides,
+            target_association_tolerance,
+            debug: bool = True,
+            wait_for: WaitList = None,
+        ):
     """
     Associate targets to centers in a layer potential source.
 

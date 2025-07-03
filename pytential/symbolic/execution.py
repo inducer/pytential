@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -23,27 +26,51 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Hashable, Sequence
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any, Generic, overload
 
-from pymbolic.mapper.evaluator import (
-        EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
+from typing_extensions import override
 
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import (
+    ArrayContext,
+    ArrayOrContainerOrScalar,
+    PyOpenCLArrayContext,
+    ScalarLike,
+)
 from meshmode.dof_array import DOFArray
-
+from pymbolic.mapper.evaluator import EvaluationMapper as PymbolicEvaluationMapper
 from pytools import memoize_in, memoize_method
-from pytential.qbx.cost import AbstractQBXCostModel
-from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 
 from pytential import sym
-from pytential.collection import AutoWhereLike, GeometryCollection
+from pytential.qbx.cost import AbstractQBXCostModel
+from pytential.symbolic.compiler import Assign, Code, ComputePotential, Statement
 from pytential.symbolic.dof_desc import (
-        DOFDescriptor, DOFDescriptorLike,
-        _UNNAMED_SOURCE, _UNNAMED_TARGET)
+    _UNNAMED_SOURCE,
+    _UNNAMED_TARGET,
+    DOFDescriptor,
+    DOFDescriptorLike,
+)
+from pytential.symbolic.primitives import OperandTc
 
-import logging
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable, Mapping, Sequence
+
+    import pymbolic.primitives as p
+    from pymbolic import ArithmeticExpression
+    from pymbolic.geometric_algebra import MultiVector
+    from pytools.obj_array import ObjectArrayND
+
+    from pytential.collection import AutoWhereLike, GeometryCollection, GeometryLike
+    from pytential.symbolic.primitives import (
+        NodeMax,
+        NodeMin,
+        NodeSum,
+        SingleScalarOperandExpressionWithWhere,
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,7 +95,7 @@ class EvaluationMapperBoundOpCacheKey:
 
 # {{{ evaluation mapper base (shared, between actual eval and cost model)
 
-class EvaluationMapperBase(PymbolicEvaluationMapper):
+class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
     def __init__(self, bound_expr, actx: PyOpenCLArrayContext, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
@@ -97,37 +124,42 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         else:
             return inherited_func(expr)
 
-    def map_max(self, expr):
+    @override
+    def map_max(self, expr: p.Max):
         return self._map_minmax(
                 self.array_context.np.maximum,
                 super().map_max,
                 expr)
 
+    @override
     def map_min(self, expr):
         return self._map_minmax(
                 self.array_context.np.minimum,
                 super().map_min,
                 expr)
 
-    def map_node_sum(self, expr):
+    def map_node_sum(self, expr: NodeSum):
         operand = self.rec(expr.operand)
         assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.sum(operand)
 
-    def map_node_max(self, expr):
+    def map_node_max(self, expr: NodeMax):
         operand = self.rec(expr.operand)
         assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.max(operand)
 
-    def map_node_min(self, expr):
+    def map_node_min(self, expr: NodeMin):
         operand = self.rec(expr.operand)
         assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.min(operand)
 
-    def _map_elementwise_reduction(self, reduction_name, expr):
+    def _map_elementwise_reduction(self,
+                reduction_name: str,
+                expr: SingleScalarOperandExpressionWithWhere
+            ):
         import loopy as lp
         from arraycontext import make_loopy_program
         from meshmode.transform_metadata import ConcurrentElementInameTag
@@ -597,8 +629,7 @@ def _prepare_expr(places, expr, auto_where=None):
     """
 
     from pytential.source import LayerPotentialSourceBase
-    from pytential.symbolic.mappers import (
-            ToTargetTagger, DerivativeBinder, flatten)
+    from pytential.symbolic.mappers import DerivativeBinder, ToTargetTagger, flatten
 
     expr = flatten(expr)
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
@@ -702,7 +733,7 @@ def _find_array_context_from_args_in_context(
     return array_context
 
 
-class BoundExpression:
+class BoundExpression(Generic[OperandTc]):
     """An expression readied for evaluation by binding it to a
     :class:`~pytential.collection.GeometryCollection`.
 
@@ -717,9 +748,9 @@ class BoundExpression:
     """
 
     def __init__(self, places, sym_op_expr):
-        self.places = places
-        self.sym_op_expr = sym_op_expr
-        self.caches = {}
+        self.places: GeometryCollection = places
+        self.sym_op_expr: OperandTc = sym_op_expr
+        self.caches: dict[Hashable, object] = {}
 
     @property
     @memoize_method
@@ -854,7 +885,28 @@ class BoundExpression:
                 self, array_context, context, timing_data=timing_data)
         return execute(self.code, exec_mapper)
 
-    def __call__(self, *args, **kwargs):
+    @overload
+    def __call__(self: BoundExpression[ArithmeticExpression],
+                actx: ArrayContext | None = None,
+                /, **kwargs: ArrayOrContainerOrScalar
+            ) -> DOFArray | ScalarLike: ...
+
+    @overload
+    def __call__(self: BoundExpression[MultiVector[ArithmeticExpression]],
+                actx: ArrayContext | None = None,
+                /, **kwargs: ArrayOrContainerOrScalar
+            ) -> MultiVector[DOFArray | ScalarLike]: ...
+
+    @overload
+    def __call__(self: BoundExpression[ObjectArrayND[ArithmeticExpression]],
+                actx: ArrayContext | None = None,
+                /, **kwargs: ArrayOrContainerOrScalar
+            ) -> ObjectArrayND[DOFArray | ScalarLike]: ...
+
+    def __call__(self,
+                actx: ArrayContext | None = None,
+                /, **kwargs: ArrayOrContainerOrScalar
+            ) -> ArrayOrContainerOrScalar:
         """Evaluate the expression in *self*, using the
         input variables given in the dictionary *context*.
 
@@ -862,25 +914,24 @@ class BoundExpression:
             :class:`meshmode.dof_array.DOFArray`, or an object array of
             these.
         """
-        array_context = None
-        if len(args) == 1:
-            array_context, = args
-            if not isinstance(array_context, PyOpenCLArrayContext):
-                raise TypeError(
-                        "first positional argument (if given) must be a "
-                        f"PyOpenCLArrayContext: '{type(array_context).__name__}'")
+        if not (actx is None or isinstance(actx, PyOpenCLArrayContext)):
+            raise TypeError(
+                    "first positional argument (if given) must be a "
+                    f"PyOpenCLArrayContext: '{type(actx).__name__}'")
 
-        elif not args:
-            pass
-
-        else:
-            raise TypeError("More than one positional argument supplied. "
-                    "None or an PyOpenCLArrayContext expected.")
-
-        return self.eval(kwargs, array_context=array_context)
+        return self.eval(kwargs, array_context=actx)
 
 
-def bind(places, expr, auto_where=None):
+def bind(
+            places: (GeometryCollection
+                | GeometryLike
+                | tuple[GeometryLike, GeometryLike]
+                | Mapping[Hashable, GeometryLike]
+
+            ),
+            expr: OperandTc,
+            auto_where: AutoWhereLike | None = None
+        ):
     """
     :arg places: a :class:`pytential.collection.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
@@ -902,7 +953,7 @@ def bind(places, expr, auto_where=None):
         auto_where = places.auto_where
 
     expr = _prepare_expr(places, expr, auto_where=auto_where)
-    return BoundExpression(places, expr)
+    return BoundExpression[OperandTc](places, expr)
 
 # }}}
 
@@ -911,6 +962,7 @@ def bind(places, expr, auto_where=None):
 
 def _bmat(blocks, dtypes):
     from pytools import single_valued
+
     from pytential.symbolic.matrix import is_zero
 
     nrows = blocks.shape[0]

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013-2017 Andreas Kloeckner"
 
 __license__ = """
@@ -20,26 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-
-import numpy as np
-import numpy.linalg as la
-
-from arraycontext import flatten, unflatten
-from pytential import bind, sym, norm
-from pytential import GeometryCollection
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-# from sumpy.visualization import FieldPlotter
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
-
-import extra_int_eq_data as ied
 import logging
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+import extra_int_eq_data as ied
+import numpy as np
+import numpy.linalg as la
+import pytest
+
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+
+# from sumpy.visualization import FieldPlotter
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel
+
+from pytential import GeometryCollection, bind, norm, sym
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
@@ -254,8 +254,9 @@ def test_identity_convergence(actx_factory, case, visualize=False):
             knl_kwargs = {"k": sym.var("k")}
 
         from meshmode.discretization import Discretization
-        from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureGroupFactory
+        from meshmode.discretization.poly_element import (
+            InterpolatoryQuadratureGroupFactory,
+        )
         pre_density_discr = Discretization(
                 actx, mesh, InterpolatoryQuadratureGroupFactory(target_order))
 

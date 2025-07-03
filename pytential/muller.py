@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2014 Shidong Jiang, Andreas Kloeckner"
 
 __license__ = """
@@ -20,10 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 T = TypeVar("T", float, complex)
 

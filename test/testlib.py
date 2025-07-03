@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from functools import reduce
 
+from pytential.symbolic.dof_desc import DOFDescriptor
 from pytential.symbolic.mappers import Collector
 
 
-class DOFDescriptorCollector(Collector):
+class DOFDescriptorCollector(Collector[DOFDescriptor]):
     r"""Gathers all the :class:`~pytential.symbolic.dof_desc.DOFDescriptor`\ s
     in an expression.
     """
