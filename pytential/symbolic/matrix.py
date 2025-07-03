@@ -65,7 +65,7 @@ from meshmode.discretization import Discretization
 from pytential.collection import GeometryCollection
 from pytential.linalg.utils import TargetAndSourceClusterList
 from pytential.symbolic.primitives import Variable
-from pytential.symbolic.mappers import EvaluationMapperBase
+from pymbolic.geometric_algebra.mapper import EvaluationRewriter as EvaluationRewriterBase  # noqa: E501
 
 
 # {{{ helpers
@@ -103,7 +103,7 @@ def _get_layer_potential_args(actx, places, expr, context=None, include_args=Non
 
 # {{{ base classes for matrix builders
 
-class MatrixBuilderBase(EvaluationMapperBase):
+class MatrixBuilderBase(EvaluationRewriterBase):
     """
     .. automethod:: __init__
     """
