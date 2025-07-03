@@ -1,12 +1,12 @@
 import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.mesh.generation import drop, ellipse, starfish  # noqa: F401
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel, one_kernel_2d  # noqa: F401
 from sumpy.visualization import FieldPlotter
-from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa: F401
 
 from pytential import bind, sym
 
-from meshmode.mesh.generation import starfish, ellipse, drop            # noqa: F401
 
 target_order = 16
 qbx_order = 3
@@ -31,10 +31,12 @@ def main(curve_fn=starfish, visualize=True):
             np.linspace(0, 1, nelements+1),
             target_order)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))

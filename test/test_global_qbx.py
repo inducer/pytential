@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2016 Matt Wala
@@ -23,30 +26,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-from functools import partial
+import logging
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 import numpy.linalg as la
-
-from arraycontext import flatten
-from pytential import GeometryCollection, bind, sym
-from pytential.qbx import QBXLayerPotentialSource
-import meshmode.mesh.generation as mgen
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
-
+import pytest
 from extra_curve_data import horseshoe
 from extra_int_eq_data import QuadSpheroidTestCase
 
-import logging
+import meshmode.mesh.generation as mgen
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+
+from pytential import GeometryCollection, bind, sym
+from pytential.qbx import QBXLayerPotentialSource
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -91,8 +93,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
     # {{{ initial geometry
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureGroupFactory
+    from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
     discr = Discretization(actx, mesh, InterpolatoryQuadratureGroupFactory(order))
 
     lpot_source = QBXLayerPotentialSource(discr,
@@ -321,8 +322,9 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
     discr = Discretization(actx, mesh, factory)
 
@@ -402,7 +404,9 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     # {{{ run target associator and check
 
     from pytential.qbx.target_assoc import (
-            target_association_code_container, associate_targets_to_qbx_centers)
+        associate_targets_to_qbx_centers,
+        target_association_code_container,
+    )
     code_container = target_association_code_container(actx)
 
     target_assoc = (
@@ -426,6 +430,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
 
     def visualize_curve_and_assoc():
         import matplotlib.pyplot as plt
+
         from meshmode.mesh.visualization import draw_curve
 
         draw_curve(density_discr.mesh)
@@ -515,8 +520,9 @@ def test_target_association_failure(actx_factory):
     mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
     discr = Discretization(actx, mesh, factory)
     lpot_source = QBXLayerPotentialSource(discr,
@@ -542,8 +548,10 @@ def test_target_association_failure(actx_factory):
         )
 
     from pytential.qbx.target_assoc import (
-            target_association_code_container, associate_targets_to_qbx_centers,
-            QBXTargetAssociationFailedError)
+        QBXTargetAssociationFailedError,
+        associate_targets_to_qbx_centers,
+        target_association_code_container,
+    )
     code_container = target_association_code_container(actx)
 
     with pytest.raises(QBXTargetAssociationFailedError):

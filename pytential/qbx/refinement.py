@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2016, 2017 Matt Wala
@@ -23,24 +26,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+
 import numpy as np
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-
 from arraycontext import PyOpenCLArrayContext, flatten
-from meshmode.dof_array import DOFArray
-
-from pytools import memoize_method, memoize_in
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.dof_array import DOFArray
+from pytools import ProcessLogger, log_process, memoize_in, memoize_method
+
 from pytential.qbx.utils import (
-        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
-        TreeCodeContainerMixin)
+    QBX_TREE_C_PREAMBLE,
+    QBX_TREE_MAKO_DEFS,
+    TreeCodeContainerMixin,
+    TreeWranglerBase,
+)
 
-from pytools import ProcessLogger, log_process
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -549,7 +554,7 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
         ]
 
     if 0:
-        from pytential import sym, bind
+        from pytential import bind, sym
         bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
                 actx).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
@@ -568,8 +573,7 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
 def _make_temporary_collection(lpot_source,
         stage1_density_discr=None,
         stage2_density_discr=None):
-    from pytential import sym
-    from pytential import GeometryCollection
+    from pytential import GeometryCollection, sym
 
     name = "_tmp_refine_source"
     places = GeometryCollection(lpot_source, auto_where=name)
@@ -598,8 +602,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         maxiter=None, debug=None, visualize=False):
     from pytential import bind, sym
     if lpot_source._disable_refinement:
-        from meshmode.discretization.connection import \
-                IdentityDiscretizationConnection
+        from meshmode.discretization.connection import IdentityDiscretizationConnection
         return density_discr, IdentityDiscretizationConnection(density_discr)
 
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
@@ -720,8 +723,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, debug=None, visualize=False):
     if lpot_source._disable_refinement:
-        from meshmode.discretization.connection import \
-                IdentityDiscretizationConnection
+        from meshmode.discretization.connection import IdentityDiscretizationConnection
         return (stage1_density_discr,
                 IdentityDiscretizationConnection(stage1_density_discr))
 

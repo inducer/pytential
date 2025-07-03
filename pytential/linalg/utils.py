@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018-2022 Alexandru Fikl"
 
 __license__ = """
@@ -21,15 +24,17 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import PyOpenCLArrayContext, Array
 from pytools import memoize_in, memoize_method
 
+
 if TYPE_CHECKING:
+    from arraycontext import Array, PyOpenCLArrayContext
+
     from pytential.linalg.skeletonization import SkeletonizationResult
 
 
@@ -366,7 +371,7 @@ def interp_decomp(
 # {{{ cluster matrix errors
 
 def cluster_skeletonization_error(
-        mat: np.ndarray, skeleton: "SkeletonizationResult", *,
+        mat: np.ndarray, skeleton: SkeletonizationResult, *,
         ord: float | None = None,
         relative: bool = False) -> tuple[np.ndarray, np.ndarray]:
     r"""Evaluate the cluster-wise skeletonization errors for the given *skeleton*.
@@ -402,7 +407,7 @@ def cluster_skeletonization_error(
     tgt_src_index = skeleton.tgt_src_index
     nclusters = skeleton.nclusters
 
-    def mnorm(x: np.ndarray, y: np.ndarray) -> "np.floating[Any]":
+    def mnorm(x: np.ndarray, y: np.ndarray) -> np.floating[Any]:
         result = la.norm(x - y, ord=ord)
         if relative:
             result = result / la.norm(x, ord=ord)
@@ -440,9 +445,9 @@ def cluster_skeletonization_error(
 
 
 def skeletonization_error(
-        mat: np.ndarray, skeleton: "SkeletonizationResult", *,
+        mat: np.ndarray, skeleton: SkeletonizationResult, *,
         ord: float | None = None,
-        relative: bool = False) -> "np.floating[Any]":
+        relative: bool = False) -> np.floating[Any]:
     r"""Computes the skeletonization error for the entire matrix *mat*.
 
     The error computed here is given by

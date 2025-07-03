@@ -39,6 +39,7 @@ dependencies = [
     "pytools>=2024.1",
     "scipy>=1.2",
     "sumpy>=2022.1",
+    "useful-types",
 ]
 
 [project.optional-dependencies]
@@ -77,13 +78,14 @@ extend-select = [
     "E",    # pycodestyle
     "F",    # pyflakes
     "G",    # flake8-logging-format
-    # "I",    # flake8-isort
+    "I",    # flake8-isort
     "N",    # pep8-naming
     "NPY",  # numpy
     "Q",    # flake8-quotes
     "RUF",  # ruff
     "UP",   # pyupgrade
     "W",    # pycodestyle
+    "TC",
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
@@ -103,27 +105,33 @@ exclude = [
     "pytential/symbolic/pde/maxwell/generalized_debye.py",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"doc/*.py" = ["I002"]
+"examples/*.py" = ["I002"]
+
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
 inline-quotes = "double"
 multiline-quotes = "double"
 
-# [tool.ruff.lint.isort]
-# combine-as-imports = true
-# known-first-party = [
-#     "arraycontext",
-#     "boxtree",
-#     "loopy",
-#     "meshmode",
-#     "modepy",
-#     "pymbolic",
-#     "pyopencl",
-#     "pytools",
-# ]
-# known-local-folder = [
-#     "pytential",
-# ]
-# lines-after-imports = 2
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "arraycontext",
+    "boxtree",
+    "loopy",
+    "meshmode",
+    "modepy",
+    "pymbolic",
+    "pyopencl",
+    "pytools",
+    "sumpy",
+]
+known-local-folder = [
+    "pytential",
+]
+lines-after-imports = 2
+required-imports = ["from __future__ import annotations"]
 
 [tool.pytest.ini_options]
 markers = [
@@ -134,6 +142,9 @@ markers = [
 extend-ignore-re = [
   "(?Rm)^.*(#|//)\\s*spellchecker:\\s*disable-line$"
 ]
+
+[tool.typos.default.extend-words]
+"nd" = "nd"
 
 [tool.basedpyright]
 reportImplicitStringConcatenation = "none"

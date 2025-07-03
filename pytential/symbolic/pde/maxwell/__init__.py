@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,11 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections import namedtuple
+from functools import partial
+
 import numpy as np
 
 from pytential import sym
-from collections import namedtuple
-from functools import partial
+
 
 tangential_to_xyz = sym.tangential_to_xyz
 xyz_to_tangential = sym.xyz_to_tangential

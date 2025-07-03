@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2018 Matt Wala
 Copyright (C) 2019 Hao Gao
@@ -23,28 +26,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 
 import numpy as np
+import pytest
 
-from boxtree.fmm import TreeIndependentDataForWrangler
+from arraycontext import pytest_generate_tests_for_array_contexts
 from boxtree.constant_one import ConstantOneExpansionWrangler
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+from boxtree.fmm import TreeIndependentDataForWrangler
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, sym
 from pytential.qbx import QBXLayerPotentialSource
 from pytential.qbx.cost import (
-    QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
+    QBXCostModel,
+    _PythonQBXCostModel,
+    make_pde_aware_translation_cost_model,
 )
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
-import logging
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -68,8 +74,9 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     mesh = make_curve_mesh(starfish, np.linspace(0, 1, nelements), target_order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
     pre_density_discr = Discretization(
         actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(target_order)
@@ -284,12 +291,13 @@ DEFAULT_LPOT_KWARGS = {
 def get_lpot_source(actx, dim):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory)
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
 
     target_order = TARGET_ORDER
 
     if dim == 2:
-        from meshmode.mesh.generation import starfish, make_curve_mesh
+        from meshmode.mesh.generation import make_curve_mesh, starfish
         mesh = make_curve_mesh(starfish, np.linspace(0, 1, 50), order=target_order)
     elif dim == 3:
         from meshmode.mesh.generation import generate_torus
@@ -697,8 +705,9 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
 
     # Construct targets.
     if off_surface:
-        from pytential.target import PointsTarget
         from boxtree.tools import make_uniform_particle_array
+
+        from pytential.target import PointsTarget
         ntargets = 10 ** 3
         targets = PointsTarget(
                 make_uniform_particle_array(queue, ntargets, dim, np.float64))

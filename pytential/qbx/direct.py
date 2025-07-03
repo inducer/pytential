@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -20,11 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import loopy as lp
 import numpy as np
 
+import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from sumpy.qbx import LayerPotentialBase
+
 from pytential.version import PYTENTIAL_KERNEL_VERSION
 
 

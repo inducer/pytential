@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 Copyright (C) 2019 Alexandru Fikl
@@ -24,10 +27,10 @@ THE SOFTWARE.
 """
 
 import numpy as np  # noqa: F401
-import loopy as lp
 
-from pytools import memoize_in
+import loopy as lp
 from meshmode.dof_array import DOFArray
+from pytools import memoize_in
 
 
 __doc__ = """
@@ -107,7 +110,9 @@ class CenterGranularityConnection(GranularityConnection):
                     name="interleave")
 
             from meshmode.transform_metadata import (
-                    ConcurrentElementInameTag, ConcurrentDOFInameTag)
+                ConcurrentDOFInameTag,
+                ConcurrentElementInameTag,
+            )
             return lp.tag_inames(t_unit, {
                 "iel": ConcurrentElementInameTag(),
                 "idof": ConcurrentDOFInameTag()})
@@ -288,8 +293,7 @@ def connection_from_dds(places, from_dd, to_dd):
     if from_dd.granularity is not to_dd.granularity:
         conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
     else:
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
+        from meshmode.discretization.connection import ChainedDiscretizationConnection
         conn = ChainedDiscretizationConnection(connections,
                 from_discr=from_discr)
 
