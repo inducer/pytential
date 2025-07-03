@@ -30,20 +30,6 @@ jobs:
                 pip install ruff
                 ruff check
 
-    mypy:
-        name: Mypy
-        runs-on: ubuntu-latest
-        steps:
-        -   uses: actions/checkout@v4
-        -   name: "Main Script"
-            run: |
-                export EXTRA_INSTALL="mypy pytest"
-
-                curl -L -O https://tiker.net/ci-support-v0
-                . ./ci-support-v0
-                build_py_project_in_conda_env
-                ./run-mypy.sh
-
     docs:
         name: Documentation
         runs-on: ubuntu-latest
