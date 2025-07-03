@@ -39,7 +39,7 @@ used as evaluation targets.
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from arraycontext.context import Array
+from arraycontext import Array
 from pytools import T
 
 if TYPE_CHECKING:
