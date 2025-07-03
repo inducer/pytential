@@ -51,7 +51,6 @@ fmmlib = [
     "pyfmmlib>=2023.1",
 ]
 test = [
-    "mypy",
     "pylint",
     "pytest",
     "ruff",
@@ -135,32 +134,6 @@ markers = [
 extend-ignore-re = [
   "(?Rm)^.*(#|//)\\s*spellchecker:\\s*disable-line$"
 ]
-
-[tool.mypy]
-python_version = "3.10"
-warn_unused_ignores = true
-exclude = [
-    "pytential/symbolic/old_diffop_primitives.py",
-    "pytential/symbolic/pde/maxwell/generalized_debye.py",
-]
-
-[[tool.mypy.overrides]]
-module = [
-    "boxtree.*",
-    "cgen.*",
-    "loopy.*",
-    "mako.template",
-    "matplotlib.*",
-    "meshmode.*",
-    "pymbolic.*",
-    "pyopencl.*",
-    "pytential.qbx.target_specific.*",
-    "pytest.*",
-    "scipy.*",
-    "sumpy.*",
-    "sympy.*",
-]
-ignore_missing_imports = true
 
 [tool.basedpyright]
 reportImplicitStringConcatenation = "none"
