@@ -147,8 +147,17 @@ reportUnusedParameter = "hint"
 # https://github.com/microsoft/pyright/issues/746
 reportImportCycles = "none"
 
+reportPrivateUsage = "hint"
+
 pythonVersion = "3.10"
 pythonPlatform = "All"
+
+ignore = [
+    "pytential/symbolic/old_diffop_primitives.py",
+    "pytential/symbolic/pde/maxwell/generalized_debye.py",
+    "build",
+    "doc/conf.py",
+]
 
 [[tool.basedpyright.executionEnvironments]]
 root = "test"
@@ -161,3 +170,16 @@ reportArgumentType = "hint"
 reportPossiblyUnboundVariable = "hint"
 reportGeneralTypeIssues = "hint"
 reportOptionalSubscript = "hint"
+reportUnknownMemberType = "hint"
+reportUnknownVariableType = "hint"
+reportUnknownParameterType = "hint"
+reportMissingParameterType = "hint"
+reportAny = "none"
+reportImplicitOverride = "hint"
+reportUnannotatedClassAttribute = "hint"
+reportPrivateLocalImportUsage = "hint"
+reportPrivateImportUsage = "hint"
+reportPrivateUsage = "hint"
+reportUnknownLambdaType = "hint"
+reportMissingTypeStubs = "hint"
+reportUnusedImport = "none"
