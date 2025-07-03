@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __copyright__ = "Copyright (C) 2012-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -29,6 +31,18 @@ __doc__ = """
 .. autoexception:: GMRESError
 
 .. autoclass:: ResidualPrinter
+
+References
+----------
+.. class:: ArrayContainer
+
+    See :class:`arraycontext.ArrayContainer`.
+
+.. currentmodule:: arraycontext.typing
+
+.. class:: ArrayOrContainerT
+
+    See :class:`arraycontext.ArrayOrContainerT`.
 """
 
 from collections.abc import Callable, Sequence
