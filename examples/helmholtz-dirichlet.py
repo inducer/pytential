@@ -3,11 +3,13 @@ import numpy.linalg as la
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
 
 from pytential import bind, sym
 from pytential.target import PointsTarget
+
 
 # {{{ set some constants for use below
 
@@ -31,8 +33,9 @@ def main(mesh_name="ellipse", visualize=False):
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
+
+    from meshmode.mesh.generation import ellipse, make_curve_mesh
 
     if mesh_name == "ellipse":
         mesh = make_curve_mesh(
@@ -71,8 +74,7 @@ def main(mesh_name="ellipse", visualize=False):
             actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
-    from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedError)
+    from pytential.qbx import QBXLayerPotentialSource, QBXTargetAssociationFailedError
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
@@ -92,7 +94,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     # {{{ describe bvp
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     kernel = HelmholtzKernel(2)
 
     sigma_sym = sym.var("sigma")

@@ -2,11 +2,13 @@ import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
 
 from pytential import bind, sym
 from pytential.target import PointsTarget
+
 
 # {{{ set some constants for use below
 
@@ -64,8 +66,7 @@ def main(mesh_name="torus", visualize=False):
             actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
-    from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedError)
+    from pytential.qbx import QBXLayerPotentialSource, QBXTargetAssociationFailedError
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,

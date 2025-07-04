@@ -50,22 +50,32 @@ Cluster Matrix Builders
     :show-inheritance:
 """
 
-from collections.abc import Sequence
-from typing import Any
+from sys import intern
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from sys import intern
-
-from pytools import memoize_method
+import pymbolic.primitives as p
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
-from meshmode.discretization import Discretization
+from pymbolic.geometric_algebra.mapper import (
+    EvaluationRewriter as EvaluationRewriterBase,
+)
+from pytools import memoize_method
 
 from pytential.collection import GeometryCollection
 from pytential.linalg.utils import TargetAndSourceClusterList
 from pytential.symbolic.primitives import Variable
-from pymbolic.geometric_algebra.mapper import EvaluationRewriter as EvaluationRewriterBase  # noqa: E501
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from meshmode.discretization import Discretization
+
+    from pytential.collection import GeometryCollection
+    from pytential.linalg.utils import TargetAndSourceClusterList
+    from pytential.symbolic.primitives import Variable
 
 
 # {{{ helpers
@@ -262,13 +272,14 @@ class MatrixBuilderBase(EvaluationRewriterBase):
         actx = self.array_context
         return actx.to_numpy(flatten(bind(self.places, op)(actx), actx))
 
-    def map_call(self, expr):
+    def map_call(self, expr: p.Call):
         arg, = expr.parameters
         rec_arg = self.rec(arg)
 
         if isinstance(rec_arg, np.ndarray) and self.is_kind_matrix(rec_arg):
             raise RuntimeError("expression is nonlinear in variable")
 
+        assert isinstance(expr.function, p.Variable)
         from numbers import Number
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
@@ -417,10 +428,12 @@ class MatrixBuilder(MatrixBuilderBase):
             try:
                 mat = cache[key]
             except KeyError:
-                from meshmode.discretization.connection import \
-                    flatten_chained_connection
-                from meshmode.discretization.connection.direct import \
-                    make_direct_full_resample_matrix
+                from meshmode.discretization.connection import (
+                    flatten_chained_connection,
+                )
+                from meshmode.discretization.connection.direct import (
+                    make_direct_full_resample_matrix,
+                )
 
                 conn = self.places.get_connection(expr.from_dd, expr.to_dd)
                 conn = flatten_chained_connection(actx, conn)

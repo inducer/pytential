@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2012-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -45,13 +46,17 @@ References
     See :class:`arraycontext.ArrayOrContainerT`.
 """
 
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from arraycontext import ArrayContainer, ArrayOrContainerT
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from arraycontext import ArrayContainer, ArrayOrContainerT
 
 
 def structured_vdot(x, y, array_context=None):
@@ -323,8 +328,9 @@ def gmres(
     :return: a :class:`GMRESResult`.
     """
     if inner_product is None:
-        from pytential.symbolic.execution import \
-                _find_array_context_from_args_in_context
+        from pytential.symbolic.execution import (
+            _find_array_context_from_args_in_context,
+        )
         try:
             actx = _find_array_context_from_args_in_context({
                 "rhs": rhs, "x0": x0,

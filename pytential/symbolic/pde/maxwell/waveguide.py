@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013-2016 Andreas Kloeckner"
 
 __license__ = """
@@ -30,8 +33,9 @@ Second-Kind Waveguide
 
 import numpy as np
 
-from pytential import sym
 from pytools import memoize_method
+
+from pytential import sym
 from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
 
 

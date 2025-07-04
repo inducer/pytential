@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +24,8 @@ THE SOFTWARE.
 """
 
 from collections.abc import Hashable
-from typing import Any
+from typing import Any, TypeAlias
+
 
 __doc__ = """
 .. autoclass:: DEFAULT_SOURCE
@@ -118,6 +120,9 @@ class GRANULARITY_ELEMENT:              # noqa: N801
 # }}}
 
 
+GeometryId: TypeAlias = Hashable
+
+
 # {{{ DOFDescriptor
 
 class _NoArgSentinel:
@@ -162,9 +167,9 @@ class DOFDescriptor:
     """
 
     def __init__(self,
-            geometry: Hashable | None = None,
-            discr_stage: DiscretizationStages | None = None,
-            granularity: DOFGranularities | None = None):
+            geometry: GeometryId | None = None,
+            discr_stage: DiscretizationStage | None = None,
+            granularity: DOFGranularity | None = None):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
@@ -184,9 +189,9 @@ class DOFDescriptor:
         self.granularity = granularity
 
     def copy(self,
-            geometry: Hashable | None = None,
-            discr_stage: DiscretizationStages | None = _NoArgSentinel,  # type: ignore[assignment]
-            granularity: DOFGranularities | None = None) -> DOFDescriptor:
+            geometry: GeometryId | None = None,
+            discr_stage: DiscretizationStage | None = _NoArgSentinel,  # type: ignore[assignment]
+            granularity: DOFGranularity | None = None) -> DOFDescriptor:
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
                     if discr_stage is _NoArgSentinel else discr_stage
@@ -277,18 +282,18 @@ def as_dofdesc(desc: DOFDescriptorLike) -> DOFDescriptor:
 
 DEFAULT_DOFDESC = DOFDescriptor()
 
-DiscretizationStages = (
+DiscretizationStage = (
         type[QBX_SOURCE_STAGE1]
         | type[QBX_SOURCE_STAGE2]
         | type[QBX_SOURCE_QUAD_STAGE2]
         )
 
-DOFGranularities = (
+DOFGranularity = (
         type[GRANULARITY_NODE]
         | type[GRANULARITY_CENTER]
         | type[GRANULARITY_ELEMENT]
         )
 
-DOFDescriptorLike = DOFDescriptor | Hashable
+DOFDescriptorLike = DOFDescriptor | GeometryId
 
 # }}}

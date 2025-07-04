@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,20 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Collection, Iterator, Hashable, Sequence, Set
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Variable, Subscript
-from pymbolic.typing import Expression
-from sumpy.kernel import Kernel
+from pymbolic.primitives import Subscript, Variable, cse_scope
 
-from pytential.symbolic.primitives import (
-        DOFDescriptor, IntG, NamedIntermediateResult)
 from pytential.symbolic.mappers import CachedIdentityMapper, DependencyMapper
+from pytential.symbolic.primitives import DOFDescriptor, IntG, NamedIntermediateResult
+
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Hashable, Iterator, Sequence, Set
+
+    from pymbolic.typing import Expression
+    from sumpy.kernel import Kernel
 
 
 # {{{ statements
@@ -272,7 +278,7 @@ class ComputePotential(Statement):
 
 def dot_dataflow_graph(
         dep_mapper: DependencyMapper,
-        code: "Code",
+        code: Code,
         max_node_label_length: int = 30,
         label_wrap_width: int = 50) -> str:
     origins = {}

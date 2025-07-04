@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -21,13 +24,13 @@ THE SOFTWARE.
 """
 
 import numpy as np
+
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from pytools import memoize_method
-
-from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
+from sumpy.p2e import P2EBase
 
 from pytential.version import PYTENTIAL_KERNEL_VERSION
 

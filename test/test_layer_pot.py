@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,26 +23,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+import logging
 from functools import partial
 
 import numpy as np
+import pytest
 
-from arraycontext import flatten
-from pytential import bind, sym, norm
-from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
+from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from sumpy.visualization import FieldPlotter
 
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from pytential import GeometryCollection, bind, norm, sym
 
-import logging
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -61,8 +61,9 @@ def test_geometry(actx_factory):
             order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
 
     discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
@@ -99,10 +100,12 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
             np.linspace(0, 1, nelements+1),
             target_order)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
@@ -158,10 +161,12 @@ def test_off_surface_eval_vs_direct(actx_factory, do_plot=False):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
@@ -240,10 +245,12 @@ def test_single_plus_double_with_single_fmm(actx_factory, do_plot=False):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-    from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.qbx import QBXLayerPotentialSource
 
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
@@ -336,8 +343,9 @@ def test_unregularized_with_ones_kernel(actx_factory):
             order)
 
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
 
     discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
@@ -384,10 +392,12 @@ def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-    from pytential.unregularized import UnregularizedLayerPotentialSource
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+        InterpolatoryQuadratureSimplexGroupFactory,
+    )
+
+    from pytential.unregularized import UnregularizedLayerPotentialSource
 
     density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
@@ -465,8 +475,9 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
                 )
 
         from meshmode.discretization import Discretization
-        from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+        from meshmode.discretization.poly_element import (
+            InterpolatoryQuadratureSimplexGroupFactory,
+        )
         pre_density_discr = Discretization(
                 actx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))

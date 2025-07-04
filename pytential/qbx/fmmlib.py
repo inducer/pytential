@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -20,26 +23,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+
 import numpy as np
 
-from pytools import memoize_method
 import pyopencl as cl
 import pyopencl.array
-
 from boxtree.pyfmmlib_integration import (
-        Kernel,
-        FMMLibTreeIndependentDataForWrangler,
-        FMMLibExpansionWrangler)
+    FMMLibExpansionWrangler,
+    FMMLibTreeIndependentDataForWrangler,
+    Kernel,
+)
+from boxtree.timing import return_timing_data
+from pytools import log_process, memoize_method
 from sumpy.kernel import (
-        LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
-        DirectionalSourceDerivative)
+    AxisTargetDerivative,
+    DirectionalSourceDerivative,
+    HelmholtzKernel,
+    LaplaceKernel,
+)
+
 import pytential.qbx.target_specific as ts
 
 
-from boxtree.timing import return_timing_data
-from pytools import log_process
-
-import logging
 logger = logging.getLogger(__name__)
 
 

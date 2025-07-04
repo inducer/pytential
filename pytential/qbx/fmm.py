@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -20,18 +23,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pyopencl as cl
-import pyopencl.array
-from sumpy.fmm import (SumpyTreeIndependentDataForWrangler,
-        SumpyExpansionWrangler, SumpyTimingFuture)
-
-from pytools import memoize_method
-from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
-
-from boxtree.timing import TimingRecorder
-from pytools import log_process, ProcessLogger
-
 import logging
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+import pyopencl.array as cl_array
+from boxtree.timing import TimingRecorder
+from pytools import ProcessLogger, log_process, memoize_method
+from sumpy.expansion import ExpansionFactoryBase
+from sumpy.fmm import (
+    SumpyExpansionWrangler,
+    SumpyTimingFuture,
+    SumpyTreeIndependentDataForWrangler,
+)
+
+from pytential.qbx.interactions import L2QBXL, M2QBXL, QBXL2P, P2QBXLFromCSR
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sumpy.expansion import LocalExpansionBase
+    from sumpy.kernel import Kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,17 +59,29 @@ __doc__ = """
 """
 
 
+class QBXExpansionFactory(ExpansionFactoryBase, ABC):
+    @abstractmethod
+    def get_qbx_local_expansion_class(self,
+            kernel: Kernel
+        ) -> Callable[[Kernel, int], LocalExpansionBase]: ...
+
+
 # {{{ sumpy expansion wrangler
 
 class QBXSumpyTreeIndependentDataForWrangler(SumpyTreeIndependentDataForWrangler):
-    def __init__(self, cl_context,
-            multipole_expansion_factory, local_expansion_factory,
-            qbx_local_expansion_factory, target_kernels, source_kernels):
+    def __init__(self,
+                cl_context,
+                multipole_expansion_factory,
+                local_expansion_factory,
+                qbx_local_expansion_factory,
+                target_kernels,
+                source_kernels):
         super().__init__(
                 cl_context, multipole_expansion_factory, local_expansion_factory,
                 target_kernels=target_kernels, source_kernels=source_kernels)
 
-        self.qbx_local_expansion_factory = qbx_local_expansion_factory
+        self.qbx_local_expansion_factory: QBXExpansionFactory = (
+            qbx_local_expansion_factory)
 
     @memoize_method
     def qbx_local_expansion(self, order):
@@ -145,7 +172,7 @@ non_qbx_box_target_lists`),
 
         from pytools.obj_array import make_obj_array
         return make_obj_array([
-                cl.array.zeros(
+                cl_array.zeros(
                     template_ary.queue,
                     nqbtl.nfiltered_targets,
                     dtype=self.dtype)
@@ -160,7 +187,7 @@ non_qbx_box_target_lists`),
         order = self.qbx_order
         qbx_l_expn = self.tree_indep.qbx_local_expansion(order)
 
-        return cl.array.zeros(
+        return cl_array.zeros(
                     template_ary.queue,
                     (self.geo_data.ncenters,
                         len(qbx_l_expn)),

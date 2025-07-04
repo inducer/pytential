@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2017 Matt Wala
 """
@@ -22,21 +25,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-
-from pytools import memoize_method
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
-from meshmode.dof_array import DOFArray
-
 from boxtree.tools import DeviceDataRecord
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.dof_array import DOFArray
+from pytools import memoize_method
+
 from pytential.source import LayerPotentialSourceBase
 
-import logging
+
+if TYPE_CHECKING:
+    from pytential.collection import GeometryLike
 logger = logging.getLogger(__name__)
 
 
@@ -102,6 +107,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
+
             from pytential.source import UnableToCollectTimingData
             warn(
                    "Timing data collection not supported.",
@@ -219,8 +225,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate):
         # {{{ gather unique target discretizations used
-
-        from pytential.collection import GeometryLike
 
         target_name_to_index = {}
         targets: tuple[GeometryLike, ...] = ()

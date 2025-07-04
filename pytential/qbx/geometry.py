@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -21,22 +24,33 @@ THE SOFTWARE.
 """
 
 
+import logging
+from typing import TYPE_CHECKING, cast
+
 import numpy as np
-
-from pytools import memoize_method, memoize_in, log_process
-from arraycontext import PyOpenCLArrayContext, flatten
-from meshmode.dof_array import DOFArray
-
-from boxtree.tools import DeviceDataRecord
-from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
-
 from cgen import Enum
+
 import loopy as lp
+from arraycontext import PyOpenCLArrayContext, flatten
+from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
+from boxtree.tools import DeviceDataRecord
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.dof_array import DOFArray
+from pytools import log_process, memoize_in, memoize_method
 
 from pytential.qbx.utils import TreeCodeContainerMixin
 
-import logging
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pytential.collection import GeometryCollection
+    from pytential.qbx import QBXLayerPotentialSource
+    from pytential.symbolic.dof_desc import DOFDescriptor
+    from pytential.symbolic.primitives import QBXForcedLimit
+    from pytential.target import TargetOrDiscretization
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -343,9 +357,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         Symbolic name for the :class:`~pytential.qbx.QBXLayerPotentialSource`
         in the collection :attr:`places`.
 
-    .. attribute:: code_getter
+    .. autoattribute:: code_getter
 
-        The :class:`QBXFMMGeometryDataCodeContainer` for this object.
 
     .. attribute:: target_discrs_and_qbx_sides
 
@@ -385,11 +398,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. method:: m2l_rotation_angles()
     """
 
-    def __init__(self, places, source_dd,
-            code_getter,
-            target_discrs_and_qbx_sides,
-            target_association_tolerance,
-            tree_kind, debug=None):
+    def __init__(self, places: GeometryCollection, source_dd: DOFDescriptor,
+            code_getter: QBXFMMGeometryDataCodeContainer,
+            target_discrs_and_qbx_sides: Sequence[
+            tuple[TargetOrDiscretization, QBXForcedLimit]],
+            target_association_tolerance: float,
+            tree_kind,
+            debug: bool | None = None):
         """
         .. rubric:: Constructor arguments
 
@@ -402,15 +417,17 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             potentially costly self-checks
         """
         from pytential import sym
-        self.places = places
-        self.source_dd = sym.as_dofdesc(source_dd)
-        self.lpot_source = places.get_geometry(self.source_dd.geometry)
+        self.places: GeometryCollection = places
+        self.source_dd: DOFDescriptor = sym.as_dofdesc(source_dd)
+        self.lpot_source: QBXLayerPotentialSource = cast("QBXLayerPotentialSource",
+                places.get_geometry(self.source_dd.geometry))
 
-        self.code_getter = code_getter
-        self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides
-        self.target_association_tolerance = target_association_tolerance
+        self.code_getter: QBXFMMGeometryDataCodeContainer = code_getter
+        self.target_discrs_and_qbx_sides: Sequence[
+            tuple[TargetOrDiscretization, QBXForcedLimit]] = target_discrs_and_qbx_sides
+        self.target_association_tolerance: float = target_association_tolerance
         self.tree_kind = tree_kind
-        self.debug = self.lpot_source.debug if debug is None else debug
+        self.debug: bool = self.lpot_source.debug if debug is None else debug
 
     @property
     def ambient_dim(self):
@@ -897,8 +914,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             This only works for two-dimensional geometries.
         """
 
-        from pytential import sym
         import matplotlib.pyplot as pt
+
+        from pytential import sym
         pt.clf()
 
         dims = self.tree().targets.shape[0]

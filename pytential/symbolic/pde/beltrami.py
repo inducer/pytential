@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2021 Alexandru Fikl"
 
 __license__ = """
@@ -28,12 +31,15 @@ __doc__ = """
 """
 
 from functools import partial
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from pytential import sym
-from sumpy.kernel import Kernel
+
+
+if TYPE_CHECKING:
+    from sumpy.kernel import Kernel
 
 
 # {{{ beltrami operator

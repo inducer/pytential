@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -25,10 +28,12 @@ __doc__ = """
 .. autoclass:: CahnHilliardOperator
 """
 
-import numpy as np
-from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
-from pytential import sym
 from functools import partial
+
+import numpy as np
+
+from pytential import sym
+from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
 
 
 class CahnHilliardOperator(L2WeightedPDEOperator):

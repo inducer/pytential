@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Alexandru Fikl"
 
 __license__ = """
@@ -20,29 +23,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
+import logging
 from dataclasses import replace
 from functools import partial
-import pytest
-
-import numpy as np
-import numpy.linalg as la
-
-from pytential import sym
-from pytential import GeometryCollection
-
-from meshmode.mesh.generation import ellipse, NArmedStarfish
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_matrix_data as extra
-import logging
+import numpy as np
+import numpy.linalg as la
+import pytest
+
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode import _acf  # noqa: F401
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.mesh.generation import NArmedStarfish, ellipse
+
+from pytential import GeometryCollection, sym
+
+
 logger = logging.getLogger(__name__)
 
-from pytential.utils import (  # noqa: F401
-        pytest_teardown_function as teardown_function)
+from typing import TYPE_CHECKING
+
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -145,8 +152,7 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 
     # }}}
 
-    from pytential.linalg.skeletonization import (
-            _skeletonize_block_by_proxy_with_mats)
+    from pytential.linalg.skeletonization import _skeletonize_block_by_proxy_with_mats
 
     rng = np.random.default_rng(42)
     _skeletonize_block_by_proxy_with_mats(
@@ -236,8 +242,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
         logger.info("[time] dense matrix construction: %s", p)
 
     # skeleton
-    from pytential.linalg.skeletonization import \
-            _skeletonize_block_by_proxy_with_mats
+    from pytential.linalg.skeletonization import _skeletonize_block_by_proxy_with_mats
     with ProcessTimer() as p:
         skeleton = _skeletonize_block_by_proxy_with_mats(
                 actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
@@ -282,7 +287,9 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     # {{{ check skeletonize
 
     from pytential.linalg.utils import (
-            cluster_skeletonization_error, skeletonization_error)
+        cluster_skeletonization_error,
+        skeletonization_error,
+    )
 
     with ProcessTimer() as p:
         blk_err_l, blk_err_r = cluster_skeletonization_error(

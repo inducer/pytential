@@ -1,4 +1,7 @@
 # pyright: reportIncompatibleVariableOverride=none, reportAssignmentType=none
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2014 Andreas Kloeckner"
 
 __license__ = """
@@ -21,20 +24,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable
+import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from pytential import sym
-from pytools import memoize_method
-from sumpy.kernel import Kernel
-from meshmode.mesh import MeshElementGroup, SimplexElementGroup
-from meshmode.discretization import ElementGroupFactory
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
+from meshmode.mesh import MeshElementGroup, SimplexElementGroup
+from pytools import memoize_method
 
-import logging
+from pytential import sym
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from meshmode.discretization import ElementGroupFactory
+    from sumpy.kernel import Kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -362,7 +371,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
     check_gradient: bool = True
 
     def get_mesh(self, resolution, mesh_order):
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
                 other_options=[
@@ -449,8 +458,8 @@ class GMSHSphereTestCase(SphereTestCase):
         default_factory=lambda: [0.4])      # type: ignore[list-item]
 
     def get_mesh(self, resolution, mesh_order):
-        from meshmode.mesh.io import ScriptSource
         from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
+        from meshmode.mesh.io import ScriptSource
         if issubclass(self.group_cls, SimplexElementGroup):
             script = ScriptSource(
                 """
@@ -527,7 +536,7 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
     outer_radius: float = 12.0
 
     def get_mesh(self, resolution, mesh_order):
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("merged-cubes.step"), 2, order=mesh_order,
                 other_options=[
@@ -555,7 +564,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
     nz: int = 2
 
     def get_mesh(self, resolution, mesh_order):
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         base_mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
                 other_options=[
@@ -624,7 +633,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
                 "https://raw.githubusercontent.com/inducer/geometries/master/"
                 "surface-3d/elliptiplane.brep")
 
-        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("elliptiplane.brep"), 2, order=mesh_order,
                 other_options=[
@@ -681,7 +690,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
 
         # {{{ source
 
-        from meshmode.mesh.io import generate_gmsh, ScriptWithFilesSource
+        from meshmode.mesh.io import ScriptWithFilesSource, generate_gmsh
         mesh = generate_gmsh(
                 ScriptWithFilesSource("""
                     Merge "betterplane.brep";
