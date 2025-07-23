@@ -501,11 +501,13 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
                     - 0.5*sym.tangential_to_xyz(density_sym)
                     )
 
+            from pytools import obj_array
+
             # The tangential coordinate system is element-local, so we can't just
             # conjure up some globally smooth functions, interpret their values
             # in the tangential coordinate system, and be done. Instead, generate
             # an XYZ function and project it.
-            jxyz = sym.make_obj_array([
+            jxyz = obj_array.new_1d([
                 actx.np.cos(0.5*x) * actx.np.cos(0.5*y) * actx.np.cos(0.5*z),
                 actx.np.sin(0.5*x) * actx.np.cos(0.5*y) * actx.np.sin(0.5*z),
                 actx.np.sin(0.5*x) * actx.np.cos(0.5*y) * actx.np.cos(0.5*z),

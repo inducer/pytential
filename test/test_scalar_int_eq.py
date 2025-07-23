@@ -32,7 +32,7 @@ from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytools.obj_array import flat_obj_array
+from pytools import obj_array
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
@@ -229,7 +229,7 @@ def run_int_eq_test(actx,
                 auto_where=("point_source", case.name))(
                         actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
-        bc = flat_obj_array(bc_u, bc_du)
+        bc = obj_array.flat(bc_u, bc_du)
     else:
         raise ValueError(f"unknown bc_type: '{case.bc_type}'")
 

@@ -12,7 +12,7 @@ from meshmode.discretization.poly_element import \
 from meshmode.discretization.visualization import make_visualizer
 
 from pytential import bind, sym, norm  # noqa
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 
 import pytential.symbolic.primitives as p
 
@@ -196,7 +196,7 @@ def main():
                     p.area_element(mesh.ambient_dim, mesh.dim))
                 (queue)).get())
 
-    centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
+    centers = obj_array.new_1d([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
     centers[2][:] = center_dist
 
     print(center_dist)

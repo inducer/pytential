@@ -492,8 +492,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         return np.zeros(non_qbx_box_target_lists.nfiltered_targets)
 
     def full_output_zeros(self, template_ary):
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([np.zeros(self.tree.ntargets)])
+        from pytools import obj_array
+        return obj_array.new_1d([np.zeros(self.tree.ntargets)])
 
     def qbx_local_expansion_zeros(self):
         return np.zeros(self.geo_data.ncenters)

@@ -401,8 +401,8 @@ class MatrixBuilder(MatrixBuilderBase):
                     expr.from_dd.geometry, expr.from_dd.discr_stage)
             template_ary = actx.thaw(discr.nodes()[0])
 
-            from pytools.obj_array import make_obj_array
-            return make_obj_array([
+            from pytools import obj_array
+            return obj_array.new_1d([
                 actx.to_numpy(flatten(
                     conn(unflatten(template_ary, actx.from_numpy(o), actx)),
                     actx))

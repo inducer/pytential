@@ -30,7 +30,7 @@ from pytential import GeometryCollection, bind, sym
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureGroupFactory
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
@@ -184,13 +184,13 @@ def run_exterior_stokes(actx_factory, *,
     normal = bind(places, sym.normal(ambient_dim).as_vector())(actx)
 
     rng = np.random.default_rng(seed=42)
-    charges = make_obj_array([
+    charges = obj_array.new_1d([
         actx.from_numpy(rng.normal(size=point_source.ndofs))
         for _ in range(ambient_dim)
         ])
 
     if ambient_dim == 2:
-        total_charge = make_obj_array([
+        total_charge = obj_array.new_1d([
             actx.to_numpy(actx.np.sum(c)) for c in charges
             ])
         omega = bind(places, total_charge * sym.Ones())(actx)
@@ -417,7 +417,7 @@ class StokesletIdentity:
                 mu_sym=1, qbx_forced_limit=+1)
 
     def ref_result(self):
-        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+        return obj_array.new_1d([1.0e-15 * sym.Ones()] * self.ambient_dim)
 
 
 @pytest.mark.parametrize("cls", [

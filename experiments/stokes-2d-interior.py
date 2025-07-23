@@ -33,8 +33,8 @@ def main(nelements):
     logging.basicConfig(level=logging.INFO)
 
     def get_obj_array(obj_array):
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([
+        from pytools import obj_array
+        return obj_array.new_1d([
                 ary.get()
                 for ary in obj_array
                 ])
@@ -72,7 +72,6 @@ def main(nelements):
 
     from sumpy.kernel import LaplaceKernel
     from pytential.symbolic.stokes import StressletWrapper
-    from pytools.obj_array import make_obj_array
     dim=2
     cse = sym.cse
 

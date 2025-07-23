@@ -32,7 +32,7 @@ import numpy.linalg as la
 from arraycontext import flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 from meshmode.mesh.generation import ellipse, NArmedStarfish
 
 from meshmode import _acf           # noqa: F401
@@ -163,7 +163,7 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
     for i in range(5):
         if isinstance(sym_u, np.ndarray):
             u = rng.normal(size=(len(sym_u), density_discr.ndofs))
-            u_dev = make_obj_array([
+            u_dev = obj_array.new_1d([
                 unflatten(template_ary, actx.from_numpy(ui), actx, strict=False)
                 for ui in u
                 ])

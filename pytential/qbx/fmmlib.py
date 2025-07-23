@@ -209,16 +209,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         nqbtl = self.geo_data.non_qbx_box_target_lists()
 
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([
+        from pytools import obj_array
+        return obj_array.new_1d([
                 np.zeros(nqbtl.nfiltered_targets, self.tree_indep.dtype)
                 for k in self.tree_indep.outputs])
 
     def full_output_zeros(self, template_ary):
         """This includes QBX and non-QBX targets."""
 
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([
+        from pytools import obj_array
+        return obj_array.new_1d([
                 np.zeros(self.tree.ntargets, self.tree_indep.dtype)
                 for k in self.tree_indep.outputs])
 

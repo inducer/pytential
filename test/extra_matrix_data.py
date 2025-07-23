@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 
 from pytential import sym
 from pytential.symbolic.dof_desc import DiscretizationStages
@@ -115,7 +115,7 @@ class MatrixTestCaseMixin:
 
         elif self.op_type == "vector":
             sym_u = sym.make_sym_vector("u", ambient_dim)
-            sym_op = make_obj_array([
+            sym_op = obj_array.new_1d([
                 sym.Sp(knl, sym_u[0], **double_kwargs)
                 + sym.D(knl, sym_u[1], **double_kwargs),
                 sym.S(knl, 0.4 * sym_u[0], **single_kwargs)
@@ -123,7 +123,7 @@ class MatrixTestCaseMixin:
                 ])
 
             if double_kwargs["qbx_forced_limit"] == "avg":
-                sym_op = 0.5 * self.side * make_obj_array([
+                sym_op = 0.5 * self.side * obj_array.new_1d([
                     -sym_u[0] + sym_u[1],
                     0.3 * sym_u[0]
                     ]) + sym_op

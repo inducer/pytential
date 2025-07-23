@@ -394,7 +394,7 @@ def _get_next_step(
 
     # {{{ make sure results do not get discarded
 
-    from pytools.obj_array import obj_array_vectorize
+    from pytools import obj_array
 
     from pytential.symbolic.mappers import DependencyMapper
     dm = DependencyMapper(composite_leaves=False)
@@ -409,7 +409,7 @@ def _get_next_step(
             assert isinstance(var, Variable)
             discardable_vars.discard(var.name)
 
-    obj_array_vectorize(remove_result_variable, result)
+    obj_array.vectorize(remove_result_variable, result)
 
     # }}}
 
