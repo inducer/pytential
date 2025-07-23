@@ -245,8 +245,9 @@ def test_pec_mfie_extinction(actx_factory, case,
     import pyopencl.clrandom as clrandom
     rng = clrandom.PhiloxGenerator(actx.context, seed=12)
 
-    from pytools.obj_array import make_obj_array
-    src_j = make_obj_array([
+    from pytools import obj_array
+
+    src_j = obj_array.new_1d([
             rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
             for _ in range(3)])
 
@@ -413,12 +414,14 @@ def test_pec_mfie_extinction(actx_factory, case,
 
         # {{{ check PEC BC on total field
 
+        from pytools import obj_array
+
         bc_repr = EHField(mfie.scattered_volume_field(
             jt_sym, rho_sym, qbx_forced_limit=loc_sign))
         pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
         pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
 
-        eh_bc_values = bind(places, sym.flat_obj_array(pec_bc_e, pec_bc_h))(
+        eh_bc_values = bind(places, obj_array.flat(pec_bc_e, pec_bc_h))(
                     actx, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
                     **knl_kwargs)
 

@@ -151,8 +151,8 @@ class DebyeOperatorBase:
         E = 1j*k*A - grad_phi - curl_S_volume(k, m)
         H = curl_S_volume(k, j) + 1j*k*Q - grad_psi
 
-        from pytools.obj_array import flat_obj_array
-        return flat_obj_array(E, H)
+        from pytools import obj_array
+        return obj_array.flat(E, H)
 
     def integral_equation(self, *args, **kwargs):
         nxnxE, ndotH = self.boundary_field(*args)
@@ -162,8 +162,8 @@ class DebyeOperatorBase:
         if kwargs:
             raise TypeError("invalid keyword argument(s)")
 
-        from pytools.obj_array import make_obj_array
-        eh_op = make_obj_array([
+        from pytools import obj_array
+        eh_op = obj_array.new_1d([
             2*_debye_S0_surf_div(nxnxE),
             -ndotH,
             ]) + fix
@@ -176,8 +176,8 @@ class DebyeOperatorBase:
         E_minus_grad_phi = 1j*k*A - curl_S_volume(k, m)
 
         from hellskitchen.fmm import DifferenceKernel
-        from pytools.obj_array import flat_obj_array
-        return flat_obj_array(
+        from pytools import obj_array
+        return obj_array.flat(
                 eh_op,
                 # FIXME: These are inefficient. They compute a full volume field,
                 # but only actually use the line part of it.
@@ -220,8 +220,8 @@ class DebyeOperatorBase:
                     self.h_on_spanning_surface_symbols)]
                 )
 
-        from pytools.obj_array import make_obj_array
-        return make_obj_array(result)
+        from pytools import obj_array
+        return obj_array.new_1d(result)
 
 
     def harmonic_vector_field_current(self, hvf_coefficients):
@@ -260,10 +260,10 @@ class InvertingDebyeOperatorBase(DebyeOperatorBase):
             r_coeff = inv_rank_one_coeff(r_tilde)
             q_coeff = inv_rank_one_coeff(q_tilde)
 
-            from pytools.obj_array import flat_obj_array
+            from pytools import obj_array
             factors = self.cluster_points()
 
-            fix = flat_obj_array(
+            fix = obj_array.flat(
                     factors[0]*s_ones*r_coeff,
                     factors[1]*Ones()*q_coeff,
                     )
@@ -374,10 +374,10 @@ class NonInvertingDebyeOperator(DebyeOperatorBase):
             r_coeff = inv_rank_one_coeff(r_tilde)
             q_coeff = inv_rank_one_coeff(q_tilde)
 
-            from pytools.obj_array import flat_obj_array
+            from pytools import obj_array
             factors = self.cluster_points()
 
-            fix = flat_obj_array(
+            fix = obj_array.flat(
                     factors[0]*s_ones*(r_coeff),
                     factors[1]*Ones()*(q_coeff),
                     )

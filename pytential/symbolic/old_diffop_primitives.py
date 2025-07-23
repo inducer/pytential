@@ -1,30 +1,26 @@
 # {{{ differential operators on layer potentials
 
 def grad_S(kernel, arg, dim):
-    from pytools.obj_array import log_shape
-    arg_shape = log_shape(arg)
-    result = np.zeros(arg_shape+(dim,), dtype=object)
+    result = np.zeros(arg.shape+(dim,), dtype=object)
     from pytools import indices_in_shape
-    for i in indices_in_shape(arg_shape):
+    for i in indices_in_shape(arg.shape):
         for j in range(dim):
             result[i+(j,)] = IntGdTarget(kernel, arg[i], j)
     return result
 
 
 def grad_D(kernel, arg, dim):
-    from pytools.obj_array import log_shape
-    arg_shape = log_shape(arg)
-    result = np.zeros(arg_shape+(dim,), dtype=object)
+    result = np.zeros(arg.shape+(dim,), dtype=object)
     from pytools import indices_in_shape
-    for i in indices_in_shape(arg_shape):
+    for i in indices_in_shape(arg.shape):
         for j in range(dim):
             result[i+(j,)] = IntGdMixed(kernel, arg[i], j)
     return result
 
 
 def tangential_surf_grad_source_S(kernel, arg, dim=3):
-    from pytools.obj_array import make_obj_array
-    return make_obj_array([
+    from pytools import obj_array
+    return obj_array.new_1d([
         IntGdSource(kernel, arg,
             ds_direction=make_tangent(i, dim, "src"))
         for i in range(dim-1)])
@@ -42,7 +38,7 @@ def curl_curl_S_volume(k, arg):
     # By vector identity, this is grad div S volume + k^2 S_k(arg),
     # since S_k(arg) satisfies a Helmholtz equation.
 
-    from pytools.obj_array import make_obj_array
+    from pytools import obj_array
 
     def swap_min_first(i, j):
         if i < j:
@@ -50,7 +46,7 @@ def curl_curl_S_volume(k, arg):
         else:
             return j, i
 
-    return make_obj_array([
+    return obj_array.new_1d([
         sum(IntGd2Target(k, arg[m], *swap_min_first(m, n)) for m in range(3))
         for n in range(3)]) + k**2*S(k, arg)
 
@@ -133,8 +129,8 @@ def project_to_tangential(xyz_vec, which=None):
 
 def surf_n_cross(tangential_vec):
     assert len(tangential_vec) == 2
-    from pytools.obj_array import make_obj_array
-    return make_obj_array([-tangential_vec[1], tangential_vec[0]])
+    from pytools import obj_array
+    return obj_array.new_1d([-tangential_vec[1], tangential_vec[0]])
 
 # }}}
 

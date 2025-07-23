@@ -492,8 +492,8 @@ class MatVecOp:
             components.append(component)
 
         if self._operator_uses_obj_array:
-            from pytools.obj_array import make_obj_array
-            return make_obj_array(components)
+            from pytools import obj_array
+            return obj_array.new_1d(components)
         else:
             return components[0]
 
@@ -651,8 +651,8 @@ def execute(code: Code, exec_mapper, pre_assign_check=None) -> np.ndarray:
             assert target in assignees
             context[target] = value
 
-    from pytools.obj_array import obj_array_vectorize
-    return obj_array_vectorize(exec_mapper, code.result)
+    from pytools import obj_array
+    return obj_array.vectorize(exec_mapper, code.result)
 
 # }}}
 
@@ -967,8 +967,8 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
     exprs = _prepare_expr(places, exprs, auto_where=auto_where)
 
     if not (isinstance(exprs, np.ndarray) and exprs.dtype.char == "O"):
-        from pytools.obj_array import make_obj_array
-        exprs = make_obj_array([exprs])
+        from pytools import obj_array
+        exprs = obj_array.new_1d([exprs])
 
     try:
         input_exprs = list(input_exprs)

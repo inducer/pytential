@@ -41,8 +41,11 @@ from pymbolic.geometric_algebra.primitives import (
 from pymbolic.primitives import make_sym_vector
 from pymbolic.typing import ArithmeticExpression
 
-from pytools import P
-from pytools.obj_array import make_obj_array, flat_obj_array
+from pytools import P, obj_array
+from pytools.obj_array import (
+    new_1d as make_obj_array,
+    flat as flat_obj_array,
+)
 from sumpy.kernel import Kernel, SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -75,8 +78,8 @@ objects occur as part of a symbolic operator representation:
     of integral equations), the symbolic representation is an object array. Each
     element of the object array contains a symbolic expression.
 
-    :func:`pytools.obj_array.make_obj_array` and
-    :func:`pytools.obj_array.flat_obj_array`
+    :func:`pytools.obj_array.new_1d` and
+    :func:`pytools.obj_array.flat`
     can help create those.
 
 *   If it is a geometric quantity (that makes sense without explicit reference to
@@ -377,7 +380,7 @@ __all__ = (
     "pretty",
 
     # re-exported symbols, maybe questionable
-    "flat_obj_array",
+    "make_obj_array", "flat_obj_array",
     "DEFAULT_SOURCE", "DEFAULT_TARGET",
     "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
     "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
@@ -476,12 +479,11 @@ class Function(Variable):
         # return an object array of the operator applied to each of the
         # operands.
 
-        from pytools.obj_array import obj_array_vectorize
         if isinstance(operand, np.ndarray) and operand.dtype.char == "O":
             def make_op(operand_i):
                 return self(operand_i, *args, **kwargs)
 
-            return obj_array_vectorize(make_op, operand)
+            return obj_array.vectorize(make_op, operand)
         else:
             return var.__call__(self, operand, *args, **kwargs)
 
@@ -587,7 +589,7 @@ def nodes(ambient_dim, dofdesc=None):
     """
     dofdesc = as_dofdesc(dofdesc)
     return MultiVector(
-            make_obj_array([
+            obj_array.new_1d([
                 NodeCoordinateComponent(i, dofdesc)
                 for i in range(ambient_dim)]))
 
@@ -911,7 +913,7 @@ def _small_mat_eigenvalues(mat):
                 f"got a {m}x{n} matrix")
 
     if m == 1:
-        return make_obj_array([mat[0, 0]])
+        return obj_array.new_1d([mat[0, 0]])
     elif m == 2:
         (a, b), (c, d) = mat
         tr_mat = cse(a + d)
@@ -920,7 +922,7 @@ def _small_mat_eigenvalues(mat):
         # NOTE: 4 * b * c + (a - d)**2 can still become negative if the matrix
         # is not positive definite, but there's not much we can do here
         sqrt_discriminant = cse(sqrt(4 * b * c + (a - d)**2))
-        return make_obj_array([
+        return obj_array.new_1d([
             (tr_mat - sqrt_discriminant) / 2,
             (tr_mat + sqrt_discriminant) / 2,
             ])
@@ -936,7 +938,7 @@ def _small_sym_mat_eigenvalues(mat):
                 f"got a {m}x{n} matrix")
 
     if m == 1:
-        return make_obj_array([mat[0, 0]])
+        return obj_array.new_1d([mat[0, 0]])
     elif m == 2:
         (a, b), (_, d) = mat
         tr_mat = cse(a + d)
@@ -947,7 +949,7 @@ def _small_sym_mat_eigenvalues(mat):
         # but that can become negative with some floating point fuzz, so we
         # rewrite it as a sum of squares to avoid that issue
         sqrt_discriminant = cse(sqrt(4 * b**2 + (a - d)**2))
-        return make_obj_array([
+        return obj_array.new_1d([
             (tr_mat - sqrt_discriminant) / 2,
             (tr_mat + sqrt_discriminant) / 2,
             ])
@@ -1461,10 +1463,8 @@ class Ones(Expression):
 
 
 def ones_vec(dim, dofdesc=None):
-    from pytools.obj_array import make_obj_array
-
     dofdesc = as_dofdesc(dofdesc)
-    return MultiVector(make_obj_array(dim*[Ones(dofdesc)]))
+    return MultiVector(obj_array.new_1d(dim*[Ones(dofdesc)]))
 
 
 def area(ambient_dim, dim, dofdesc=None):
@@ -1543,12 +1543,11 @@ def dd_axis(axis, ambient_dim, operand):
     """Return the derivative along (XYZ) axis *axis*
     (in *ambient_dim*-dimensional space) of *operand*.
     """
-    from pytools.obj_array import obj_array_vectorize
     if isinstance(operand, np.ndarray) and operand.dtype.char == "O":
         def dd_axis_comp(operand_i):
             return dd_axis(axis, ambient_dim, operand_i)
 
-        return obj_array_vectorize(dd_axis_comp, operand)
+        return obj_array.vectorize(dd_axis_comp, operand)
 
     d = Derivative()
 
@@ -1890,8 +1889,7 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 
     kernel = _insert_source_derivative_into_kernel(kernel)
 
-    from pytools.obj_array import make_obj_array
-    nabla = MultiVector(make_obj_array(
+    nabla = MultiVector(obj_array.new_1d(
         [NablaComponent(axis, None)
             for axis in range(ambient_dim)]))
 
@@ -2122,7 +2120,7 @@ def tangential_onb(ambient_dim, dim=None, dofdesc=None):
 def xyz_to_tangential(xyz_vec, dofdesc=None):
     ambient_dim = len(xyz_vec)
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
-    return make_obj_array([
+    return obj_array.new_1d([
         np.dot(tonb[:, i], xyz_vec)
         for i in range(ambient_dim - 1)
         ])
@@ -2152,8 +2150,7 @@ def cross(vec_a, vec_b):
     assert len(vec_a) == len(vec_b) == 3
 
     from pytools import levi_civita
-    from pytools.obj_array import make_obj_array
-    return make_obj_array([
+    return obj_array.new_1d([
         sum(
             levi_civita((i, j, k)) * vec_a[j] * vec_b[k]
             for j in range(3) for k in range(3))
@@ -2173,9 +2170,8 @@ def div(vec):
 
 def curl(vec):
     from pytools import levi_civita
-    from pytools.obj_array import make_obj_array
 
-    return make_obj_array([
+    return obj_array.new_1d([
         sum(
             levi_civita((ell, m, n)) * dd_axis(m, 3, vec[n])
             for m in range(3) for n in range(3))

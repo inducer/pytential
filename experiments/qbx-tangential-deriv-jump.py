@@ -34,10 +34,10 @@ def main():
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
             qbx_order, fmm_order=False)
 
-    from pytools.obj_array import join_fields
+    from pytools import obj_array
     sig_sym = sym.var("sig")
     knl = LaplaceKernel(2)
-    op = join_fields(
+    op = obj_array.flat(
             sym.tangential_derivative(mesh.ambient_dim,
                 sym.D(knl, sig_sym, qbx_forced_limit=+1)).as_scalar(),
             sym.tangential_derivative(mesh.ambient_dim,

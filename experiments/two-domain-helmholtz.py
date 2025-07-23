@@ -27,7 +27,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -105,7 +105,7 @@ def main():
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
     # in inner domain
-    sources_1 = make_obj_array(list(np.array([
+    sources_1 = obj_array.new_1d(list(np.array([
         [-1.5, 0.5]
         ]).T.copy()))
     strengths_1 = np.array([1])

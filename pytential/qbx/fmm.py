@@ -143,8 +143,8 @@ non_qbx_box_target_lists`),
 
         nqbtl = self.geo_data.non_qbx_box_target_lists()
 
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([
+        from pytools import obj_array
+        return obj_array.new_1d([
                 cl.array.zeros(
                     template_ary.queue,
                     nqbtl.nfiltered_targets,
@@ -596,8 +596,8 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
         # potential back into a CL array.
         return wrangler.finalize_potentials(x[tree.sorted_target_ids], template_ary)
 
-    from pytools.obj_array import obj_array_vectorize
-    result = obj_array_vectorize(
+    from pytools import obj_array
+    result = obj_array.vectorize(
             reorder_and_finalize_potentials, all_potentials_in_tree_order)
 
     # }}}

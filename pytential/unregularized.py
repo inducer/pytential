@@ -108,11 +108,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                    category=UnableToCollectTimingData,
                    stacklevel=2)
 
-        from pytools.obj_array import obj_array_vectorize
+        from pytools import obj_array
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
-            return obj_array_vectorize(lambda x: x, value)
+            return obj_array.vectorize(lambda x: x, value)
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct

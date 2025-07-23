@@ -86,9 +86,10 @@ def get_torus_with_ref_mean_curvature(actx, h):
     a = r_major
     b = r_minor
 
+    from pytools import obj_array
+
     u = actx.np.arctan2(nodes[1], nodes[0])
-    from pytools.obj_array import flat_obj_array
-    rvec = flat_obj_array(actx.np.cos(u), actx.np.sin(u), 0*u)
+    rvec = obj_array.flat(actx.np.cos(u), actx.np.sin(u), 0*u)
     rvec = sum(nodes * rvec) - a
     cosv = actx.np.cos(actx.np.arctan2(nodes[2], rvec))
 
@@ -148,8 +149,10 @@ def test_tangential_onb(actx_factory):
     tob = sym.tangential_onb(mesh.ambient_dim)
     nvecs = tob.shape[1]
 
+    from pytools import obj_array
+
     # make sure tangential_onb is mutually orthogonal and normalized
-    orth_check = bind(discr, sym.make_obj_array([
+    orth_check = bind(discr, obj_array.new_1d([
         np.dot(tob[:, i], tob[:, j]) - (1 if i == j else 0)
         for i in range(nvecs) for j in range(nvecs)])
         )(actx)
@@ -160,7 +163,7 @@ def test_tangential_onb(actx_factory):
                 )
 
     # make sure tangential_onb is orthogonal to normal
-    orth_check = bind(discr, sym.make_obj_array([
+    orth_check = bind(discr, obj_array.new_1d([
         np.dot(tob[:, i], sym.normal(mesh.ambient_dim).as_vector())
         for i in range(nvecs)])
         )(actx)
@@ -383,8 +386,9 @@ def principal_curvatures(ambient_dim, dim=None, dofdesc=None):
     from pytential.symbolic.primitives import _small_mat_eigenvalues
     kappa1, kappa2 = _small_mat_eigenvalues(s_op)
 
-    from pytools.obj_array import make_obj_array
-    return make_obj_array([
+    from pytools import obj_array
+
+    return obj_array.new_1d([
         sym.cse(kappa1, "principal_curvature_0", sym.cse_scope.DISCRETIZATION),
         sym.cse(kappa2, "principal_curvature_1", sym.cse_scope.DISCRETIZATION),
         ])
@@ -397,12 +401,13 @@ def principal_directions(ambient_dim, dim=None, dofdesc=None):
     (s11, s12), (_, s22) = s_op
     k1, k2 = principal_curvatures(ambient_dim, dim=dim, dofdesc=dofdesc)
 
-    from pytools.obj_array import make_obj_array
-    d1 = sym.cse(make_obj_array([s12, -(s11 - k1)]), scope=sym.cse_scope.EVALUATION)
-    d2 = sym.cse(make_obj_array([-(s22 - k2), s12]), scope=sym.cse_scope.EVALUATION)
+    from pytools import obj_array
+
+    d1 = sym.cse(obj_array.new_1d([s12, -(s11 - k1)]), scope=sym.cse_scope.EVALUATION)
+    d2 = sym.cse(obj_array.new_1d([-(s22 - k2), s12]), scope=sym.cse_scope.EVALUATION)
 
     form1 = sym.first_fundamental_form(ambient_dim, dim=dim, dofdesc=dofdesc)
-    return make_obj_array([
+    return obj_array.new_1d([
         sym.cse(
             d1 / sym.sqrt(d1 @ (form1 @ d1)),
             "principal_direction_0", sym.cse_scope.DISCRETIZATION),

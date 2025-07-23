@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytools.obj_array import make_obj_array
+from pytools import obj_array
 
 from pytential.symbolic.mappers import (
         IdentityMapper, OperatorCollector, LocationTagger)
@@ -44,7 +44,7 @@ class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
 
 def prepare_expr(places, exprs, auto_where=None):
     from pytential.symbolic.execution import _prepare_expr
-    return make_obj_array([
+    return obj_array.new_1d([
         _prepare_expr(places, expr, auto_where=auto_where)
         for expr in exprs])
 
@@ -60,7 +60,7 @@ def prepare_proxy_expr(places, exprs, auto_where=None):
 
         return expr
 
-    return make_obj_array([_prepare_expr(expr) for expr in exprs])
+    return obj_array.new_1d([_prepare_expr(expr) for expr in exprs])
 
 # }}}
 

@@ -485,10 +485,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     calibration_params
                 )
 
-            from pytools.obj_array import obj_array_vectorize
-            from functools import partial
+            from pytools import obj_array
             return (
-                    obj_array_vectorize(
+                    obj_array.vectorize(
                         partial(wrangler.finalize_potentials,
                             template_ary=strengths[0]),
                         wrangler.full_output_zeros(strengths[0])),
@@ -518,7 +517,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _tree_indep_data_for_wrangler(self, source_kernels, target_kernels):
-        from functools import partial
         base_kernel = single_valued(kernel.get_base_kernel() for
             kernel in source_kernels)
         mpole_expn_class = \
