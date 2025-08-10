@@ -115,7 +115,7 @@ class RoundedCubeTestCase(MaxwellTestCase):
         # now centered at origin and extends to -1,1
 
         # Flip elements--gmsh generates inside-out geometry.
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
     def get_observation_mesh(self, target_order):
         from meshmode.mesh.generation import generate_sphere
@@ -161,7 +161,7 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 
         # Flip elements--gmsh generates inside-out geometry.
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
     def get_observation_mesh(self, target_order):
         from meshmode.mesh.generation import generate_sphere
