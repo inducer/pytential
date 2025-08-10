@@ -40,7 +40,7 @@ def main(mesh_name="ellipsoid"):
 
     from meshmode.mesh.processing import perform_flips
     # Flip elements--gmsh generates inside-out geometry.
-    mesh = perform_flips(mesh, np.ones(mesh.nelements))
+    mesh = perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
     from meshmode.mesh.processing import find_bounding_box
     bbox_min, bbox_max = find_bounding_box(mesh)

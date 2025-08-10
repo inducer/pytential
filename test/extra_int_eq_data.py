@@ -380,7 +380,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
 
         # flip elements -- gmsh generates inside-out geometries
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
 
 @dataclass
@@ -545,7 +545,7 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
 
         # Flip elements--gmsh generates inside-out geometry.
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
 
 @dataclass
@@ -572,7 +572,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
                     "Mesh.CharacteristicLengthMax = %g;" % resolution])
 
         from meshmode.mesh.processing import perform_flips
-        base_mesh = perform_flips(base_mesh, np.ones(base_mesh.nelements))
+        base_mesh = perform_flips(base_mesh, np.ones(base_mesh.nelements, np.bool))
 
         from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
         from meshmode.mesh.tools import rand_rotation_matrix
@@ -643,7 +643,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
         # now centered at origin and extends to -1,1
 
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements), dtype=np.bool)
 
 
 @dataclass
@@ -754,7 +754,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
         # }}}
 
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
 # }}}
 
