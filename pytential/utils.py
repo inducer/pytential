@@ -27,7 +27,7 @@ THE SOFTWARE.
 """
 
 import sys
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
@@ -35,8 +35,7 @@ if TYPE_CHECKING:
 
     from useful_types import SupportsRichComparison
 
-
-T = TypeVar("T")
+    from pytools import T
 
 
 def sort_arrays_together(
