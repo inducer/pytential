@@ -103,7 +103,7 @@ class PotentialSource(ABC):
         """
 
     def preprocess_optemplate(self,
-                name: str,
+                name: Hashable,
                 discretizations: GeometryCollection,
                 expr: T) -> T:
         """
