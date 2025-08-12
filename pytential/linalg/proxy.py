@@ -24,10 +24,11 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.linalg as la
+from typing_extensions import override
 
 import loopy as lp
 from arraycontext import Array, ArrayContainer, PyOpenCLArrayContext, flatten
@@ -43,9 +44,13 @@ from pytential.target import PointsTarget
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from numpy.typing import NDArray
+
+    from boxtree.tree_build import TreeKind
+    from sumpy.expansion import ExpansionBase
+    from sumpy.kernel import Kernel
 
     from pytential.linalg.utils import IndexList
     from pytential.symbolic.dof_desc import DOFDescriptorLike
@@ -76,9 +81,10 @@ _DEFAULT_MAX_PARTICLES_IN_BOX = 32
 # {{{ point index partitioning
 
 def partition_by_nodes(
-        actx: PyOpenCLArrayContext, places: GeometryCollection, *,
+        actx: PyOpenCLArrayContext,
+        places: GeometryCollection, *,
         dofdesc: DOFDescriptorLike | None = None,
-        tree_kind: str | None = "adaptive-level-restricted",
+        tree_kind: TreeKind | None = "adaptive-level-restricted",
         max_particles_in_box: int | None = None) -> IndexList:
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
@@ -119,13 +125,14 @@ def partition_by_nodes(
 
         from boxtree import box_flags_enum
         tree = tree.get(actx.queue)
-        # FIXME maybe this should use IS_LEAF once available?
+        # FIXME: maybe this should use IS_LEAF once available?
+        assert tree.box_flags is not None
         leaf_boxes, = (
                 tree.box_flags & box_flags_enum.HAS_SOURCE_OR_TARGET_CHILD_BOXES == 0
                 ).nonzero()
 
-        indices: np.ndarray = np.empty(len(leaf_boxes), dtype=object)
-        starts: np.ndarray | None = None
+        indices = np.empty(len(leaf_boxes), dtype=object)
+        starts: NDArray[np.integer] | None = None
 
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
@@ -138,9 +145,6 @@ def partition_by_nodes(
         nclusters = max(discr.ndofs // max_particles_in_box, 2)
         indices = np.arange(0, discr.ndofs, dtype=np.int64)
         starts = np.linspace(0, discr.ndofs, nclusters + 1, dtype=np.int64)
-
-        # FIXME: I'm not sure why mypy can't figure this out.
-        assert starts is not None
 
         assert starts[-1] == discr.ndofs
 
@@ -157,6 +161,8 @@ class ProxyPointSource(PointPotentialSource):
     .. automethod:: get_expansion_for_qbx_direct_eval
     """
 
+    lpot_source: QBXLayerPotentialSource
+
     def __init__(self,
             lpot_source: QBXLayerPotentialSource,
             proxies: Array) -> None:
@@ -170,7 +176,9 @@ class ProxyPointSource(PointPotentialSource):
         super().__init__(proxies)
         self.lpot_source = lpot_source
 
-    def get_expansion_for_qbx_direct_eval(self, base_kernel, target_kernels):
+    def get_expansion_for_qbx_direct_eval(
+            self, base_kernel: Kernel, target_kernels: Sequence[Kernel]
+        ) -> ExpansionBase:
         """Wrapper around
         ``pytential.qbx.QBXLayerPotentialSource.get_expansion_for_qbx_direct_eval``
         to allow this class to be used by the matrix builders.
@@ -180,6 +188,8 @@ class ProxyPointSource(PointPotentialSource):
 
 
 class ProxyPointTarget(PointsTarget):
+    lpot_source: QBXLayerPotentialSource
+
     def __init__(self,
             lpot_source: QBXLayerPotentialSource,
             proxies: Array) -> None:
@@ -235,21 +245,23 @@ class ProxyClusterGeometryData:
     srcindex: IndexList
     pxyindex: IndexList
 
-    points: NDArray[Any]
-    centers: NDArray[Any]
-    radii: NDArray[Any]
+    points: Array
+    centers: Array
+    radii: Array
 
-    _cluster_radii: np.ndarray | None = None
+    _cluster_radii: Array | None = None
 
     @property
     def nclusters(self) -> int:
         return self.srcindex.nclusters
 
     @property
-    def discr(self):
-        return self.places.get_discretization(
-                self.dofdesc.geometry,
-                self.dofdesc.discr_stage)
+    def discr(self) -> Discretization:
+        discr = self.places.get_discretization(
+            self.dofdesc.geometry, self.dofdesc.discr_stage)
+        assert isinstance(discr, Discretization)
+
+        return discr
 
     def to_numpy(self, actx: PyOpenCLArrayContext) -> ProxyClusterGeometryData:
         if self._cluster_radii is not None:
@@ -268,20 +280,22 @@ class ProxyClusterGeometryData:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
         assert isinstance(lpot_source, QBXLayerPotentialSource)
 
-        return ProxyPointSource(lpot_source, cast("Array", self.points))
+        return ProxyPointSource(lpot_source, self.points)
 
     def as_targets(self) -> ProxyPointTarget:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
         assert isinstance(lpot_source, QBXLayerPotentialSource)
 
-        return ProxyPointTarget(lpot_source, cast("Array", self.points))
+        return ProxyPointTarget(lpot_source, self.points)
 
 # }}}
 
 
 # {{{ proxy point generator
 
-def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
+def _generate_unit_sphere(
+        ambient_dim: int,
+        approx_npoints: int) -> NDArray[np.floating]:
     """Generate uniform points on a unit sphere.
 
     :arg ambient_dim: dimension of the ambient space.
@@ -306,7 +320,7 @@ def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
 def make_compute_cluster_centers_kernel_ex(
         actx: PyOpenCLArrayContext, ndim: int, norm_type: str) -> lp.ExecutorBase:
     @memoize_in(actx, (make_compute_cluster_centers_kernel_ex, ndim, norm_type))
-    def prg():
+    def prg() -> lp.ExecutorBase:
         if norm_type == "l2":
             # NOTE: computes first-order approximation of the source centroids
             insns = """
@@ -368,13 +382,19 @@ class ProxyGeneratorBase:
     .. automethod:: __call__
     """
 
+    places: GeometryCollection
+    radius_factor: float
+    norm_type: str
+    ref_points: NDArray[np.floating]
+
     def __init__(
-            self, places: GeometryCollection,
+            self,
+            places: GeometryCollection,
             approx_nproxy: int | None = None,
             radius_factor: float | None = None,
             norm_type: str = "linf",
 
-            _generate_ref_proxies: Callable[[int], np.ndarray] | None = None,
+            _generate_ref_proxies: Callable[[int], NDArray[np.floating]] | None = None,
             ) -> None:
         """
         :param approx_nproxy: desired number of proxy points. In higher
@@ -433,7 +453,8 @@ class ProxyGeneratorBase:
             actx: PyOpenCLArrayContext,
             source_dd: DOFDescriptorLike | None,
             dof_index: IndexList,
-            **kwargs: Any) -> ProxyClusterGeometryData:
+            include_cluster_radii: bool = False,
+            **kwargs: ArrayContainer) -> ProxyClusterGeometryData:
         """Generate proxy points for each cluster in *dof_index_set* with nodes in
         the discretization *source_dd*.
 
@@ -448,8 +469,6 @@ class ProxyGeneratorBase:
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
         assert isinstance(discr, Discretization)
-
-        include_cluster_radii = kwargs.pop("include_cluster_radii", False)
 
         # {{{ get proxy centers and radii
 
@@ -565,6 +584,7 @@ class ProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
+    @override
     def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
         return make_compute_cluster_radii_kernel_ex(actx, self.ambient_dim)
 
@@ -572,7 +592,7 @@ class ProxyGenerator(ProxyGeneratorBase):
 def make_compute_cluster_qbx_radii_kernel_ex(
         actx: PyOpenCLArrayContext, ndim: int) -> lp.ExecutorBase:
     @memoize_in(actx, (make_compute_cluster_qbx_radii_kernel_ex, ndim))
-    def prg():
+    def prg() -> lp.ExecutorBase:
         knl = lp.make_kernel([
             "{[icluster]: 0 <= icluster < nclusters}",
             "{[i]: 0 <= i < npoints}",
@@ -629,13 +649,17 @@ class QBXProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
+    @override
     def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
         return make_compute_cluster_qbx_radii_kernel_ex(actx, self.ambient_dim)
 
+    @override
     def __call__(self,
             actx: PyOpenCLArrayContext,
             source_dd: DOFDescriptorLike | None,
-            dof_index: IndexList, **kwargs) -> ProxyClusterGeometryData:
+            dof_index: IndexList,
+            include_cluster_radii: bool = False,
+            **kwargs: ArrayContainer) -> ProxyClusterGeometryData:
         if source_dd is None:
             source_dd = self.places.auto_source
         source_dd = sym.as_dofdesc(source_dd)
@@ -651,6 +675,7 @@ class QBXProxyGenerator(ProxyGeneratorBase):
                 expansion_radii=flatten(radii, actx),
                 center_int=flatten(center_int, actx, leaf_class=DOFArray),
                 center_ext=flatten(center_ext, actx, leaf_class=DOFArray),
+                include_cluster_radii=include_cluster_radii,
                 **kwargs)
 
 # }}}
