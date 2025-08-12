@@ -620,7 +620,9 @@ def _prepare_auto_where(
     return (sym.as_dofdesc(auto_source), sym.as_dofdesc(auto_target))
 
 
-def _prepare_expr(places, expr, auto_where=None):
+def _prepare_expr(places: GeometryCollection,
+                  expr: OperandTc,
+                  auto_where: AutoWhereLike | None = None) -> OperandTc:
     """
     :arg places: :class:`~pytential.collection.GeometryCollection`.
     :arg expr: a symbolic expression.
@@ -747,7 +749,7 @@ class BoundExpression(Generic[OperandTc]):
     Created by calling :func:`pytential.bind`.
     """
 
-    def __init__(self, places, sym_op_expr):
+    def __init__(self, places: GeometryCollection, sym_op_expr: OperandTc) -> None:
         self.places: GeometryCollection = places
         self.sym_op_expr: OperandTc = sym_op_expr
         self.caches: dict[Hashable, object] = {}
@@ -758,7 +760,7 @@ class BoundExpression(Generic[OperandTc]):
         from pytential.symbolic.compiler import OperatorCompiler
         return OperatorCompiler(self.places)(self.sym_op_expr)
 
-    def _get_cache(self, name):
+    def _get_cache(self, name: Hashable) -> object:
         return self.caches.setdefault(name, {})
 
     def cost_per_stage(self, calibration_params, **kwargs):
