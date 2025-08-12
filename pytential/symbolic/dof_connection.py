@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np  # noqa: F401
 from typing_extensions import override
@@ -146,13 +146,13 @@ class CenterGranularityConnection(DiscretizationConnection):
             interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
         """
         if isinstance(arys, list | tuple):
-            ary1, ary2 = arys
+            ary1, ary2 = cast("Sequence[ArrayOrContainerOrScalarT]", arys)
         else:
             ary1, ary2 = arys, arys
 
         if type(ary1) is not type(ary2):
             raise TypeError("cannot interleave arrays of different types: "
-                    f"'{type(ary1).__name__}' and '{type(ary2.__name__)}'")
+                    f"'{type(ary1).__name__}' and '{type(ary2).__name__}'")
 
         from meshmode.dof_array import rec_multimap_dof_array_container
         return rec_multimap_dof_array_container(
