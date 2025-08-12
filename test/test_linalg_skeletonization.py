@@ -114,6 +114,7 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
     """
 
     actx = actx_factory()
+    rng = np.random.default_rng(42)
 
     if visualize:
         logging.basicConfig(level=logging.INFO)
@@ -126,39 +127,22 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=dd)
 
     density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
-    tgt_src_index = case.get_tgt_src_cluster_index(actx, places, dd)
+    tgt_src_index, ctree = case.get_tgt_src_cluster_index(actx, places, dd)
 
     logger.info("nclusters %3d ndofs %7d",
             tgt_src_index.nclusters, density_discr.ndofs)
 
     # }}}
 
-    # {{{ wranglers
-
-    from pytential.linalg import QBXProxyGenerator
-    from pytential.linalg.skeletonization import make_skeletonization_wrangler
-    proxy_generator = QBXProxyGenerator(places,
-            radius_factor=case.proxy_radius_factor,
-            approx_nproxy=case.proxy_approx_count)
+    from pytential.linalg.skeletonization import rec_skeletonize_by_proxy
 
     sym_u, sym_op = case.get_operator(places.ambient_dim)
-    wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
-            domains=None,
-            context=case.knl_concrete_kwargs,
-            _weighted_proxy=case.weighted_proxy,
-            _proxy_source_cluster_builder=case.proxy_source_cluster_builder,
-            _proxy_target_cluster_builder=case.proxy_target_cluster_builder,
-            _neighbor_cluster_builder=case.neighbor_cluster_builder)
-
-    # }}}
-
-    from pytential.linalg.skeletonization import _skeletonize_block_by_proxy_with_mats
-
-    rng = np.random.default_rng(42)
-    _skeletonize_block_by_proxy_with_mats(
-        actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
+    rec_skeletonize_by_proxy(
+        actx, places, ctree, tgt_src_index, sym_op, sym_u,
+        context=case.knl_concrete_kwargs,
+        auto_where=dd,
         id_eps=1.0e-8,
-        rng=rng,
+        rng=rng
     )
 
 # }}}
@@ -171,6 +155,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
                              places=None, mat=None,
                              ctol=None, rtol=None,
                              rng=None,
+                             tgt_src_index=None,
                              suffix="", visualize=False):
     from pytools import ProcessTimer
 
@@ -180,9 +165,12 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     if places is None:
         qbx = case.get_layer_potential(actx, resolution, case.target_order)
         places = GeometryCollection(qbx, auto_where=dd)
+    else:
+        qbx = places.get_geometry(dd.geometry)
 
     density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
-    tgt_src_index = case.get_tgt_src_cluster_index(actx, places, dd)
+    if tgt_src_index is None:
+        tgt_src_index, _ = case.get_tgt_src_cluster_index(actx, places, dd)
 
     logger.info("nclusters %3d ndofs %7d",
             tgt_src_index.nclusters, density_discr.ndofs)
@@ -199,7 +187,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     logger.info("proxy factor %.2f count %7d",
                 case.proxy_radius_factor, proxy_approx_count)
 
-    from pytential.linalg import QBXProxyGenerator
+    from pytential.linalg.proxy import QBXProxyGenerator
     from pytential.linalg.skeletonization import make_skeletonization_wrangler
     proxy_generator = QBXProxyGenerator(places,
             radius_factor=case.proxy_radius_factor,
@@ -207,8 +195,8 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
     sym_u, sym_op = case.get_operator(places.ambient_dim)
     wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
-            domains=None,
             context=case.knl_concrete_kwargs,
+            auto_where=dd,
             _weighted_proxy=case.weighted_proxy,
             _proxy_source_cluster_builder=case.proxy_source_cluster_builder,
             _proxy_target_cluster_builder=case.proxy_target_cluster_builder,
@@ -252,10 +240,13 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
     logger.info("[time] skeletonization by proxy: %s", p)
 
+    def intersect1d(x, y):
+        return np.where((x.reshape(1, -1) - y.reshape(-1, 1)) == 0)[1]
+
     L, R = skeleton.L, skeleton.R
     for i in range(tgt_src_index.nclusters):
         # targets (rows)
-        bi = np.searchsorted(
+        bi = intersect1d(
             tgt_src_index.targets.cluster_indices(i),
             skeleton.skel_tgt_src_index.targets.cluster_indices(i),
             )
@@ -265,7 +256,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
         tgt_error = la.norm(A - L[i] @ S, ord=ord) / la.norm(A, ord=ord)
 
         # sources (columns)
-        bj = np.searchsorted(
+        bj = intersect1d(
             tgt_src_index.sources.cluster_indices(i),
             skeleton.skel_tgt_src_index.sources.cluster_indices(i),
             )
@@ -279,8 +270,8 @@ def run_skeletonize_by_proxy(actx, case, resolution,
                 src_error, tgt_error, R[i].shape[0], R[i].shape[1])
 
         if ctol is not None:
-            assert src_error < ctol * case.id_eps
-            assert tgt_error < ctol * case.id_eps
+            assert src_error < ctol
+            assert tgt_error < ctol
 
     # }}}
 
@@ -313,9 +304,9 @@ def run_skeletonize_by_proxy(actx, case, resolution,
             rtol if rtol is not None else 0.0)
 
     if rtol:
-        assert err_l < rtol * case.id_eps
-        assert err_r < rtol * case.id_eps
-        assert err_f < rtol * case.id_eps
+        assert err_l < rtol
+        assert err_r < rtol
+        assert err_f < rtol
 
     # }}}
 
@@ -355,19 +346,18 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
     # }}}
 
-    return err_f, (places, mat)
+    return err_f, (places, mat, skeleton)
 
 
 @pytest.mark.parametrize("case", [
-    # NOTE: skip 2d tests, since they're better checked for convergence in
-    # `test_skeletonize_by_proxy_convergence`
-    # SKELETONIZE_TEST_CASES[0], SKELETONIZE_TEST_CASES[1],
+    SKELETONIZE_TEST_CASES[0],
+    SKELETONIZE_TEST_CASES[1],
     SKELETONIZE_TEST_CASES[2],
     ])
 def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
-    r"""Test single-level skeletonization accuracy. Checks that the error
-    satisfies :math:`e < c \epsilon_{id}` for a fixed ID tolerance and an
-    empirically determined (not too huge) :math:`c`.
+    r"""Test multilevel skeletonization accuracy. Checks that the error for
+    every level satisfies :math:`e < c \epsilon_{id}` for a fixed ID tolerance
+    and an empirically determined (not too huge) :math:`c`.
     """
 
     import scipy.linalg.interpolative as sli
@@ -383,13 +373,27 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     case = replace(case, approx_cluster_count=6, id_eps=1.0e-8)
     logger.info("\n%s", case)
 
-    run_skeletonize_by_proxy(
-        actx, case, case.resolutions[0],
-        ctol=10,
-        # FIXME: why is the 3D error so large?
-        rtol=10**case.ambient_dim,
-        rng=rng,
-        visualize=visualize)
+    dd = sym.DOFDescriptor(case.name, discr_stage=case.skel_discr_stage)
+    qbx = case.get_layer_potential(actx, case.resolutions[0], case.target_order)
+    places = GeometryCollection(qbx, auto_where=dd)
+
+    tgt_src_index, ctree = case.get_tgt_src_cluster_index(actx, places, dd)
+    mat = None
+
+    from pytential.linalg.cluster import cluster
+    for clevel in ctree.levels[:-1]:
+        logger.info("[%2d/%2d] nclusters %3d",
+            clevel.level, ctree.nlevels, clevel.nclusters)
+
+        _, (_, mat, skeleton) = run_skeletonize_by_proxy(
+            actx, case, case.resolutions[0],
+            ctol=10 * case.id_eps,
+            # FIXME: why is the 3D error so large?
+            rtol=10**case.ambient_dim * case.id_eps,
+            places=places, mat=mat, rng=rng, tgt_src_index=tgt_src_index,
+            visualize=visualize)
+
+        tgt_src_index = cluster(skeleton.skel_tgt_src_index, clevel)
 
 # }}}
 
@@ -455,9 +459,11 @@ def test_skeletonize_by_proxy_convergence(
     places = mat = None
     for i in range(id_eps.size):
         case = replace(case, id_eps=id_eps[i], weighted_proxy=weighted)
-        rec_error[i], (places, mat) = run_skeletonize_by_proxy(
-            actx, case, r, places=places, mat=mat,
-            suffix=f"{suffix}_{i:04d}", rng=rng, visualize=False)
+
+        if not was_zero:
+            rec_error[i], (places, mat, _) = run_skeletonize_by_proxy(
+                actx, case, r, places=places, mat=mat, rng=rng,
+                suffix=f"{suffix}_{i:04d}", visualize=False)
 
         was_zero = rec_error[i] == 0.0
         eoc.add_data_point(id_eps[i], rec_error[i])
