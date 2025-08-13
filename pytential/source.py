@@ -124,9 +124,9 @@ class _SumpyP2PMixin:
         def p2p(target_kernels: tuple[Kernel, ...],
                 source_kernels: tuple[Kernel, ...] | None) -> P2P:
             if any(knl.is_complex_valued for knl in target_kernels):
-                value_dtype = self.complex_dtype    # type: ignore[attr-defined]
+                value_dtype = self.complex_dtype
             else:
-                value_dtype = self.real_dtype       # type: ignore[attr-defined]
+                value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
             return P2P(actx.context,

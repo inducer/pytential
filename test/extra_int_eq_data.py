@@ -365,7 +365,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
 
     # test case
     resolutions: list[int] = field(
-        default_factory=lambda: [2.0, 0.8])     # type: ignore[list-item]
+        default_factory=lambda: [2.0, 0.8])
     inner_radius: float = 0.4
     outer_radius: float = 5.0
     check_gradient: bool = True
@@ -455,7 +455,7 @@ class GMSHSphereTestCase(SphereTestCase):
 
     radius: float = 1.5
     resolutions: list[int] = field(
-        default_factory=lambda: [0.4])      # type: ignore[list-item]
+        default_factory=lambda: [0.4])
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
@@ -531,7 +531,7 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
 
     # test case
     resolutions: list[int] = field(
-        default_factory=lambda: [1.4])  # type: ignore[list-item]
+        default_factory=lambda: [1.4])
     inner_radius: float = 0.4
     outer_radius: float = 12.0
 
@@ -612,7 +612,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
 
     # test case
     resolutions: list[int] = field(
-        default_factory=lambda: [0.1])  # type: ignore[list-item]
+        default_factory=lambda: [0.1])
     inner_radius: float = 0.2
     outer_radius: float = 12   # was '-13' in some large-scale run (?)
     check_gradient: bool = False
@@ -662,7 +662,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
 
     # test case
     resolutions: list[int] = field(
-        default_factory=lambda: [0.2])  # type: ignore[list-item]
+        default_factory=lambda: [0.2])
     inner_radius: float = 0.2
     outer_radius: float = 15
     check_gradient: bool = False

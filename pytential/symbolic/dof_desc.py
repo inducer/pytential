@@ -183,7 +183,7 @@ class DOFDescriptor:
 
     def copy(self,
             geometry: GeometryId | None = None,
-            discr_stage: DiscretizationStage | None = _NoArgSentinel,  # type: ignore[assignment]
+            discr_stage: DiscretizationStage | None = _NoArgSentinel,
             granularity: DOFGranularity | None = None) -> DOFDescriptor:
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
@@ -262,7 +262,6 @@ def as_dofdesc(desc: DOFDescriptorLike) -> DOFDescriptor:
         return desc
 
     if desc in (QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2):
-        # NOTE: mypy is not able to be more specific about the type of `desc`
         return DOFDescriptor(discr_stage=desc)
 
     if desc in (GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT):
