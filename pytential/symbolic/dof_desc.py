@@ -26,6 +26,8 @@ THE SOFTWARE.
 from collections.abc import Hashable
 from typing import Any, TypeAlias
 
+from typing_extensions import override
+
 
 __doc__ = """
 .. autoclass:: DEFAULT_SOURCE
@@ -42,19 +44,10 @@ __doc__ = """
 .. autoclass:: DOFDescriptor
 .. autofunction:: as_dofdesc
 
-.. class:: DiscretizationStages
-
-    A :class:`~typing.Union` of all the allowed discretization stages.
-
-.. class:: DOFGranularities
-
-    A :class:`~typing.Union` of all the allowed DOF granularity types.
-
-.. class:: DOFDescriptorLike
-
-    Types convertible to a :class:`~pytential.symbolic.dof_desc.DOFDescriptor`
-    by :func:`~pytential.symbolic.dof_desc.as_dofdesc`.
-
+.. autodata:: GeometryId
+.. autodata:: DiscretizationStage
+.. autodata:: DOFGranularity
+.. autodata:: DOFDescriptorLike
 """
 
 
@@ -120,9 +113,6 @@ class GRANULARITY_ELEMENT:              # noqa: N801
 # }}}
 
 
-GeometryId: TypeAlias = Hashable
-
-
 # {{{ DOFDescriptor
 
 class _NoArgSentinel:
@@ -137,34 +127,37 @@ class DOFDescriptor:
     :attr:`granularity`, the data structure describes how the geometric object
     is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
-    .. attribute:: geometry
-
-        An identifier for the geometry on which the DOFs exist. This can be a
-        simple string or any other hashable identifier for the geometric object.
-        The geometric objects are generally subclasses of
-        :class:`~pytential.source.PotentialSource`,
-        :class:`~pytential.target.TargetBase` or
-        :class:`~meshmode.discretization.Discretization`.
-
-    .. attribute:: discr_stage
-
-        Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
-        this describes on which of the discretizations the
-        DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
-        :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
-
-    .. attribute:: granularity
-
-        Describes the level of granularity of the DOF vector.
-        Can be one of :class:`GRANULARITY_NODE` (one DOF per node),
-        :class:`GRANULARITY_CENTER` (two DOFs per node, one per side) or
-        :class:`GRANULARITY_ELEMENT` (one DOF per element).
+    .. autoattribute:: geometry
+    .. autoattribute:: discr_stage
+    .. autoattribute:: granularity
 
     .. automethod:: copy
     .. automethod:: to_stage1
     .. automethod:: to_stage2
     .. automethod:: to_quad_stage2
     """
+
+    geometry: GeometryId
+    """An identifier for the geometry on which the DOFs exist. This can be a
+    simple string or any other hashable identifier for the geometric object.
+    The geometric objects are generally subclasses of
+    :class:`~pytential.source.PotentialSource`,
+    :class:`~pytential.target.TargetBase` or
+    :class:`~meshmode.discretization.Discretization`.
+    """
+
+    discr_stage: DiscretizationStage | None
+    """Specific to a :class:`pytential.source.LayerPotentialSourceBase`, this
+    describes on which of the discretizations the DOFs are defined. Can be one
+    of :class:`QBX_SOURCE_STAGE1`, :class:`QBX_SOURCE_STAGE2` or
+    :class:`QBX_SOURCE_QUAD_STAGE2`.
+    """
+
+    granularity: DOFGranularity
+    """Describes the level of granularity of the DOF vector. Can be one of
+    :class:`GRANULARITY_NODE` (one DOF per node), :class:`GRANULARITY_CENTER`
+    (two DOFs per node, one per side) or :class:`GRANULARITY_ELEMENT` (one DOF
+    per element)."""
 
     def __init__(self,
             geometry: GeometryId | None = None,
@@ -228,6 +221,7 @@ class DOFDescriptor:
     def __ne__(self, other: Any) -> bool:
         return not self.__eq__(other)
 
+    @override
     def __repr__(self) -> str:
         discr_stage = self.discr_stage \
                 if self.discr_stage is None else self.discr_stage.__name__
@@ -235,8 +229,9 @@ class DOFDescriptor:
         return "{}(geometry={}, stage={}, granularity={})".format(
                 type(self).__name__, self.geometry, discr_stage, granularity)
 
+    @override
     def __str__(self) -> str:
-        name = []
+        name: list[str] = []
         if self.geometry is None:
             name.append("?")
         elif self.geometry in (_UNNAMED_SOURCE, DEFAULT_SOURCE):
@@ -268,10 +263,10 @@ def as_dofdesc(desc: DOFDescriptorLike) -> DOFDescriptor:
 
     if desc in (QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2):
         # NOTE: mypy is not able to be more specific about the type of `desc`
-        return DOFDescriptor(discr_stage=desc)  # type: ignore[arg-type]
+        return DOFDescriptor(discr_stage=desc)
 
     if desc in (GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT):
-        return DOFDescriptor(granularity=desc)  # type: ignore[arg-type]
+        return DOFDescriptor(granularity=desc)
 
     return DOFDescriptor(geometry=desc)
 
@@ -282,18 +277,27 @@ def as_dofdesc(desc: DOFDescriptorLike) -> DOFDescriptor:
 
 DEFAULT_DOFDESC = DOFDescriptor()
 
-DiscretizationStage = (
+GeometryId: TypeAlias = Hashable
+"""Type used for geometry identifiers."""
+
+DiscretizationStage: TypeAlias = (
         type[QBX_SOURCE_STAGE1]
         | type[QBX_SOURCE_STAGE2]
         | type[QBX_SOURCE_QUAD_STAGE2]
         )
+"""A :class:`~typing.Union` of all the allowed discretization stages."""
 
-DOFGranularity = (
+DOFGranularity: TypeAlias = (
         type[GRANULARITY_NODE]
         | type[GRANULARITY_CENTER]
         | type[GRANULARITY_ELEMENT]
         )
+"""A :class:`~typing.Union` of all the allowed DOF granularity types."""
 
-DOFDescriptorLike = DOFDescriptor | GeometryId
+DOFDescriptorLike: TypeAlias = DOFDescriptor | GeometryId
+"""Types convertible to a :class:`~pytential.symbolic.dof_desc.DOFDescriptor`
+by :func:`~pytential.symbolic.dof_desc.as_dofdesc`.
+"""
+
 
 # }}}
