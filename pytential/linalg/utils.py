@@ -24,15 +24,17 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 import numpy.linalg as la
 
-from pytools import memoize_in, memoize_method
+from pytools import memoize_in, memoize_method, obj_array
 
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from arraycontext import Array, PyOpenCLArrayContext
 
     from pytential.linalg.skeletonization import SkeletonizationResult
@@ -42,6 +44,8 @@ __doc__ = """
 Misc
 ~~~~
 
+.. autoclass:: InexactT
+
 .. currentmodule:: pytential.linalg
 
 .. autoclass:: IndexList
@@ -50,6 +54,8 @@ Misc
 .. autofunction:: make_index_list
 .. autofunction:: make_index_cluster_cartesian_product
 """
+
+InexactT = TypeVar("InexactT", bound=np.inexact)
 
 
 # {{{ cluster index handling
@@ -76,21 +82,21 @@ class IndexList:
     .. automethod:: cluster_take
     """
 
-    indices: np.ndarray
-    starts: np.ndarray
+    indices: NDArray[np.integer]
+    starts: NDArray[np.integer]
 
     @property
     def nclusters(self) -> int:
         return self.starts.size - 1
 
-    def cluster_size(self, i: int) -> int:
+    def cluster_size(self, i: int | np.integer) -> int:
         if not (0 <= i < self.nclusters):
             raise IndexError(
                     f"cluster {i} is out of bounds for {self.nclusters} clusters")
 
         return self.starts[i + 1] - self.starts[i]
 
-    def cluster_indices(self, i: int) -> np.ndarray:
+    def cluster_indices(self, i: int | np.integer) -> NDArray[np.integer]:
         """
         :returns: a view into the :attr:`indices` array for the range
             corresponding to cluster *i*.
@@ -101,7 +107,9 @@ class IndexList:
 
         return self.indices[self.starts[i]:self.starts[i + 1]]
 
-    def cluster_take(self, x: np.ndarray, i: int) -> np.ndarray:
+    def cluster_take(self,
+                     x: NDArray[InexactT],
+                     i: int | np.integer) -> NDArray[InexactT]:
         """
         :returns: a subset of *x* corresponding to the indices in cluster *i*.
             The returned array is a copy (not a view) of the elements of *x*.
@@ -135,7 +143,7 @@ class TargetAndSourceClusterList:
     targets: IndexList
     sources: IndexList
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.targets.nclusters != self.sources.nclusters:
             raise ValueError(
                     "targets and sources must have the same number of clusters: "
@@ -143,35 +151,41 @@ class TargetAndSourceClusterList:
                     f"and {self.sources.nclusters} source clusters")
 
     @property
-    def nclusters(self):
+    def nclusters(self) -> int:
         return self.targets.nclusters
 
     @property
     @memoize_method
-    def _flat_cluster_starts(self):
+    def _flat_cluster_starts(self) -> NDArray[np.integer]:
         return np.cumsum([0] + [
             self.targets.cluster_size(i) * self.sources.cluster_size(i)
             for i in range(self.nclusters)
             ])
 
     @property
-    def _flat_total_size(self):
+    def _flat_total_size(self) -> int:
         return self._flat_cluster_starts[-1]
 
-    def cluster_shape(self, i: int, j: int) -> tuple[int, int]:
+    def cluster_shape(
+            self, i: int | np.integer, j: int | np.integer
+        ) -> tuple[int, int]:
         r"""
         :returns: the shape of the cluster ``(i, j)``, where *i* indexes into
             the :attr:`targets` and *j* into the :attr:`sources`.
         """
         return (self.targets.cluster_size(i), self.sources.cluster_size(j))
 
-    def cluster_indices(self, i: int, j: int) -> tuple[np.ndarray, np.ndarray]:
+    def cluster_indices(
+            self, i: int | np.integer, j: int | np.integer
+        ) -> tuple[NDArray[np.integer], NDArray[np.integer]]:
         """
         :returns: a view into the indices that make up the cluster ``(i, j)``.
         """
         return (self.targets.cluster_indices(i), self.sources.cluster_indices(j))
 
-    def cluster_take(self, x: np.ndarray, i: int, j: int) -> np.ndarray:
+    def cluster_take(
+            self, x: NDArray[InexactT], i: int | np.integer, j: int | np.integer
+        ) -> NDArray[InexactT]:
         """
         :returns: a subset of the matrix *x* corresponding to the indices in
             the cluster ``(i, j)``. The returned array is a copy of the elements
@@ -182,7 +196,7 @@ class TargetAndSourceClusterList:
         itargets, isources = self.cluster_indices(i, j)
         return x[np.ix_(itargets, isources)]
 
-    def flat_cluster_take(self, x: np.ndarray, i: int) -> np.ndarray:
+    def flat_cluster_take(self, x: NDArray[InexactT], i: int) -> NDArray[InexactT]:
         """
         :returns: a subset of an array *x* corresponding to the indices in
             the cluster *i*. Unlike :meth:`cluster_take`, this method indexes
@@ -196,8 +210,8 @@ class TargetAndSourceClusterList:
 
 
 def make_index_list(
-        indices: np.ndarray,
-        starts: np.ndarray | None = None) -> IndexList:
+        indices: NDArray[np.integer] | obj_array.ObjectArray1D[NDArray[np.integer]],
+        starts: NDArray[np.integer] | None = None) -> IndexList:
     """Wrap a ``(indices, starts)`` tuple into an :class:`IndexList`.
 
     :param starts: if *None*, then *indices* is expected to be an object
@@ -290,7 +304,7 @@ def make_index_cluster_cartesian_product(
         return knl.executor(actx.context)
 
     @memoize_in(mindex, (make_index_cluster_cartesian_product, "index_product"))
-    def _product():
+    def _product() -> tuple[Array, Array]:
         _, (tgtindices, srcindices) = prg()(actx.queue,
                 tgtindices=actx.from_numpy(mindex.targets.indices),
                 tgtstarts=actx.from_numpy(mindex.targets.starts),
@@ -306,8 +320,9 @@ def make_index_cluster_cartesian_product(
 
 
 def make_flat_cluster_diag(
-        mat: np.ndarray,
-        mindex: TargetAndSourceClusterList) -> np.ndarray:
+        mat: NDArray[InexactT],
+        mindex: TargetAndSourceClusterList,
+    ) -> obj_array.ObjectArray2D[NDArray[InexactT]]:
     """
     :param mat: a one-dimensional :class:`~numpy.ndarray` that has a one-to-one
         correspondence to the index sets constructed by
@@ -317,8 +332,7 @@ def make_flat_cluster_diag(
         diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
         corresponds to the cluster :math:`i`.
     """
-    cluster_mat: np.ndarray = np.full((mindex.nclusters, mindex.nclusters), 0,
-                                      dtype=object)
+    cluster_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
     for i in range(mindex.nclusters):
         shape = mindex.cluster_shape(i, i)
         cluster_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
@@ -331,11 +345,11 @@ def make_flat_cluster_diag(
 # {{{ interpolative decomposition
 
 def interp_decomp(
-        A: np.ndarray, *,
+        A: NDArray[np.inexact], *,
         rank: int | None,
         eps: float | None,
         rng: np.random.Generator | None = None,
-        ) -> tuple[int, np.ndarray, np.ndarray]:
+        ) -> tuple[int, NDArray[np.integer], NDArray[np.inexact]]:
     """Wrapper for :func:`~scipy.linalg.interpolative.interp_decomp` that
     always has the same output signature.
 
@@ -357,6 +371,7 @@ def interp_decomp(
     import scipy.linalg.interpolative as sli
 
     if rank is None:
+        assert eps is not None
         k, idx, proj = sli.interp_decomp(A, eps, **kwargs)
     else:
         idx, proj = sli.interp_decomp(A, rank, **kwargs)
@@ -371,9 +386,10 @@ def interp_decomp(
 # {{{ cluster matrix errors
 
 def cluster_skeletonization_error(
-        mat: np.ndarray, skeleton: SkeletonizationResult, *,
+        mat: NDArray[Any],
+        skeleton: SkeletonizationResult, *,
         ord: float | None = None,
-        relative: bool = False) -> tuple[np.ndarray, np.ndarray]:
+        relative: bool = False) -> tuple[NDArray[np.floating], NDArray[np.floating]]:
     r"""Evaluate the cluster-wise skeletonization errors for the given *skeleton*.
 
     Errors are computed for all interactions between cluster :math:`i` and
@@ -407,7 +423,7 @@ def cluster_skeletonization_error(
     tgt_src_index = skeleton.tgt_src_index
     nclusters = skeleton.nclusters
 
-    def mnorm(x: np.ndarray, y: np.ndarray) -> np.floating[Any]:
+    def mnorm(x: NDArray[Any], y: NDArray[Any]) -> np.floating[Any]:
         result = la.norm(x - y, ord=ord)
         if relative:
             result = result / la.norm(x, ord=ord)

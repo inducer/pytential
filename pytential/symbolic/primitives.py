@@ -626,7 +626,7 @@ class IsShapeClass(DiscretizationProperty):
     # FIXME: this is added for backwards compatibility with pre-dataclass expressions
     def __init__(self, shape: mp.Shape, dofdesc: DOFDescriptor) -> None:
         object.__setattr__(self, "shape", shape)
-        super().__init__(dofdesc)  # type: ignore[arg-type]
+        super().__init__(dofdesc)
 
 
 @expr_dataclass()
@@ -648,7 +648,7 @@ class NodeCoordinateComponent(DiscretizationProperty):
                  ambient_axis: int,
                  dofdesc: DOFDescriptor) -> None:
         object.__setattr__(self, "ambient_axis", ambient_axis)
-        super().__init__(dofdesc)   # type: ignore[arg-type]
+        super().__init__(dofdesc)
 
 
 def nodes(ambient_dim: int, dofdesc: DOFDescriptorLike = None):
@@ -695,9 +695,7 @@ class NumReferenceDerivative(DiscretizationProperty):
             def make_op(operand_i):
                 return cls(ref_axes, operand_i, as_dofdesc(dofdesc))
 
-            # FIXME: mypy is right: new should return `cls` instances and we're
-            # abusing it to vectorize the call like this.
-            return componentwise(make_op, operand)  # type: ignore[return-value]
+            return componentwise(make_op, operand)
         else:
             return DiscretizationProperty.__new__(cls)
 
@@ -731,7 +729,7 @@ class NumReferenceDerivative(DiscretizationProperty):
 
         object.__setattr__(self, "ref_axes", ref_axes)
         object.__setattr__(self, "operand", operand)
-        super().__init__(dofdesc)   # type: ignore[arg-type]
+        super().__init__(dofdesc)
 
 
 @for_each_expression
@@ -1363,7 +1361,7 @@ class Interpolation(ExpressionNode):
         to_dd = as_dofdesc(to_dd)
 
         if from_dd == to_dd:
-            return operand  # type: ignore[return-value]
+            return operand
 
         if isinstance(operand, np.ndarray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
@@ -1374,7 +1372,7 @@ class Interpolation(ExpressionNode):
             def make_op(operand_i):
                 return cls(from_dd, to_dd, operand_i)
 
-            return componentwise(make_op, operand)  # type: ignore[return-value]
+            return componentwise(make_op, operand)
         else:
             return ExpressionNode.__new__(cls)
 
@@ -1439,7 +1437,7 @@ class SingleScalarOperandExpression(ExpressionNode):
             def make_op(operand_i):
                 return cls(operand_i)
 
-            return componentwise(make_op, operand)  # type: ignore[return-value]
+            return componentwise(make_op, operand)
         else:
             return ExpressionNode.__new__(cls)
 
@@ -1525,7 +1523,7 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
             def make_op(operand_i):
                 return cls(operand_i, as_dofdesc(dofdesc))
 
-            return componentwise(make_op, operand)  # type: ignore[return-value]
+            return componentwise(make_op, operand)
         else:
             return ExpressionNode.__new__(cls)
 

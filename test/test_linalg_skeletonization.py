@@ -403,7 +403,7 @@ CONVERGENCE_TEST_CASES = [
         extra.GMSHSphereTestCase(
             target_order=8,
             op_type="scalar",
-            resolutions=[0.4]),     # type: ignore[list-item]
+            resolutions=[0.4]),
         ]
 
 

@@ -164,11 +164,12 @@ pythonVersion = "3.10"
 pythonPlatform = "All"
 
 ignore = [
-    "pytential/symbolic/old_diffop_primitives.py",
-    "pytential/symbolic/pde/maxwell/generalized_debye.py",
     "build",
+    "doc/_build",
     "doc/conf.py",
     "experiments",
+    "pytential/symbolic/old_diffop_primitives.py",
+    "pytential/symbolic/pde/maxwell/generalized_debye.py",
 ]
 
 [[tool.basedpyright.executionEnvironments]]

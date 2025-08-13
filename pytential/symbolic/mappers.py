@@ -323,11 +323,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
         self.default_target: DOFDescriptor = prim.as_dofdesc(default_target)
 
     def map_common_subexpression_uncached(self, expr) -> Expression:
-        # Mypy 1.13 complains about this:
-        # error: Too few arguments for "map_common_subexpression" of "IdentityMapper"  [call-arg]  # noqa: E501
-        # error: Argument 1 to "map_common_subexpression" of "IdentityMapper" has incompatible type "LocationTagger"; expected "IdentityMapper[P]"  [arg-type]  # noqa: E501
-        # This seems spurious?
-        return IdentityMapper.map_common_subexpression(self, expr)  # type: ignore[arg-type, call-arg]
+        return IdentityMapper.map_common_subexpression(self, expr)
 
     def _default_dofdesc(self, dofdesc):
         if dofdesc.geometry is None:

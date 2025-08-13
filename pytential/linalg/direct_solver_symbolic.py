@@ -23,10 +23,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING
+
+from typing_extensions import override
+
 from pytools import obj_array
 
 from pytential.symbolic.mappers import IdentityMapper, LocationTagger, OperatorCollector
 
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from pymbolic.primitives import Product, Sum
+    from pymbolic.typing import ArithmeticExpression, Scalar
+
+    from pytential.collection import GeometryCollection
+    from pytential.symbolic.dof_desc import DOFDescriptor, DOFDescriptorLike
+    from pytential.symbolic.primitives import IntG
 
 __doc__ = """
 .. autoclass:: KernelTransformationRemover
@@ -45,15 +59,24 @@ class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
     pass
 
 
-def prepare_expr(places, exprs, auto_where=None):
+def prepare_expr(
+        places: GeometryCollection,
+        exprs: Iterable[ArithmeticExpression],
+        auto_where: tuple[DOFDescriptorLike, DOFDescriptorLike],
+    ) -> obj_array.ObjectArray1D[ArithmeticExpression]:
     from pytential.symbolic.execution import _prepare_expr
+
     return obj_array.new_1d([
         _prepare_expr(places, expr, auto_where=auto_where)
         for expr in exprs])
 
 
-def prepare_proxy_expr(places, exprs, auto_where=None):
-    def _prepare_expr(expr):
+def prepare_proxy_expr(
+        places: GeometryCollection,
+        exprs: Iterable[ArithmeticExpression],
+        auto_where: tuple[DOFDescriptorLike, DOFDescriptorLike],
+    ) -> obj_array.ObjectArray1D[ArithmeticExpression]:
+    def _prepare_expr(expr: ArithmeticExpression) -> ArithmeticExpression:
         # remove all diagonal / non-operator terms in the expression
         expr = IntGTermCollector()(expr)
         # ensure all IntGs remove all the kernel derivatives
@@ -87,10 +110,11 @@ class KernelTransformationRemover(IdentityMapper):
             SourceTransformationRemover,
             TargetTransformationRemover,
         )
-        self.sxr = SourceTransformationRemover()
-        self.txr = TargetTransformationRemover()
+        self.sxr: SourceTransformationRemover = SourceTransformationRemover()
+        self.txr: TargetTransformationRemover = TargetTransformationRemover()
 
-    def map_int_g(self, expr):
+    @override
+    def map_int_g(self, expr: IntG) -> IntG:
         target_kernel = self.txr(expr.target_kernel)
         source_kernels = tuple(self.sxr(kernel) for kernel in expr.source_kernels)
         if (target_kernel == expr.target_kernel
@@ -99,7 +123,8 @@ class KernelTransformationRemover(IdentityMapper):
 
         # remove all args that come from the source transformations
         source_args = {
-            arg.name for kernel in expr.source_kernels
+            arg.name
+            for kernel in expr.source_kernels
             for arg in kernel.get_source_args()}
         kernel_arguments = {
             name: self.rec(arg) for name, arg in expr.kernel_arguments.items()
@@ -140,10 +165,11 @@ class IntGTermCollector(IdentityMapper):
     meant for self-evaluation.
     """
 
-    def map_sum(self, expr):
+    @override
+    def map_sum(self, expr: Sum) -> Sum:
         collector = OperatorCollector()
 
-        children = []
+        children: list[ArithmeticExpression] = []
         for child in expr.children:
             rec_child = self.rec(child)
             if collector(rec_child):
@@ -152,13 +178,15 @@ class IntGTermCollector(IdentityMapper):
         from pymbolic.primitives import flattened_sum
         return flattened_sum(children)
 
-    def map_product(self, expr):
-
+    @override
+    def map_product(self, expr: Product) -> Product:
         collector = OperatorCollector()
 
         from pymbolic.primitives import is_constant
-        children_const = []
-        children_int_g = []
+
+        children_const: list[Scalar] = []
+        children_int_g: list[ArithmeticExpression] = []
+
         for child in expr.children:
             if is_constant(child):
                 children_const.append(child)
@@ -173,9 +201,10 @@ class IntGTermCollector(IdentityMapper):
                     children_int_g.append(rec_child)
 
         from pymbolic.primitives import flattened_product
-        return flattened_product(children_const + children_int_g)
+        return flattened_product([*children_const, *children_int_g])
 
-    def map_int_g(self, expr):
+    @override
+    def map_int_g(self, expr: IntG) -> IntG:
         return expr
 
 # }}}
@@ -189,10 +218,12 @@ class _LocationReplacer(LocationTagger):
     :class:`~pytential.symbolic.dof_desc.DOFDescriptor` in the expression.
     """
 
-    def _default_dofdesc(self, dofdesc):
+    @override
+    def _default_dofdesc(self, dofdesc: DOFDescriptorLike) -> DOFDescriptor:
         return self.default_target
 
-    def map_int_g(self, expr):
+    @override
+    def map_int_g(self, expr: IntG) -> IntG:
         return type(expr)(
                 expr.target_kernel, expr.source_kernels,
                 densities=self.operand_rec(expr.densities),
@@ -217,7 +248,9 @@ class DOFDescriptorReplacer(_LocationReplacer):
     .. automethod:: __init__
     """
 
-    def __init__(self, source, target):
+    operand_rec: _LocationReplacer
+
+    def __init__(self, source: DOFDescriptorLike, target: DOFDescriptorLike) -> None:
         """
         :param source: a descriptor for all expressions to be evaluated on
             the source geometry.
