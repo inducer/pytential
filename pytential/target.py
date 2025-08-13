@@ -110,7 +110,7 @@ class PointsTarget(TargetBase):
     @property
     def ndofs(self) -> int:
         # NOTE: arraycontext.Array is not iterable theoretically
-        for coord_ary in self._nodes:   # type: ignore[attr-defined]
+        for coord_ary in self._nodes:
             return coord_ary.shape[0]
 
         raise AttributeError
