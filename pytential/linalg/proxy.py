@@ -32,7 +32,6 @@ from typing_extensions import override
 
 import loopy as lp
 from arraycontext import Array, ArrayContainer, PyOpenCLArrayContext, flatten
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
 from pytools import memoize_in
@@ -208,30 +207,15 @@ class ProxyPointTarget(PointsTarget):
 @dataclass(frozen=True)
 class ProxyClusterGeometryData:
     """
-    .. attribute:: srcindex
+    .. autoattribute:: places
+    .. autoattribute:: dofdesc
 
-        A :class:`~pytential.linalg.IndexList` describing which cluster
-        of points each proxy ball was created from.
-
-    .. attribute:: pxyindex
-
-        A :class:`~pytential.linalg.IndexList` describing which proxies
-        belong to which cluster.
-
-    .. attribute:: points
-
-        A concatenated array of all the proxy points. Can be sliced into
-        using :attr:`pxyindex` (shape ``(dim, nproxies)``).
-
-    .. attribute:: centers
-
-        An array of all the proxy ball centers (shape ``(dim, nclusters)``).
-
-    .. attribute:: radii
-
-        An array of all the proxy ball radii (shape ``(nclusters,)``).
-
-    .. attribute:: nclusters
+    .. autoattribute:: srcindex
+    .. autoattribute:: pxyindex
+    .. autoattribute:: points
+    .. autoattribute:: centers
+    .. autoattribute:: radii
+    .. autoattribute:: nclusters
 
     .. automethod:: __init__
     .. automethod:: to_numpy
@@ -241,22 +225,36 @@ class ProxyClusterGeometryData:
 
     places: GeometryCollection
     dofdesc: sym.DOFDescriptor
+    """A descriptor for the geometry used to compute the proxy points."""
 
     srcindex: IndexList
+    """A :class:`~pytential.linalg.IndexList` describing which cluster
+    of points each proxy ball was created from.
+    """
     pxyindex: IndexList
+    """A :class:`~pytential.linalg.IndexList` describing which proxies
+    belong to which cluster.
+    """
 
     points: Array
+    """A concatenated array of all the proxy points. Can be sliced into
+    using :attr:`pxyindex` (shape ``(dim, nproxies)``).
+    """
     centers: Array
+    """An array of all the proxy ball centers (shape ``(dim, nclusters)``)."""
     radii: Array
+    """An array of all the proxy ball radii (shape ``(nclusters,)``)."""
 
     _cluster_radii: Array | None = None
 
     @property
     def nclusters(self) -> int:
+        """Number of proxy clusters."""
         return self.srcindex.nclusters
 
     @property
     def discr(self) -> Discretization:
+        """The discretization that corresponds to :attr:`dofdesc` in :attr:`places`."""
         discr = self.places.get_discretization(
             self.dofdesc.geometry, self.dofdesc.discr_stage)
         assert isinstance(discr, Discretization)
@@ -361,7 +359,7 @@ def make_compute_cluster_centers_kernel_ex(
             name="compute_cluster_centers_knl",
             assumptions="ndim>=1 and nclusters>=1",
             fixed_parameters={"ndim": ndim},
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
             )
 
         knl = lp.tag_inames(knl, "idim*:unr")
@@ -374,9 +372,12 @@ def make_compute_cluster_centers_kernel_ex(
 
 class ProxyGeneratorBase:
     r"""
-    .. attribute:: nproxy
+    .. autoattribute:: places
+    .. autoattribute:: radius_factor
+    .. autoattribute:: norm_type
+    .. autoattribute:: ref_points
+    .. autoattribute:: nproxy
 
-        Number of proxy points in a single proxy ball.
 
     .. automethod:: __init__
     .. automethod:: __call__
@@ -384,8 +385,18 @@ class ProxyGeneratorBase:
 
     places: GeometryCollection
     radius_factor: float
+    """Factor multiplying the cluster radius. This is currently fixed for all
+    clusters.
+    """
     norm_type: str
+    """The type of the norm used to compute the bounding box of the cluster. The
+    "radius" is also computed in terms of this norm. Can be one of ``"l2"`` or
+    ``"linf"``.
+    """
     ref_points: NDArray[np.floating]
+    """Reference proxy points on the unit sphere. The reference points are
+    translated and scaled for each cluster.
+    """
 
     def __init__(
             self,
@@ -436,10 +447,12 @@ class ProxyGeneratorBase:
 
     @property
     def ambient_dim(self) -> int:
+        """Ambient dimension of the proxy geometry."""
         return self.places.ambient_dim
 
     @property
     def nproxy(self) -> int:
+        """Number of proxy points in a single proxy ball."""
         return self.ref_points.shape[1]
 
     def get_centers_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
@@ -464,10 +477,9 @@ class ProxyGeneratorBase:
         """
         if source_dd is None:
             source_dd = self.places.auto_source
-        source_dd = sym.as_dofdesc(source_dd)
+        dd = sym.as_dofdesc(source_dd)
 
-        discr = self.places.get_discretization(
-                source_dd.geometry, source_dd.discr_stage)
+        discr = self.places.get_discretization(dd.geometry, dd.discr_stage)
         assert isinstance(discr, Discretization)
 
         # {{{ get proxy centers and radii
@@ -526,7 +538,7 @@ class ProxyGeneratorBase:
         from pytential.linalg import make_index_list
         return ProxyClusterGeometryData(
                 places=self.places,
-                dofdesc=source_dd,
+                dofdesc=dd,
                 srcindex=dof_index,
                 pxyindex=make_index_list(pxyindices, pxystarts),
                 points=actx.freeze(actx.from_numpy(proxies)),
@@ -566,7 +578,7 @@ def make_compute_cluster_radii_kernel_ex(
             name="compute_cluster_radii_knl",
             assumptions="ndim>=1 and nclusters>=1",
             fixed_parameters={"ndim": ndim},
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
             )
 
         knl = lp.tag_inames(knl, "idim*:unr")
@@ -631,7 +643,7 @@ def make_compute_cluster_qbx_radii_kernel_ex(
             name="compute_cluster_qbx_radii_knl",
             assumptions="ndim>=1 and nclusters>=1",
             fixed_parameters={"ndim": ndim},
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
             )
 
         knl = lp.tag_inames(knl, "idim*:unr")
@@ -662,16 +674,16 @@ class QBXProxyGenerator(ProxyGeneratorBase):
             **kwargs: ArrayContainer) -> ProxyClusterGeometryData:
         if source_dd is None:
             source_dd = self.places.auto_source
-        source_dd = sym.as_dofdesc(source_dd)
+        dd = sym.as_dofdesc(source_dd)
 
         radii = cast("ArrayContainer", bind(self.places, sym.expansion_radii(
-            self.ambient_dim, dofdesc=source_dd))(actx))
+            self.ambient_dim, dofdesc=dd))(actx))
         center_int = cast("ArrayContainer", bind(self.places, sym.expansion_centers(
-            self.ambient_dim, -1, dofdesc=source_dd))(actx))
+            self.ambient_dim, -1, dofdesc=dd))(actx))
         center_ext = cast("ArrayContainer", bind(self.places, sym.expansion_centers(
-            self.ambient_dim, +1, dofdesc=source_dd))(actx))
+            self.ambient_dim, +1, dofdesc=dd))(actx))
 
-        return super().__call__(actx, source_dd, dof_index,
+        return super().__call__(actx, dd, dof_index,
                 expansion_radii=flatten(radii, actx),
                 center_int=flatten(center_int, actx, leaf_class=DOFArray),
                 center_ext=flatten(center_ext, actx, leaf_class=DOFArray),
@@ -684,7 +696,8 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 # {{{ gather_cluster_neighbor_points
 
 def gather_cluster_neighbor_points(
-        actx: PyOpenCLArrayContext, pxy: ProxyClusterGeometryData, *,
+        actx: PyOpenCLArrayContext,
+        pxy: ProxyClusterGeometryData, *,
         max_particles_in_box: int | None = None) -> IndexList:
     """Generate a set of neighboring points for each cluster of points in
     *pxy*. Neighboring points of a cluster :math:`i` are defined
@@ -721,7 +734,7 @@ def gather_cluster_neighbor_points(
             name="picker_knl",
             assumptions="ndim>=1 and npoints>=1",
             fixed_parameters={"ndim": discr.ambient_dim},
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
             )
 
         knl = lp.tag_inames(knl, "idim*:unr")
