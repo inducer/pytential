@@ -24,15 +24,18 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 import numpy.linalg as la
 
-from pytools import memoize_in, memoize_method, obj_array
+from pytools import memoize_in, obj_array
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from numpy.typing import NDArray
 
     from arraycontext import Array, PyOpenCLArrayContext
@@ -64,30 +67,36 @@ InexactT = TypeVar("InexactT", bound=np.inexact)
 class IndexList:
     """Convenience class for working with clusters (subsets) of an array.
 
-    .. attribute:: nclusters
-    .. attribute:: indices
-
-        An :class:`~numpy.ndarray` of not necessarily continuous or increasing
-        integers representing the indices of a global array. The individual
-        cluster slices are delimited using :attr:`starts`.
-
-    .. attribute:: starts
-
-        An :class:`~numpy.ndarray` of size ``(nclusters + 1,)`` consisting of
-        nondecreasing integers used to index into :attr:`indices`. A cluster
-        :math:`i` can be retrieved using ``indices[starts[i]:starts[i + 1]]``.
-
+    .. autoattribute:: nclusters
+    .. autoattribute:: nindices
+    .. autoattribute:: indices
+    .. autoattribute:: starts
     .. automethod:: cluster_size
     .. automethod:: cluster_indices
     .. automethod:: cluster_take
     """
 
     indices: NDArray[np.integer]
+    """An :class:`~numpy.ndarray` of not necessarily continuous or increasing
+    integers representing the indices of a global array. The individual
+    cluster slices are delimited using :attr:`starts`.
+    """
+
     starts: NDArray[np.integer]
+    """An :class:`~numpy.ndarray` of size ``(nclusters + 1,)`` consisting of
+    nondecreasing integers used to index into :attr:`indices`. A cluster
+    :math:`i` can be retrieved using ``indices[starts[i]:starts[i + 1]]``.
+    """
 
     @property
     def nclusters(self) -> int:
+        """Number of clusters in the index list."""
         return self.starts.size - 1
+
+    @property
+    def nindices(self) -> int:
+        """Total number of indices in the index list."""
+        return self.indices.size
 
     def cluster_size(self, i: int | np.integer) -> int:
         if not (0 <= i < self.nclusters):
@@ -125,14 +134,10 @@ class IndexList:
 class TargetAndSourceClusterList:
     """Convenience class for working with clusters (subsets) of a matrix.
 
-    .. attribute:: nclusters
-    .. attribute:: targets
-
-        An :class:`IndexList` encapsulating target cluster indices.
-
-    .. attribute:: sources
-
-        An :class:`IndexList` encapsulating source cluster indices.
+    .. autoattribute:: nclusters
+    .. autoattribute:: shape
+    .. autoattribute:: targets
+    .. autoattribute:: sources
 
     .. automethod:: cluster_shape
     .. automethod:: cluster_indices
@@ -141,7 +146,9 @@ class TargetAndSourceClusterList:
     """
 
     targets: IndexList
+    """An :class:`IndexList` encapsulating target cluster indices."""
     sources: IndexList
+    """An :class:`IndexList` encapsulating source cluster indices."""
 
     def __post_init__(self) -> None:
         if self.targets.nclusters != self.sources.nclusters:
@@ -152,10 +159,18 @@ class TargetAndSourceClusterList:
 
     @property
     def nclusters(self) -> int:
+        """Number of clusters in the index list."""
         return self.targets.nclusters
 
     @property
-    @memoize_method
+    def shape(self) -> tuple[int, int]:
+        """Shape of the Cartesian product of the :attr:`targets` and :attr:`sources`."""
+        return (self.targets.nindices, self.sources.nindices)
+
+    def __iter__(self) -> Iterator[IndexList]:
+        return iter((self.targets, self.sources))
+
+    @cached_property
     def _flat_cluster_starts(self) -> NDArray[np.integer]:
         return np.cumsum([0] + [
             self.targets.cluster_size(i) * self.sources.cluster_size(i)
@@ -356,8 +371,9 @@ def interp_decomp(
     :return: a tuple ``(k, idx, interp)`` containing the numerical rank *k*,
         the column indices *idx* and the resulting interpolation matrix *interp*.
     """
-    if rank is not None and eps is not None:
-        raise ValueError("providing both 'rank' and 'eps' is not supported")
+
+    if (rank is not None and eps is not None) or (rank is None and eps is None):
+        raise ValueError("either 'rank' or 'eps' must be provided (not both)")
 
     from scipy import __version__
 
@@ -461,7 +477,7 @@ def cluster_skeletonization_error(
 
 
 def skeletonization_error(
-        mat: np.ndarray, skeleton: SkeletonizationResult, *,
+        mat: NDArray[Any], skeleton: SkeletonizationResult, *,
         ord: float | None = None,
         relative: bool = False) -> np.floating[Any]:
     r"""Computes the skeletonization error for the entire matrix *mat*.
@@ -520,3 +536,5 @@ def skeletonization_error(
     return result
 
 # }}}
+
+# vim: foldmethod=marker
