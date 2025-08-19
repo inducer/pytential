@@ -48,9 +48,6 @@ Misc
 ~~~~
 
 .. autoclass:: InexactT
-
-.. currentmodule:: pytential.linalg
-
 .. autoclass:: IndexList
 .. autoclass:: TargetAndSourceClusterList
 

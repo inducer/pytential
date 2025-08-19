@@ -59,8 +59,6 @@ __doc__ = """
 Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-.. currentmodule:: pytential.linalg
-
 .. autoclass:: ProxyPointSource
 .. autoclass:: ProxyPointTarget
 .. autoclass:: ProxyClusterGeometryData
@@ -147,7 +145,7 @@ def partition_by_nodes(
 
         assert starts[-1] == discr.ndofs
 
-    from pytential.linalg import make_index_list
+    from pytential.linalg.utils import make_index_list
     return make_index_list(indices, starts=starts)
 
 # }}}
@@ -228,11 +226,11 @@ class ProxyClusterGeometryData:
     """A descriptor for the geometry used to compute the proxy points."""
 
     srcindex: IndexList
-    """A :class:`~pytential.linalg.IndexList` describing which cluster
+    """A :class:`~pytential.linalg.utils.IndexList` describing which cluster
     of points each proxy ball was created from.
     """
     pxyindex: IndexList
-    """A :class:`~pytential.linalg.IndexList` describing which proxies
+    """A :class:`~pytential.linalg.utils.IndexList` describing which proxies
     belong to which cluster.
     """
 

@@ -37,7 +37,7 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
 
 from pytential import GeometryCollection, bind, sym
-from pytential.linalg import ProxyGenerator, QBXProxyGenerator
+from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -337,7 +337,7 @@ def test_neighbor_points(actx_factory, case,
     pxy = generator(actx, dofdesc, srcindex)
 
     # get neighboring points
-    from pytential.linalg import gather_cluster_neighbor_points
+    from pytential.linalg.proxy import gather_cluster_neighbor_points
     nbrindex = gather_cluster_neighbor_points(actx, pxy)
 
     pxy = pxy.to_numpy(actx)

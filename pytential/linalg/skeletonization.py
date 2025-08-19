@@ -54,8 +54,6 @@ if TYPE_CHECKING:
 
 
 __doc__ = """
-.. currentmodule:: pytential.linalg
-
 Skeletonization
 ---------------
 
@@ -126,8 +124,8 @@ def _approximate_geometry_waa_magnitude(
         cluster_index: IndexList,
         domain: sym.DOFDescriptor) -> Array:
     """
-    :arg cluster_index: a :class:`~pytential.linalg.IndexList` representing the
-        clusters on which to operate. In practice, this can be the cluster
+    :arg cluster_index: a :class:`~pytential.linalg.utils.IndexList` representing
+        the clusters on which to operate. In practice, this can be the cluster
         indices themselves or the indices of neighboring points to each
         cluster (i.e. points inside the proxy ball).
 
@@ -508,7 +506,7 @@ class _ProxyNeighborEvaluationResult:
     """
     .. attribute:: pxy
 
-        A :class:`~pytential.linalg.ProxyClusterGeometryData` containing the
+        A :class:`~pytential.linalg.utils.ProxyClusterGeometryData` containing the
         proxy points from which :attr:`pxymat` is obtained. This data is also
         used to construct :attr:`nbrindex` and evaluate :attr:`nbrmat`.
 
@@ -518,12 +516,12 @@ class _ProxyNeighborEvaluationResult:
         target points. This matrix is flattened to a shape of ``(nsize,)``,
         which is consistent with the sum of the cluster sizes in :attr:`pxyindex`,
         as obtained from
-        :meth:`~pytential.linalg.TargetAndSourceClusterList.cluster_size`.
+        :meth:`~pytential.linalg.utils.TargetAndSourceClusterList.cluster_size`.
 
     .. attribute:: pxyindex
 
-        A :class:`~pytential.linalg.TargetAndSourceClusterList` used to describe
-        the cluster interactions in :attr:`pxymat`.
+        A :class:`~pytential.linalg.utils.TargetAndSourceClusterList` used to
+        describe the cluster interactions in :attr:`pxymat`.
 
     .. attribute:: nbrmat
 
@@ -531,12 +529,12 @@ class _ProxyNeighborEvaluationResult:
         target points. This matrix is flattened to a shape of ``(nsize,)``,
         which is consistent with the sum of the cluster sizes in :attr:`nbrindex`,
         as obtained from
-        :meth:`~pytential.linalg.TargetAndSourceClusterList.cluster_size`.
+        :meth:`~pytential.linalg.utils.TargetAndSourceClusterList.cluster_size`.
 
     .. attribute:: nbrindex
 
-        A :class:`~pytential.linalg.TargetAndSourceClusterList` used to describe
-        the cluster interactions in :attr:`nbrmat`.
+        A :class:`~pytential.linalg.utils.TargetAndSourceClusterList` used to
+        describe the cluster interactions in :attr:`nbrmat`.
 
     .. automethod:: __getitem__
     """
@@ -585,7 +583,7 @@ def _evaluate_proxy_skeletonization_interaction(
     if cluster_index.nclusters == 1:
         raise ValueError("cannot make a proxy skeleton for a single cluster")
 
-    from pytential.linalg import gather_cluster_neighbor_points
+    from pytential.linalg.proxy import gather_cluster_neighbor_points
     pxy = proxy_generator(actx, dofdesc, cluster_index)
     nbrindex = gather_cluster_neighbor_points(
             actx, pxy,
@@ -649,7 +647,7 @@ def _skeletonize_block_by_proxy_with_mats(
     L = np.empty(nclusters, dtype=object)
     R = np.empty(nclusters, dtype=object)
 
-    from pytential.linalg import interp_decomp
+    from pytential.linalg.utils import interp_decomp
 
     for i in range(nclusters):
         k = id_rank
@@ -686,7 +684,8 @@ def _skeletonize_block_by_proxy_with_mats(
         skel_starts[i + 1] = skel_starts[i] + k
         assert tgt_skl_indices[i].shape == src_skl_indices[i].shape
 
-    from pytential.linalg import make_index_list
+    from pytential.linalg.utils import make_index_list
+
     src_skl_index = make_index_list(np.hstack(list(src_skl_indices)), skel_starts)
     tgt_skl_index = make_index_list(np.hstack(list(tgt_skl_indices)), skel_starts)
     skel_tgt_src_index = TargetAndSourceClusterList(tgt_skl_index, src_skl_index)
@@ -736,13 +735,13 @@ class SkeletonizationResult:
 
     .. attribute:: tgt_src_index
 
-        A :class:`~pytential.linalg.TargetAndSourceClusterList` representing the
-        indices in the original matrix :math:`A` that have been skeletonized.
+        A :class:`~pytential.linalg.utils.TargetAndSourceClusterList` representing
+        the indices in the original matrix :math:`A` that have been skeletonized.
 
     .. attribute:: skel_tgt_src_index
 
-        A :class:`~pytential.linalg.TargetAndSourceClusterList` representing a
-        subset of :attr:`tgt_src_index`, i.e. the skeleton of each cluster of
+        A :class:`~pytential.linalg.utils.TargetAndSourceClusterList` representing
+        a subset of :attr:`tgt_src_index`, i.e. the skeleton of each cluster of
         :math:`A`. These indices can be used to reconstruct the :math:`S`
         matrix.
     """
@@ -799,7 +798,7 @@ def skeletonize_by_proxy(
     ) -> obj_array.ObjectArray2D[NDArray[Any]]:
     r"""Evaluate and skeletonize a symbolic expression using proxy-based methods.
 
-    :arg tgt_src_index: a :class:`~pytential.linalg.TargetAndSourceClusterList`
+    :arg tgt_src_index: a :class:`~pytential.linalg.utils.TargetAndSourceClusterList`
         indicating which indices participate in the skeletonization.
 
     :arg exprs: see :func:`make_skeletonization_wrangler`.
@@ -807,8 +806,8 @@ def skeletonize_by_proxy(
     :arg domains: see :func:`make_skeletonization_wrangler`.
     :arg context: see :func:`make_skeletonization_wrangler`.
 
-    :arg approx_nproxy: see :class:`~pytential.linalg.ProxyGenerator`.
-    :arg proxy_radius_factor: see :class:`~pytential.linalg.ProxyGenerator`.
+    :arg approx_nproxy: see :class:`~pytential.linalg.proxy.ProxyGenerator`.
+    :arg proxy_radius_factor: see :class:`~pytential.linalg.proxy.ProxyGenerator`.
 
     :arg id_eps: a floating point value used as a tolerance in skeletonizing
         each block in *tgt_src_index*.

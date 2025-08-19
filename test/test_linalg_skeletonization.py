@@ -136,12 +136,12 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 
     # {{{ wranglers
 
-    from pytential.linalg import QBXProxyGenerator
-    from pytential.linalg.skeletonization import make_skeletonization_wrangler
+    from pytential.linalg.proxy import QBXProxyGenerator
     proxy_generator = QBXProxyGenerator(places,
             radius_factor=case.proxy_radius_factor,
             approx_nproxy=case.proxy_approx_count)
 
+    from pytential.linalg.skeletonization import make_skeletonization_wrangler
     sym_u, sym_op = case.get_operator(places.ambient_dim)
     wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
             domains=None,
@@ -203,12 +203,12 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     logger.info("proxy factor %.2f count %7d",
                 case.proxy_radius_factor, proxy_approx_count)
 
-    from pytential.linalg import QBXProxyGenerator
-    from pytential.linalg.skeletonization import make_skeletonization_wrangler
+    from pytential.linalg.proxy import QBXProxyGenerator
     proxy_generator = QBXProxyGenerator(places,
             radius_factor=case.proxy_radius_factor,
             approx_nproxy=proxy_approx_count)
 
+    from pytential.linalg.skeletonization import make_skeletonization_wrangler
     sym_u, sym_op = case.get_operator(places.ambient_dim)
     wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
             context=case.knl_concrete_kwargs,
