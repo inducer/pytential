@@ -337,20 +337,19 @@ def make_index_cluster_cartesian_product(
 def make_flat_cluster_diag(
         mat: NDArray[InexactT],
         mindex: TargetAndSourceClusterList,
-    ) -> obj_array.ObjectArray2D[NDArray[InexactT]]:
+    ) -> obj_array.ObjectArray1D[NDArray[InexactT]]:
     """
     :param mat: a one-dimensional :class:`~numpy.ndarray` that has a one-to-one
         correspondence to the index sets constructed by
         :func:`make_index_cluster_cartesian_product` for *mindex*.
 
-    :returns: a block diagonal object :class:`~numpy.ndarray`, where each
-        diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
-        corresponds to the cluster :math:`i`.
+    :returns: an object :class:`~numpy.ndarray`, where each element represents
+        the block of a block-diagonal matrix.
     """
-    cluster_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
+    cluster_mat = np.empty(mindex.nclusters, dtype=object)
     for i in range(mindex.nclusters):
         shape = mindex.cluster_shape(i, i)
-        cluster_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
+        cluster_mat[i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
 
     return cluster_mat
 
