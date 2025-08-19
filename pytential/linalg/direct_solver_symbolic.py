@@ -261,3 +261,5 @@ class DOFDescriptorReplacer(_LocationReplacer):
         self.operand_rec = _LocationReplacer(source, default_source=source)
 
 # }}}
+
+# vim: foldmethod=marker
