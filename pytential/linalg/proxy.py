@@ -688,24 +688,39 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
 def gather_cluster_neighbor_points(
         actx: PyOpenCLArrayContext,
-        pxy: ProxyClusterGeometryData, *,
+        pxy: ProxyClusterGeometryData,
+        tgtindex: IndexList | None = None,
+        *,
         max_particles_in_box: int | None = None) -> IndexList:
-    """Generate a set of neighboring points for each cluster of points in
-    *pxy*. Neighboring points of a cluster :math:`i` are defined
-    as all the points inside the proxy ball :math:`i` that do not also
-    belong to the cluster itself.
+    r"""Generate a set of neighboring points for each cluster of points in *pxy*.
+
+    Neighboring points of a cluster :math:`i` are defined as all the points
+    from *tgtindex* that are inside the proxy ball :math:`i` but outside the
+    cluster itself. For example, given a cluster with radius :math:`r_s` and
+    proxy radius :math:`r_p > r_s`, then we gather all points such that
+    :math:`r_s < \|\mathbf{x}\| <= r_p`.
     """
+
+    srcindex = pxy.srcindex
+    if tgtindex is None:
+        tgtindex = srcindex
+
+    nclusters = srcindex.nclusters
+    if tgtindex.nclusters != nclusters:
+        raise ValueError("'tgtindex' has a different number of clusters: "
+                         f"'{tgtindex.nclusters}' (expected {nclusters})")
 
     if max_particles_in_box is None:
         max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
-    from pytential.source import LayerPotentialSourceBase
-
     dofdesc = pxy.dofdesc
     lpot_source = pxy.places.get_geometry(dofdesc.geometry)
-    assert isinstance(lpot_source, LayerPotentialSourceBase)
-
     discr = pxy.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+
+    assert (
+        dofdesc.discr_stage is None
+        or isinstance(lpot_source, QBXLayerPotentialSource)
+        ), (dofdesc, type(lpot_source))
     assert isinstance(discr, Discretization)
 
     # {{{ get only sources in the current cluster set
@@ -733,18 +748,23 @@ def gather_cluster_neighbor_points(
 
         return knl.executor(actx.context)
 
-    _, (sources,) = prg()(actx.queue,
+    _, (targets,) = prg()(actx.queue,
             ary=flatten(discr.nodes(), actx, leaf_class=DOFArray),
-            srcindices=pxy.srcindex.indices)
+            srcindices=tgtindex.indices)
 
     # }}}
 
     # {{{ perform area query
 
     from pytential.qbx.utils import tree_code_container
-    tcc = tree_code_container(lpot_source._setup_actx)
 
-    tree, _ = tcc.build_tree()(actx.queue, sources,
+    # NOTE: use the base source's actx for caching the code -- that has
+    # the best chance of surviving even when updating the lpot_source
+    setup_actx = discr._setup_actx
+    assert isinstance(setup_actx, PyOpenCLArrayContext)
+
+    tcc = tree_code_container(setup_actx)
+    tree, _ = tcc.build_tree()(actx.queue, targets,
             max_particles_in_box=max_particles_in_box)
     query, _ = tcc.build_area_query()(actx.queue, tree, pxy.centers, pxy.radii)
 
@@ -757,10 +777,10 @@ def gather_cluster_neighbor_points(
 
     pxycenters = actx.to_numpy(pxy.centers)
     pxyradii = actx.to_numpy(pxy.radii)
-    srcindex = pxy.srcindex
 
-    nbrindices: np.ndarray = np.empty(srcindex.nclusters, dtype=object)
-    for icluster in range(srcindex.nclusters):
+    eps = 100 * np.finfo(pxyradii.dtype).eps
+    nbrindices = np.empty(nclusters, dtype=object)
+    for icluster in range(nclusters):
         # get list of boxes intersecting the current ball
         istart = query.leaves_near_ball_starts[icluster]
         iend = query.leaves_near_ball_starts[icluster + 1]
@@ -779,16 +799,17 @@ def gather_cluster_neighbor_points(
         isources = tree.user_source_ids[isources]
 
         # get nodes inside the ball but outside the current cluster
-        # FIXME: this assumes that only the points in `pxy.secindex` should
-        # count as neighbors, not all the nodes in the discretization.
-        # FIXME: it also assumes that all the indices are sorted?
         center = pxycenters[:, icluster].reshape(-1, 1)
-        radius = pxyradii[icluster]
-        mask = ((la.norm(nodes - center, axis=0) < radius)
-                & ((isources < srcindex.starts[icluster])
-                    | (srcindex.starts[icluster + 1] <= isources)))
+        radii = la.norm(nodes - center, axis=0) - eps
+        mask = (
+            (radii <= pxyradii[icluster])
+            & ((isources < tgtindex.starts[icluster])
+               | (tgtindex.starts[icluster + 1] <= isources)))
 
-        nbrindices[icluster] = srcindex.indices[isources[mask]]
+        nbrindices[icluster] = tgtindex.indices[isources[mask]]
+        if nbrindices[icluster].size == 0:
+            logger.warning("Cluster '%d' has no neighbors. You might need to "
+                           "increase the proxy 'radius_factor'.", icluster)
 
     # }}}
 
