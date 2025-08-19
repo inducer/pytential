@@ -38,13 +38,10 @@ from meshmode.mesh.generation import NArmedStarfish, ellipse
 
 from pytential import GeometryCollection, bind, sym
 from pytential.linalg import ProxyGenerator, QBXProxyGenerator
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -240,7 +237,7 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     ProxyGenerator, QBXProxyGenerator,
     ])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
-@pytest.mark.parametrize("proxy_radius_factor", [1, 1.1])
+@pytest.mark.parametrize("proxy_radius_factor", [1.0, 1.1])
 def test_proxy_generator(actx_factory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
