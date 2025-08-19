@@ -63,7 +63,7 @@ def max_cluster_error(mat, clusters, mindex, p=None):
 
         error = max(
                 error,
-                la.norm(mat_i - clusters[i, i], ord=p) / norm_mat_i
+                la.norm(mat_i - clusters[i], ord=p) / norm_mat_i
                 )
 
     return error
