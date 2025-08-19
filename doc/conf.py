@@ -40,7 +40,6 @@ nitpick_ignore_regex = [
     ["py:class", r"TypeAliasForwardRef"],
     ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
     ["py:class", r"arraycontext.typing._UserDefinedArithArrayContainer"],
-    ["py:class", r"TreeKind"],
 ]
 
 
@@ -70,7 +69,7 @@ sphinxconfig_missing_reference_aliases = {
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
-    # "TreeKind": "obj:boxtree.tree_build.TreeKind",
+    "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
