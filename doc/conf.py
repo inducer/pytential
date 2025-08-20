@@ -64,7 +64,9 @@ sphinxconfig_missing_reference_aliases = {
     "MultiVector": "obj:pymbolic.geometric_algebra.MultiVector",
     "Variable": "class:pymbolic.primitives.Variable",
     # arraycontext
+    "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
+    "ArrayOrContainerT": "obj:arraycontext.ArrayOrContainerT",
     "PyOpenCLArrayContext": "class:arraycontext.PyOpenCLArrayContext",
     "ScalarLike": "obj:arraycontext.ScalarLike",
     # modepy
