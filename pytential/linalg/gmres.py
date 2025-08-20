@@ -24,26 +24,10 @@ THE SOFTWARE.
 """
 
 __doc__ = """
-
 .. autofunction:: gmres
-
 .. autoclass:: GMRESResult
-
 .. autoexception:: GMRESError
-
 .. autoclass:: ResidualPrinter
-
-References
-----------
-.. class:: ArrayContainer
-
-    See :class:`arraycontext.ArrayContainer`.
-
-.. currentmodule:: arraycontext.typing
-
-.. class:: ArrayOrContainerT
-
-    See :class:`arraycontext.ArrayOrContainerT`.
 """
 
 from dataclasses import dataclass

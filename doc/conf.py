@@ -38,9 +38,9 @@ nitpick_ignore_regex = [
     # Sphinx started complaining about these in 8.2.1(-ish)
     # -AK, 2025-02-24
     ["py:class", r"TypeAliasForwardRef"],
-    ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
+    ["py:class", r"_ProxyNeighborEvaluationResult"],
     ["py:class", r"arraycontext.typing._UserDefinedArithArrayContainer"],
-    ["py:class", r"TreeKind"],
+    ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
 ]
 
 
@@ -49,10 +49,13 @@ sphinxconfig_missing_reference_aliases = {
     "NDArray": "obj:numpy.typing.NDArray",
     "np.integer": "obj:numpy.integer",
     "np.floating": "obj:numpy.floating",
+    "np.inexact": "obj:numpy.inexact",
+    "np.random.Generator": "class:numpy.random.Generator",
     # pytools
     "ObjectArrayND": "obj:pytools.obj_array.ObjectArrayND",
     "T": "obj:pytools.T",
     "obj_array.ObjectArray1D": "obj:pytools.obj_array.ObjectArray1D",
+    "obj_array.ObjectArray2D": "obj:pytools.obj_array.ObjectArray2D",
     # pyopencl
     "WaitList": "obj:pyopencl.WaitList",
     # pymbolic
@@ -61,7 +64,9 @@ sphinxconfig_missing_reference_aliases = {
     "MultiVector": "obj:pymbolic.geometric_algebra.MultiVector",
     "Variable": "class:pymbolic.primitives.Variable",
     # arraycontext
+    "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
+    "ArrayOrContainerT": "obj:arraycontext.ArrayOrContainerT",
     "PyOpenCLArrayContext": "class:arraycontext.PyOpenCLArrayContext",
     "ScalarLike": "obj:arraycontext.ScalarLike",
     # modepy
@@ -70,7 +75,7 @@ sphinxconfig_missing_reference_aliases = {
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
-    # "TreeKind": "obj:boxtree.tree_build.TreeKind",
+    "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
@@ -88,6 +93,7 @@ sphinxconfig_missing_reference_aliases = {
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
+    "sym.var": "obj:pytential.symbolic.primitives.var",
 }
 
 

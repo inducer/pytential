@@ -14,7 +14,7 @@ from pytential import sym
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from pytential.symbolic.dof_desc import DiscretizationStages
+    from pytential.symbolic.dof_desc import DiscretizationStage
 
 
 # {{{ MatrixTestCase
@@ -42,7 +42,7 @@ class MatrixTestCaseMixin:
 
     # skeletonization
     id_eps: float = 1.0e-8
-    skel_discr_stage: DiscretizationStages = sym.QBX_SOURCE_STAGE2
+    skel_discr_stage: DiscretizationStage = sym.QBX_SOURCE_STAGE2
 
     weighted_proxy: bool | None = None
     proxy_source_cluster_builder: Callable[..., Any] | None = None
@@ -58,7 +58,7 @@ class MatrixTestCaseMixin:
         if max_particles_in_box is None:
             max_particles_in_box = discr.ndofs // self.approx_cluster_count
 
-        from pytential.linalg import partition_by_nodes
+        from pytential.linalg.proxy import partition_by_nodes
         cindex = partition_by_nodes(actx, places,
                 dofdesc=dofdesc,
                 tree_kind=self.tree_kind,
