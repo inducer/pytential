@@ -28,6 +28,7 @@ from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Concatenate,
     Literal,
     TypeAlias,
@@ -38,12 +39,13 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from typing_extensions import deprecated, override, reveal_type
+from typing_extensions import deprecated, override
 
 from pymbolic import Expression, ExpressionNode as ExpressionNodeBase, Variable
 from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (
     Derivative as DerivativeBase,
+    Nabla,
     NablaComponent,
 )
 from pymbolic.primitives import (  # noqa: N813
@@ -57,6 +59,7 @@ from pymbolic.typing import ArithmeticExpression
 from pytools import P, obj_array
 from pytools.obj_array import (
     ObjectArray,
+    ObjectArray1D,
     ObjectArray2D,
     ObjectArrayND,
     ShapeT,
@@ -83,10 +86,11 @@ from pytential.symbolic.dof_desc import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 
     import modepy as mp
-    from loopy.symbolic import StringifyMapper
+    from pymbolic.mapper.stringifier import StringifyMapper
+    from pymbolic.primitives import CommonSubexpression, Quotient
     from pytools import P
 
 
@@ -434,7 +438,10 @@ class ExpressionNode(ExpressionNodeBase):
     """
 
     @override
-    def make_stringifier(self, originating_stringifier: StringifyMapper | None = None):
+    def make_stringifier(
+            self,
+            originating_stringifier: StringifyMapper[Any] | None = None,
+        ) -> StringifyMapper[[]]:
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
 
@@ -449,6 +456,7 @@ OperandTc = TypeVar("OperandTc",
         MultiVector[ArithmeticExpression],
         Operand)
 
+Side: TypeAlias = Literal[-1, 1]
 QBXForcedLimit: TypeAlias = Literal[-2, -1, 1, 1, "avg"] | None
 
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
@@ -456,7 +464,7 @@ ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpress
 
 
 class cse_scope(cse_scope_base):  # noqa: N801
-    DISCRETIZATION = "pytential_discretization"
+    DISCRETIZATION: ClassVar[str] = "pytential_discretization"
 
 
 def for_each_expression(
@@ -510,7 +518,7 @@ def make_sym_surface_mv(
             ambient_dim: int,
             dim: int,
             dofdesc: DOFDescriptorLike = None
-        ):
+        ) -> MultiVector[ArithmeticExpression]:
     par_grad = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
 
     return sum(
@@ -537,29 +545,30 @@ class Function(Variable):
 
     @override
     def __call__(self,
-                operand: (ArithmeticExpression
+                operand: (
+                    ArithmeticExpression
                     | ObjectArray[ShapeT, ArithmeticExpression]),
                 *args: Operand,
                 **kwargs: Operand
-            ) -> (ArithmeticExpression
-                    | ObjectArray[ShapeT, ArithmeticExpression]):
+            ) -> ArithmeticExpression | ObjectArray[ShapeT, ArithmeticExpression]:
         # If the call is handed an object array full of operands,
         # return an object array of the operator applied to each of the
         # operands.
 
         if isinstance(operand, ObjectArray):
-            def make_op(operand_i: ArithmeticExpression):
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
                 return self(operand_i, *args, **kwargs)
 
             return obj_array.vectorize(make_op, operand)
         else:
-            return var.__call__(self, operand, *args, **kwargs)
+            return super().__call__(operand, *args, **kwargs)
 
 
 @expr_dataclass()
 class NumpyMathFunction(Function):
     """A math function named within the numpy naming convention and with
-    numpy-like semantics."""
+    numpy-like semantics.
+    """
 
 
 real = NumpyMathFunction("real")
@@ -620,11 +629,11 @@ class IsShapeClass(DiscretizationProperty):
     .. autoattribute:: shape
     """
 
-    shape: mp.Shape
+    shape: type[mp.Shape]
     """A :class:`modepy.Shape` subclass."""
 
     # FIXME: this is added for backwards compatibility with pre-dataclass expressions
-    def __init__(self, shape: mp.Shape, dofdesc: DOFDescriptor) -> None:
+    def __init__(self, shape: type[mp.Shape], dofdesc: DOFDescriptor) -> None:
         object.__setattr__(self, "shape", shape)
         super().__init__(dofdesc)
 
@@ -651,9 +660,10 @@ class NodeCoordinateComponent(DiscretizationProperty):
         super().__init__(dofdesc)
 
 
-def nodes(ambient_dim: int, dofdesc: DOFDescriptorLike = None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` of node
-    locations.
+def nodes(ambient_dim: int,
+          dofdesc: DOFDescriptorLike = None) -> MultiVector[ArithmeticExpression]:
+    """
+    :returns: a :class:`pymbolic.geometric_algebra.MultiVector` of node coordinates.
     """
     dofdesc = as_dofdesc(dofdesc)
     return MultiVector(
@@ -686,14 +696,14 @@ class NumReferenceDerivative(DiscretizationProperty):
                 operand: Operand | None = None,
                 dofdesc: DOFDescriptor | None = None,
                 ) -> NumReferenceDerivative:
-        if isinstance(operand, np.ndarray | MultiVector):
+        if isinstance(operand, ObjectArray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
                  "the 'num_reference_derivative' function instead.",
                  DeprecationWarning, stacklevel=3)
 
-            def make_op(operand_i):
-                return cls(ref_axes, operand_i, as_dofdesc(dofdesc))
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
+                return cls(ref_axes, operand_i, dofdesc)
 
             return componentwise(make_op, operand)
         else:
@@ -729,7 +739,7 @@ class NumReferenceDerivative(DiscretizationProperty):
 
         object.__setattr__(self, "ref_axes", ref_axes)
         object.__setattr__(self, "operand", operand)
-        super().__init__(dofdesc)
+        super().__init__(as_dofdesc(dofdesc))
 
 
 @for_each_expression
@@ -755,8 +765,9 @@ def reference_jacobian(
             dim: int,
             dofdesc: DOFDescriptorLike = None
         ) -> ObjectArray2D[ArithmeticExpression]:
-    """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
-    with respect to the reference coordinates.
+    """
+    :returns: a :class:`numpy.ndarray` representing the Jacobian of a vector function
+        with respect to the reference coordinates.
     """
     dofdesc = as_dofdesc(dofdesc)
     jac = np.zeros((output_dim, dim), object)
@@ -772,9 +783,11 @@ def reference_jacobian(
 def parametrization_derivative_matrix(
             ambient_dim: int,
             dim: int,
-            dofdesc: DOFDescriptorLike = None):
-    """Return a :class:`numpy.ndarray` representing the derivative of the
-    reference-to-global parametrization.
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
+    """
+    :returns: a :class:`numpy.ndarray` representing the derivative of the
+        reference-to-global parametrization.
     """
 
     dofdesc = as_dofdesc(dofdesc)
@@ -788,9 +801,11 @@ def parametrization_derivative_matrix(
 def parametrization_derivative(
             ambient_dim: int,
             dim: int,
-            dofdesc: DOFDescriptorLike = None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
-    the derivative of the reference-to-global parametrization.
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
+    """
+    :returns: a :class:`pymbolic.geometric_algebra.MultiVector` representing
+        the derivative of the reference-to-global parametrization.
     """
 
     par_grad = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
@@ -802,7 +817,8 @@ def parametrization_derivative(
 def pseudoscalar(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
     """
     Same as the outer product of all parametrization derivative columns.
     """
@@ -818,7 +834,8 @@ def pseudoscalar(
 def area_element(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     return cse(
             sqrt(pseudoscalar(ambient_dim, dim, dofdesc).norm_squared()),
             "area_element", cse_scope.DISCRETIZATION)
@@ -827,7 +844,8 @@ def area_element(
 def sqrt_jac_q_weight(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     dofdesc = as_dofdesc(dofdesc)
     return cse(
             sqrt(
@@ -836,7 +854,11 @@ def sqrt_jac_q_weight(
             "sqrt_jac_q_weight", cse_scope.DISCRETIZATION)
 
 
-def normal(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike = None):
+def normal(
+            ambient_dim: int,
+            dim: int | None = None,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
     """Exterior unit normals."""
 
     # Don't be tempted to add a sign here. As it is, it produces
@@ -856,7 +878,8 @@ def normal(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike 
 def mean_curvature(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     """(Numerical) mean curvature."""
 
     if dim is None:
@@ -885,7 +908,8 @@ def mean_curvature(
 def first_fundamental_form(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
     if dim is None:
         dim = ambient_dim - 1
 
@@ -896,7 +920,8 @@ def first_fundamental_form(
 def second_fundamental_form(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
     """Compute the second fundamental form of a surface. This is in reference
     to the reference-to-global mapping in use for each element.
 
@@ -940,7 +965,8 @@ def second_fundamental_form(
 def shape_operator(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
     if dim is None:
         dim = ambient_dim - 1
 
@@ -950,23 +976,23 @@ def shape_operator(
     # https://en.wikipedia.org/w/index.php?title=Differential_geometry_of_surfaces&oldid=833587563
     (E, F), (_F, G) = first_fundamental_form(ambient_dim, dim, dofdesc)
     (e, f), (_f, g) = second_fundamental_form(ambient_dim, dim, dofdesc)
-    reveal_type(E)
 
     result = np.zeros((2, 2), dtype=object)
     result[0, 0] = e*G-f*F
     result[0, 1] = f*G-g*F
     result[1, 0] = f*E-e*F
     result[1, 1] = g*E-f*F
-    result_obj = from_numpy(result, ArithmeticExpression)
+
     return cse(
-            1/(E*G-F*F)*result_obj,
+            1/(E*G-F*F)*from_numpy(result),
             "shape_operator")
 
 
 def _element_size(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     # A broken quasi-1D approximation of 1D element size. Do not use.
     if dim is None:
         dim = ambient_dim - 1
@@ -978,7 +1004,9 @@ def _element_size(
             dofdesc)**(1/dim)
 
 
-def _small_mat_inverse(mat):
+def _small_mat_inverse(
+            mat: ObjectArray2D[ArithmeticExpression],
+        ) -> ObjectArray2D[ArithmeticExpression]:
     m, n = mat.shape
     if m != n:
         raise ValueError(
@@ -986,18 +1014,22 @@ def _small_mat_inverse(mat):
                 f"got a {m}x{n} matrix")
 
     if m == 1:
-        return np.array([[1/mat[0, 0]]], dtype=object)
+        result = np.array([[1/mat[0, 0]]], dtype=object)
     elif m == 2:
         (a, b), (c, d) = mat
-        return 1/(a*d - b*c) * np.array([
+        result = 1/(a*d - b*c) * np.array([
             [d, -b],
             [-c, a],
             ], dtype=object)
     else:
         raise NotImplementedError(f"inverse formula for {m}x{n} matrices")
 
+    return from_numpy(result)
 
-def _small_mat_eigenvalues(mat):
+
+def _small_mat_eigenvalues(
+            mat: ObjectArray2D[ArithmeticExpression],
+        ) -> ObjectArray1D[ArithmeticExpression]:
     m, n = mat.shape
     if m != n:
         raise ValueError(
@@ -1022,7 +1054,9 @@ def _small_mat_eigenvalues(mat):
         raise NotImplementedError(f"eigenvalue formula for {m}x{n} matrices")
 
 
-def _small_sym_mat_eigenvalues(mat):
+def _small_sym_mat_eigenvalues(
+            mat: ObjectArray2D[ArithmeticExpression],
+        ) -> ObjectArray1D[ArithmeticExpression]:
     m, n = mat.shape
     if m != n:
         raise ValueError(
@@ -1052,7 +1086,8 @@ def _small_sym_mat_eigenvalues(mat):
 def _equilateral_parametrization_derivative_matrix(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
     if dim is None:
         dim = ambient_dim - 1
 
@@ -1072,13 +1107,11 @@ def _equilateral_parametrization_derivative_matrix(
 def _simplex_mapping_max_stretch_factor(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
-    """Return the largest factor by which the reference-to-global
-    mapping stretches the bi-unit (i.e. :math:`[-1, 1]`) reference
-    element along any axis.
-
-    If *map_elementwise_max* is True, returns a DOF vector that is elementwise
-    constant.
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
+    """
+    :returns: the largest factor by which the reference-to-global mapping stretches
+        the bi-unit (i.e. :math:`[-1, 1]`) reference element along any axis.
     """
 
     if dim is None:
@@ -1115,7 +1148,8 @@ def _simplex_mapping_max_stretch_factor(
 def _hypercube_mapping_max_stretch_factor(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     if dim is None:
         dim = ambient_dim - 1
 
@@ -1136,7 +1170,8 @@ def _hypercube_mapping_max_stretch_factor(
 def _mapping_max_stretch_factor(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptor | None = None,
+        ) -> ArithmeticExpression:
     simplex_stretch_factor = _simplex_mapping_max_stretch_factor(
         ambient_dim, dim, dofdesc=dofdesc)
     hypercube_stretch_factor = _hypercube_mapping_max_stretch_factor(
@@ -1144,6 +1179,8 @@ def _mapping_max_stretch_factor(
 
     import modepy as mp
     from pymbolic.primitives import If
+
+    dofdesc = as_dofdesc(dofdesc)
     stretch_factor = If(IsShapeClass(mp.Simplex, dofdesc),
                         simplex_stretch_factor,
                         If(IsShapeClass(mp.Hypercube, dofdesc),
@@ -1157,7 +1194,8 @@ def _mapping_max_stretch_factor(
 def _max_curvature(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     # An attempt at a 'max curvature' criterion.
 
     if dim is None:
@@ -1173,20 +1211,22 @@ def _max_curvature(
         from pymbolic.primitives import Max
         return cse(Max(tuple(abs_principal_curvatures)))
     else:
-        raise NotImplementedError("curvature criterion not implemented in %d "
-                "dimensions" % ambient_dim)
+        raise NotImplementedError(
+            f"curvature criterion not implemented in {ambient_dim} dimensions")
 
 
 def _scaled_max_curvature(
-            ambient_dim: int,
-            dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+                ambient_dim: int,
+                dim: int | None = None,
+                dofdesc: DOFDescriptorLike = None,
+            ) -> ArithmeticExpression:
     """An attempt at a unit-less, scale-invariant quantity that characterizes
     'how much curviness there is on an element'. Values seem to hover around 1
     on typical meshes. Empirical evidence suggests that elements exceeding
     a threshold of about 0.8-1 will have high QBX truncation error.
     """
 
+    dofdesc = as_dofdesc(dofdesc)
     return (
         _max_curvature(ambient_dim, dim, dofdesc=dofdesc)
         * _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=dofdesc))
@@ -1196,7 +1236,7 @@ def _scaled_max_curvature(
 
 # {{{ qbx-specific geometry
 
-def _expansion_radii_factor(ambient_dim: int, dim: int | None):
+def _expansion_radii_factor(ambient_dim: int, dim: int | None) -> float:
     if dim is None:
         dim = ambient_dim - 1
 
@@ -1208,7 +1248,8 @@ def _quad_resolution(
             ambient_dim: int,
             dim: int | None = None,
             granularity: DOFGranularity | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
     should be the same as the element length.
@@ -1231,7 +1272,8 @@ def _source_danger_zone_radii(
             ambient_dim: int,
             dim: int | None = None,
             granularity: DOFGranularity | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     # This should be the expression of the expansion radii, but
     #
     # - in reference to the stage 2 discretization
@@ -1250,8 +1292,9 @@ def _source_danger_zone_radii(
 def _close_target_tunnel_radii(
             ambient_dim: int,
             dim: int | None = None,
-            granularity: DOFGranularity = None,
-            dofdesc: DOFDescriptorLike = None):
+            granularity: DOFGranularity | None = None,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     return 0.5 * expansion_radii(ambient_dim,
             dim=dim, granularity=granularity, dofdesc=dofdesc)
 
@@ -1259,8 +1302,9 @@ def _close_target_tunnel_radii(
 def expansion_radii(
             ambient_dim: int,
             dim: int | None = None,
-            granularity=None,
-            dofdesc: DOFDescriptorLike = None):
+            granularity: DOFGranularity | None = None,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     factor = _expansion_radii_factor(ambient_dim, dim)
     return cse(factor * _quad_resolution(ambient_dim, dim=dim,
         granularity=granularity, dofdesc=dofdesc),
@@ -1270,9 +1314,10 @@ def expansion_radii(
 
 def expansion_centers(
             ambient_dim: int,
-            side: QBXForcedLimit,
+            side: Side,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+            ) -> ObjectArray1D[ArithmeticExpression]:
     x = nodes(ambient_dim, dofdesc=dofdesc)
     normals = normal(ambient_dim, dim=dim, dofdesc=dofdesc)
     radii = expansion_radii(ambient_dim, dim=dim,
@@ -1288,7 +1333,8 @@ def interleaved_expansion_centers(
             ambient_dim: int,
             dim: int | None = None,
             dofdesc: DOFDescriptorLike = None
-        ):
+        ) -> tuple[ObjectArray1D[ArithmeticExpression],
+                   ObjectArray1D[ArithmeticExpression]]:
     centers = (
             expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
             expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
@@ -1299,7 +1345,11 @@ def interleaved_expansion_centers(
     return interpolate(centers, source, target)
 
 
-def h_max(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike = None):
+def h_max(
+            ambient_dim: int,
+            dim: int | None = None,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     """Defines a maximum element size in the discretization."""
 
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
@@ -1308,7 +1358,11 @@ def h_max(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike =
             cse_scope.DISCRETIZATION)
 
 
-def h_min(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike = None):
+def h_min(
+            ambient_dim: int,
+            dim: int | None = None,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     """Yields an approximate minimum element size in the discretization."""
 
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
@@ -1320,7 +1374,8 @@ def h_min(ambient_dim: int, dim: int | None = None, dofdesc: DOFDescriptorLike =
 def weights_and_area_elements(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ArithmeticExpression:
     """Combines :func:`area_element` and :class:`QWeight`."""
     dofdesc = as_dofdesc(dofdesc)
     area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
@@ -1363,13 +1418,13 @@ class Interpolation(ExpressionNode):
         if from_dd == to_dd:
             return operand
 
-        if isinstance(operand, np.ndarray | MultiVector):
+        if isinstance(operand, ObjectArray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
                  "the 'interpolate' function instead.",
                  DeprecationWarning, stacklevel=3)
 
-            def make_op(operand_i):
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
                 return cls(from_dd, to_dd, operand_i)
 
             return componentwise(make_op, operand)
@@ -1395,7 +1450,9 @@ class Interpolation(ExpressionNode):
 
 
 @deprecated("Use interpolate")
-def interp(from_dd, to_dd, operand):
+def interp(from_dd: DOFDescriptorLike,
+           to_dd: DOFDescriptorLike,
+           operand: Operand) -> Interpolation:
     warn("Calling 'interp' is deprecated and it will be removed in 2025. Use "
          "'interpolate' instead (has a different argument order).",
          DeprecationWarning, stacklevel=2)
@@ -1404,9 +1461,9 @@ def interp(from_dd, to_dd, operand):
 
 
 @for_each_expression
-def interpolate(operand: OperandTc,
+def interpolate(operand: ArithmeticExpression,
                 from_dd: DOFDescriptorLike,
-                to_dd: DOFDescriptorLike) -> OperandTc:
+                to_dd: DOFDescriptorLike) -> Interpolation:
     from_dd = as_dofdesc(from_dd)
     to_dd = as_dofdesc(to_dd)
 
@@ -1427,14 +1484,14 @@ class SingleScalarOperandExpression(ExpressionNode):
 
     def __new__(cls,
                 operand: Operand | None = None) -> SingleScalarOperandExpression:
-        if isinstance(operand, np.ndarray | MultiVector):
+        if isinstance(operand, ObjectArray | MultiVector):
             name = cls.mapper_method[4:]
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
                  f"the '{name}' function instead.",
                  DeprecationWarning, stacklevel=3)
 
-            def make_op(operand_i):
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
                 return cls(operand_i)
 
             return componentwise(make_op, operand)
@@ -1484,8 +1541,9 @@ def node_min(expr: ArithmeticExpression) -> NodeMin:
 def integral(
             ambient_dim: int,
             dim: int,
-            operand: Operand,
-            dofdesc: DOFDescriptorLike = None):
+            operand: OperandTc,
+            dofdesc: DOFDescriptorLike = None,
+        ) -> OperandTc:
     """A volume integral of *operand*."""
 
     dofdesc = as_dofdesc(dofdesc)
@@ -1513,14 +1571,14 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
                 operand: Operand | None = None,
                 dofdesc: DOFDescriptorLike | None = None,
                 ) -> SingleScalarOperandExpressionWithWhere:
-        if isinstance(operand, np.ndarray | MultiVector):
+        if isinstance(operand, ObjectArray | MultiVector):
             name = cls.mapper_method[4:]
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
                  "is deprecated and will result in an error from 2025. Use "
                  f"the '{name}' function instead.",
                  DeprecationWarning, stacklevel=2)
 
-            def make_op(operand_i):
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
                 return cls(operand_i, as_dofdesc(dofdesc))
 
             return componentwise(make_op, operand)
@@ -1601,22 +1659,25 @@ class Ones(ExpressionNode):
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
 
-def ones_vec(dim: int, dofdesc: DOFDescriptorLike = None):
+def ones_vec(dim: int,
+             dofdesc: DOFDescriptorLike = None) -> MultiVector[ArithmeticExpression]:
     dofdesc = as_dofdesc(dofdesc)
     return MultiVector(obj_array.new_1d(dim*[Ones(dofdesc)]))
 
 
-def area(ambient_dim: int, dim: int, dofdesc: DOFDescriptorLike = None):
+def area(ambient_dim: int,
+         dim: int, dofdesc:
+         DOFDescriptorLike = None) -> ArithmeticExpression:
     dofdesc = as_dofdesc(dofdesc)
-    return cse(integral(ambient_dim, dim, Ones(dofdesc), dofdesc), "area",
+    return cse(
+            integral(ambient_dim, dim, Ones(dofdesc), dofdesc), "area",
             cse_scope.DISCRETIZATION)
 
 
-def mean(
-            ambient_dim: int,
-            dim: int,
-            operand: Operand,
-            dofdesc: DOFDescriptorLike = None):
+def mean(ambient_dim: int,
+         dim: int,
+         operand: Operand,
+         dofdesc: DOFDescriptorLike = None) -> Operand:
     return (
             integral(ambient_dim, dim, operand, dofdesc)
             / area(ambient_dim, dim, dofdesc))
@@ -1669,7 +1730,8 @@ class Derivative(DerivativeBase):
     """
 
     @property
-    def nabla(self):
+    @override
+    def nabla(self) -> Nabla:
         raise ValueError("Derivative.nabla should not be used"
                 "--use Derivative.dnabla instead. (Note the extra 'd')"
                 "To explain: 'nabla' was intended to be "
@@ -1677,17 +1739,19 @@ class Derivative(DerivativeBase):
                 "idea.")
 
     @staticmethod
-    def resolve(expr):
+    @override
+    def resolve(expr: ArithmeticExpression) -> ArithmeticExpression:
         from pytential.symbolic.mappers import DerivativeBinder
         return DerivativeBinder()(expr)
 
 
 def dd_axis(axis: int, ambient_dim: int, operand: OperandTc) -> OperandTc:
-    """Return the derivative along (XYZ) axis *axis*
-    (in *ambient_dim*-dimensional space) of *operand*.
+    """
+    :returns: the derivative along (XYZ) axis *axis* (in *ambient_dim*-dimensional
+        space) of *operand*.
     """
     if isinstance(operand, ObjectArray):
-        def dd_axis_comp(operand_i: ArithmeticExpression):
+        def dd_axis_comp(operand_i: ArithmeticExpression) -> ArithmeticExpression:
             return dd_axis(axis, ambient_dim, operand_i)
 
         return obj_array.vectorize(dd_axis_comp, operand)
@@ -1713,18 +1777,18 @@ def grad_mv(
             ambient_dim: int,
             operand: ArithmeticExpression
         ) -> MultiVector[ArithmeticExpression]:
-    """Return the *ambient_dim*-dimensional gradient of
-    *operand* as a :class:`pymbolic.geometric_algebra.MultiVector`.
+    """
+    :returns: the *ambient_dim*-dimensional gradient of *operand*.
     """
 
     d = Derivative()
-    return cast("MultiVector[ArithmeticExpression]",
-                cast("object", d.resolve(d.dnabla(ambient_dim) * d(operand))))
+    return d.resolve(d.dnabla(ambient_dim) * d(operand))
 
 
-def grad(ambient_dim: int, operand: OperandTc):
-    """Return the *ambient_dim*-dimensional gradient of
-    *operand* as a :class:`numpy.ndarray`.
+def grad(ambient_dim: int,
+         operand: ArithmeticExpression) -> ObjectArray1D[ArithmeticExpression]:
+    """
+    :returns: the *ambient_dim*-dimensional gradient of *operand*.
     """
     return from_numpy(grad_mv(ambient_dim, operand).as_vector())
 
@@ -1732,17 +1796,23 @@ def grad(ambient_dim: int, operand: OperandTc):
 def laplace(ambient_dim: int, operand: OperandTc) -> OperandTc:
     d = Derivative()
     nabla = d.dnabla(ambient_dim)
-    return d.resolve(nabla | d(
-        d.resolve(nabla * d(operand)))).as_scalar()
+
+    return d.resolve(
+        nabla
+        | d(d.resolve(nabla * d(operand)))
+    ).as_scalar()
 
 
 # {{{ potentials
 
-def hashable_kernel_args(kernel_arguments):
-    hashable_args = []
+def hashable_kernel_args(
+        kernel_arguments: Mapping[Hashable, Operand]
+    ) -> tuple[tuple[Hashable, Hashable], ...]:
+    hashable_args: list[tuple[Hashable, Hashable]] = []
     for key, val in sorted(kernel_arguments.items()):
         if isinstance(val, np.ndarray):
             val = tuple(val)
+
         hashable_args.append((key, val))
 
     return tuple(hashable_args)
@@ -1909,7 +1979,7 @@ class IntG(ExpressionNode):
         kernels = (*self.source_kernels, self.target_kernel)
         single_valued(kernel.get_base_kernel() for kernel in kernels)
 
-        kernel_arg_names = set()
+        kernel_arg_names: set[str] = set()
         for kernel in kernels:
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
@@ -1928,7 +1998,7 @@ class IntG(ExpressionNode):
                 "Kernel argument(s) not recognized: '{}'".format(", ".join(extra_args))
             )
 
-    def copy(self, **kwargs) -> IntG:
+    def copy(self, **kwargs: Any) -> IntG:
         warn(f"'{type(self).__name__}.copy' is deprecated and will be removed in "
              f"2025. {type(self)} is a dataclass now and can use "
              "'dataclasses.replace'.", DeprecationWarning, stacklevel=2)
@@ -1936,7 +2006,8 @@ class IntG(ExpressionNode):
         from dataclasses import replace
         return replace(self, **kwargs)
 
-    def __eq__(self, other: Any) -> bool:
+    @override
+    def __eq__(self, other: object) -> bool:
         if self is other:
             return True
         if self.__class__ is not other.__class__:
@@ -1956,6 +2027,7 @@ class IntG(ExpressionNode):
                 == hashable_kernel_args(other.kernel_arguments))
             )
 
+    @override
     def __hash__(self) -> int:
         return hash((
             self.target_kernel,
@@ -1970,9 +2042,8 @@ class IntG(ExpressionNode):
 _DIR_VEC_NAME = "dsource_vec"
 
 
-def _insert_source_derivative_into_kernel(kernel):
-    # Inserts the source derivative at the innermost
-    # kernel wrapping level.
+def _insert_source_derivative_into_kernel(kernel: Kernel) -> Kernel:
+    # Inserts the source derivative at the innermost kernel wrapping level.
     from sumpy.kernel import DirectionalSourceDerivative
 
     if kernel.get_base_kernel() is kernel:
@@ -1983,39 +2054,55 @@ def _insert_source_derivative_into_kernel(kernel):
                 _insert_source_derivative_into_kernel(kernel.inner_kernel))
 
 
-def _get_dir_vec(dsource, ambient_dim: int):
+def _get_dir_vec(
+            dsource: ArithmeticExpression,
+            ambient_dim: int,
+        ) -> ObjectArray1D[ArithmeticExpression]:
     from pymbolic.mapper.coefficient import (
         CoefficientCollector as CoefficientCollectorBase,
+        CoeffsT,
     )
 
     class _DSourceCoefficientFinder(CoefficientCollectorBase):
-        def map_nabla_component(self, expr):
+        def map_nabla_component(self, expr: NablaComponent) -> CoeffsT:
             return {expr: 1}
 
-        def map_variable(self, expr):
+        @override
+        def map_variable(self, expr: Variable) -> CoeffsT:
             return {1: expr}
 
-        def map_common_subexpression(self, expr):
+        def map_common_subexpression(self, expr: CommonSubexpression) -> CoeffsT:
             return {1: expr}
 
-        def map_quotient(self, expr):
+        @override
+        def map_quotient(self, expr: Quotient) -> CoeffsT:
             return {1: expr}
 
-    coeffs = _DSourceCoefficientFinder()(dsource)
+    coeffs = dict(_DSourceCoefficientFinder()(dsource))
 
-    dir_vec = np.zeros(ambient_dim, object)
+    dir_vec = np.zeros(ambient_dim, dtype=object)
     for i in range(ambient_dim):
         dir_vec[i] = coeffs.pop(NablaComponent(i, None), 0)
 
     if coeffs:
         raise RuntimeError("source derivative expression contained constant term")
 
-    return dir_vec
+    return from_numpy(dir_vec)
 
 
-def int_g_dsource(ambient_dim: int, dsource, kernel, density,
-            qbx_forced_limit, source=None, target=None,
-            kernel_arguments=None, **kwargs):
+def int_g_dsource(
+            ambient_dim: int,
+            dsource: MultiVector[ArithmeticExpression],
+            kernel: Kernel,
+            density: Operand,
+            qbx_forced_limit: QBXForcedLimit,
+            source: Kernel | None = None,
+            target: Kernel | None = None,
+            kernel_arguments: (
+                dict[Hashable, ArithmeticExpression]
+                | tuple[Hashable, ArithmeticExpression]
+                | None) = None,
+            **kwargs: Any) -> MultiVector[ArithmeticExpression]:
     r"""
     .. math::
 
