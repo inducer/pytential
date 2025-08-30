@@ -86,6 +86,8 @@ sphinxconfig_missing_reference_aliases = {
     "DOFGranularity": "data:pytential.symbolic.dof_desc.DOFGranularity",
     "DiscretizationStage": "data:pytential.symbolic.dof_desc.DiscretizationStage",
     "GeometryId": "data:pytential.symbolic.dof_desc.GeometryId",
+    "KernelArgumentLike": "obj:pytential.symbolic.primitives.KernelArgumentLike",
+    "KernelArgumentMapping": "obj:pytential.symbolic.primitives.KernelArgumentMapping",
     "Operand": "obj:pytential.symbolic.primitives.Operand",
     "QBXForcedLimit": "obj:pytential.symbolic.primitives.QBXForcedLimit",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",

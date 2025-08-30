@@ -86,7 +86,7 @@ from pytential.symbolic.dof_desc import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Hashable, Iterable, Sequence
 
     import modepy as mp
     from pymbolic.mapper.stringifier import StringifyMapper
@@ -309,7 +309,6 @@ Elementary numerics
     :undoc-members:
     :members: mapper_method
 
-
 Operators
 ^^^^^^^^^
 
@@ -339,6 +338,9 @@ Conventional Calculus
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
+
+.. autoclass:: KernelArgumentMapping
+.. autoclass:: KernelArgumentLike
 
 .. autoclass:: IntG
     :show-inheritance:
@@ -375,12 +377,14 @@ Pretty-printing expressions
 """
 
 __all__ = (
-    "ExpressionNode",
-    "Operand",
+    "Operand", "OperandTc",
+    "Side", "QBXForcedLimit",
     "ArithmeticExpressionT",
-    "QBXForcedLimit",
-    "for_each_expression",
+    "KernelArgumentMapping",
+    "KernelArgumentLike",
 
+    "for_each_expression",
+    "ExpressionNode",
     "ErrorExpression",
 
     "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
@@ -457,10 +461,15 @@ OperandTc = TypeVar("OperandTc",
         Operand)
 
 Side: TypeAlias = Literal[-1, 1]
-QBXForcedLimit: TypeAlias = Literal[-2, -1, 1, 1, "avg"] | None
+QBXForcedLimit: TypeAlias = Literal[-2, -1, +1, +2, "avg"] | None
 
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
 ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
+
+KernelArgumentMapping = dict[str, Operand]
+KernelArgumentLike = (
+    dict[str, Operand]
+    | tuple[tuple[str, Operand], ...])
 
 
 class cse_scope(cse_scope_base):  # noqa: N801
@@ -1806,7 +1815,7 @@ def laplace(ambient_dim: int, operand: OperandTc) -> OperandTc:
 # {{{ potentials
 
 def hashable_kernel_args(
-        kernel_arguments: Mapping[Hashable, Operand]
+        kernel_arguments: KernelArgumentMapping
     ) -> tuple[tuple[Hashable, Hashable], ...]:
     hashable_args: list[tuple[Hashable, Hashable]] = []
     for key, val in sorted(kernel_arguments.items()):
@@ -1852,7 +1861,7 @@ class IntG(ExpressionNode):
     derivatives attached. k-th elements represents the k-th source derivative
     operator above.
     """
-    densities: tuple[ExpressionNode, ...]
+    densities: tuple[ArithmeticExpression, ...]
     """A tuple of density expressions. Length of this tuple must match the length
     of the *source_kernels* arguments.
     """
@@ -1886,7 +1895,7 @@ class IntG(ExpressionNode):
     concrete target set by :func:`pytential.bind`.
     """
 
-    kernel_arguments: dict[str, Operand] = field(default_factory=dict)
+    kernel_arguments: KernelArgumentMapping = field(default_factory=dict)
     """A dictionary mapping named :class:`~sumpy.kernel.Kernel` arguments
     (see :meth:`~sumpy.kernel.Kernel.get_args` and
     :meth:`~sumpy.kernel.Kernel.get_source_args`) to expressions that determine
@@ -1897,15 +1906,18 @@ class IntG(ExpressionNode):
             self,
             target_kernel: Kernel,
             source_kernels: Iterable[Kernel],
-            densities: Iterable[ExpressionNode],
+            densities: Iterable[ArithmeticExpression],
             qbx_forced_limit: QBXForcedLimit,
             source: DOFDescriptorLike | None = None,
             target: DOFDescriptorLike | None = None,
-            kernel_arguments: dict[str, Any] | None = None,
-            **kwargs: Any
+            kernel_arguments: KernelArgumentLike | None = None,
+            **kwargs: Operand
             ) -> None:
         if kernel_arguments is None:
             kernel_arguments = {}
+
+        if isinstance(kernel_arguments, tuple):
+            kernel_arguments = dict(kernel_arguments)
 
         if kwargs:
             warn(f"Passing named '**kwargs' to {type(self).__name__!r} is "
@@ -1928,7 +1940,7 @@ class IntG(ExpressionNode):
         object.__setattr__(self, "target", target)
         object.__setattr__(self, "kernel_arguments", kernel_arguments)
 
-        self.__post_init__()
+        super().__init__()
 
     def __post_init__(self) -> None:
         if self.qbx_forced_limit not in {-1, +1, -2, +2, "avg", None}:
@@ -2096,13 +2108,10 @@ def int_g_dsource(
             kernel: Kernel,
             density: Operand,
             qbx_forced_limit: QBXForcedLimit,
-            source: Kernel | None = None,
-            target: Kernel | None = None,
-            kernel_arguments: (
-                dict[Hashable, ArithmeticExpression]
-                | tuple[Hashable, ArithmeticExpression]
-                | None) = None,
-            **kwargs: Any) -> MultiVector[ArithmeticExpression]:
+            source: DOFDescriptorLike | None = None,
+            target: DOFDescriptorLike | None = None,
+            kernel_arguments: KernelArgumentLike | None = None,
+            **kwargs: Operand) -> MultiVector[ArithmeticExpression]:
     r"""
     .. math::
 
@@ -2121,10 +2130,12 @@ def int_g_dsource(
     kernel = _insert_source_derivative_into_kernel(kernel)
 
     nabla = MultiVector(obj_array.new_1d(
-        [NablaComponent(axis, None)
-            for axis in range(ambient_dim)]))
+        [NablaComponent(axis, None) for axis in range(ambient_dim)]
+    ))
 
-    def add_dir_vec_to_kernel_args(coeff):
+    def add_dir_vec_to_kernel_args(
+            coeff: ArithmeticExpression
+        ) -> KernelArgumentMapping:
         result = kernel_arguments.copy()
         result[_DIR_VEC_NAME] = _get_dir_vec(coeff, ambient_dim)
         return result
@@ -2149,8 +2160,47 @@ class _unspecified:  # noqa: N801
     pass
 
 
-def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
-        kernel_arguments=None, **kwargs):
+@overload
+def int_g_vec(
+        kernel: Kernel,
+        density: ArithmeticExpression,
+        qbx_forced_limit: QBXForcedLimit,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        **kwargs: Operand) -> IntG: ...
+
+
+@overload
+def int_g_vec(
+        kernel: Kernel,
+        density: ObjectArrayND[ArithmeticExpression],
+        qbx_forced_limit: QBXForcedLimit,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        **kwargs: Operand) -> ObjectArrayND[IntG]: ...
+
+
+@overload
+def int_g_vec(
+        kernel: Kernel,
+        density: MultiVector[ArithmeticExpression],
+        qbx_forced_limit: QBXForcedLimit,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        **kwargs: Operand) -> ObjectArrayND[IntG]: ...
+
+
+def int_g_vec(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        **kwargs: Operand) -> Operand:
     """
     Creates a vector of :class:`IntG` objects from one kernel with source and
     target derivatives and maps a vector of densities into a vector of
@@ -2174,10 +2224,13 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     if kernel_arguments is None:
         kernel_arguments = {}
 
-    if kwargs is not None:
+    if isinstance(kernel_arguments, tuple):
+        kernel_arguments = dict(kernel_arguments)
+
+    if kwargs:
         kernel_arguments = {**kernel_arguments, **kwargs}
 
-    def make_op(operand_i):
+    def make_op(operand_i: ArithmeticExpression) -> IntG:
         return IntG(
             target_kernel=target_kernel,
             source_kernels=source_kernels,
@@ -2187,19 +2240,25 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
             target=as_dofdesc(target),
             kernel_arguments=kernel_arguments)
 
-    if isinstance(density, np.ndarray | MultiVector):
+    if isinstance(density, (ObjectArray, MultiVector)):
         return componentwise(make_op, density)
     else:
         return make_op(density)
 
 
-def S(kernel, density,
-        qbx_forced_limit=_unspecified, source=None, target=None,
-        kernel_arguments=None, **kwargs):
+def S(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit = _unspecified,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        **kwargs: Operand,
+    ) -> Operand:
 
     if qbx_forced_limit is _unspecified:
-        warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
-                "defaulting to +1", stacklevel=2)
+        warn("Not specifying 'qbx_forced_limit' on call to 'S' is deprecated. "
+             "Choosing default to '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
     return int_g_vec(kernel, density, qbx_forced_limit, source, target,
@@ -2210,7 +2269,8 @@ def tangential_derivative(
             ambient_dim: int,
             operand: Operand,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
     pder = (
             pseudoscalar(ambient_dim, dim, dofdesc)
             / area_element(ambient_dim, dim, dofdesc))
@@ -2223,9 +2283,10 @@ def tangential_derivative(
 
 def normal_derivative(
             ambient_dim: int,
-            operand,
+            operand: Operand,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
     d = Derivative()
     return d.resolve(
             (normal(ambient_dim, dim, dofdesc).scalar_product(d.dnabla(ambient_dim)))
@@ -2234,9 +2295,10 @@ def normal_derivative(
 
 def normal_second_derivative(
             ambient_dim: int,
-            operand,
+            operand: Operand,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> MultiVector[ArithmeticExpression]:
     d = Derivative()
     n = normal(ambient_dim, dim, dofdesc)
     nabla = d.dnabla(ambient_dim)
@@ -2246,81 +2308,135 @@ def normal_second_derivative(
         ))
 
 
-def Sp(kernel, *args, **kwargs):
-    dofdesc = kwargs.get("target")
-    if "qbx_forced_limit" not in kwargs:
-        warn("not specifying qbx_forced_limit on call to 'Sp' is deprecated, "
-                "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
-        kwargs["qbx_forced_limit"] = "avg"
+def Sp(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit = _unspecified,
+        source: DOFDescriptorLike | None = None,
+        target: DOFDescriptorLike | None = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        ambient_dim: int | None = None,
+        dim: int | None = None,
+        **kwargs: Operand,
+    ) -> Operand:
+    if qbx_forced_limit is _unspecified:
+        warn("Not specifying 'qbx_forced_limit' on call to 'Sp' is deprecated. "
+             "Choosing default 'avg'.", stacklevel=2)
+        qbx_forced_limit = "avg"
 
-    ambient_dim = kwargs.get("ambient_dim")
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
+
     if ambient_dim is None:
-        raise ValueError("ambient_dim must be specified, either through "
-                "the kernel, or directly")
-    dim = kwargs.pop("dim", None)
+        raise ValueError(
+            "'ambient_dim' must be specified (either through the kernel, or directly")
 
     return normal_derivative(
             ambient_dim,
-            S(kernel, *args, **kwargs),
-            dim=dim, dofdesc=dofdesc)
+            S(kernel, density,
+              qbx_forced_limit=qbx_forced_limit,
+              source=source, target=target,
+              kernel_arguments=kernel_arguments, **kwargs),
+            dim=dim, dofdesc=target)
 
 
-def Spp(kernel, *args, **kwargs):
-    ambient_dim = kwargs.get("ambient_dim")
+def Spp(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit = _unspecified,
+        source: DOFDescriptorLike | None = None,
+        target: DOFDescriptorLike | None = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        ambient_dim: int | None = None,
+        dim: int | None = None,
+        **kwargs: Operand,
+    ) -> Operand:
+    if qbx_forced_limit is _unspecified:
+        warn("Not specifying 'qbx_forced_limit' on call to 'Spp' is deprecated. "
+             "Choosing default '+1'.", stacklevel=2)
+        qbx_forced_limit = +1
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
-    if ambient_dim is None:
-        raise ValueError("ambient_dim must be specified, either through "
-                "the kernel, or directly")
-    dim = kwargs.pop("dim", None)
 
-    dofdesc = kwargs.get("target")
+    if ambient_dim is None:
+        raise ValueError(
+            "'ambient_dim' must be specified (either through the kernel, or directly")
+
     return normal_second_derivative(
             ambient_dim,
-            S(kernel, *args, **kwargs),
-            dim=dim, dofdesc=dofdesc)
+            S(kernel, density,
+              qbx_forced_limit=qbx_forced_limit,
+              source=source, target=target,
+              kernel_arguments=kernel_arguments, **kwargs),
+            dim=dim, dofdesc=target)
 
 
-def D(kernel, *args, **kwargs):
-    ambient_dim = kwargs.get("ambient_dim")
+def D(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit = _unspecified,
+        source: DOFDescriptorLike | None = None,
+        target: DOFDescriptorLike | None = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        ambient_dim: int | None = None,
+        dim: int | None = None,
+        **kwargs: Operand,
+    ) -> Operand:
+    if qbx_forced_limit is _unspecified:
+        warn("Not specifying 'qbx_forced_limit' on call to 'D' is deprecated. "
+             "Choosing default 'avg'.", stacklevel=2)
+        qbx_forced_limit = "avg"
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
+
     if ambient_dim is None:
-        raise ValueError("ambient_dim must be specified, either through "
-                "the kernel, or directly")
-    dim = kwargs.pop("dim", None)
-
-    dofdesc = kwargs.get("source")
-
-    if "qbx_forced_limit" not in kwargs:
-        warn("not specifying qbx_forced_limit on call to 'D' is deprecated, "
-                "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
-        kwargs["qbx_forced_limit"] = "avg"
+        raise ValueError(
+            "'ambient_dim' must be specified (either through the kernel, or directly")
 
     return int_g_dsource(
             ambient_dim,
-            normal(ambient_dim, dim, dofdesc),
-            kernel, *args, **kwargs).xproject(0)
+            normal(ambient_dim, dim, source),
+            kernel,
+            density,
+            qbx_forced_limit=qbx_forced_limit,
+            source=source, target=target,
+            kernel_arguments=kernel_arguments,
+            **kwargs).xproject(0)
 
 
-def Dp(kernel, *args, **kwargs):
-    ambient_dim = kwargs.get("ambient_dim")
+def Dp(
+        kernel: Kernel,
+        density: Operand,
+        qbx_forced_limit: QBXForcedLimit = _unspecified,
+        source: DOFDescriptorLike | None = None,
+        target: DOFDescriptorLike | None = None,
+        kernel_arguments: KernelArgumentLike | None = None,
+        ambient_dim: int | None = None,
+        dim: int | None = None,
+        **kwargs: Operand,
+    ) -> Operand:
+    if qbx_forced_limit is _unspecified:
+        warn("Not specifying 'qbx_forced_limit' on call to 'Dp' is deprecated. "
+             "Choosing default '+1'.", stacklevel=2)
+        qbx_forced_limit = +1
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
+
     if ambient_dim is None:
-        raise ValueError("ambient_dim must be specified, either through "
-                "the kernel, or directly")
-    dim = kwargs.pop("dim", None)
-    target = kwargs.get("target")
-    if "qbx_forced_limit" not in kwargs:
-        warn("not specifying qbx_forced_limit on call to 'Dp' is deprecated, "
-                "defaulting to +1", DeprecationWarning, stacklevel=2)
-        kwargs["qbx_forced_limit"] = +1
+        raise ValueError(
+            "'ambient_dim' must be specified (either through the kernel, or directly")
+
     return normal_derivative(
             ambient_dim,
-            D(kernel, *args, **kwargs),
+            D(kernel, density,
+              qbx_forced_limit=qbx_forced_limit,
+              source=source, target=target,
+              kernel_arguments=kernel_arguments,
+              ambient_dim=ambient_dim,
+              **kwargs),
             dim=dim, dofdesc=target)
 
 # }}}
@@ -2335,7 +2451,8 @@ def Dp(kernel, *args, **kwargs):
 def tangential_onb(
             ambient_dim: int,
             dim: int | None = None,
-            dofdesc: DOFDescriptorLike = None):
+            dofdesc: DOFDescriptorLike = None,
+        ) -> ObjectArray2D[ArithmeticExpression]:
     """Return a matrix of shape ``(ambient_dim, dim)`` with orthogonal columns
     spanning the tangential space of the surface of *dofdesc*.
     """
@@ -2362,7 +2479,10 @@ def tangential_onb(
     return orth_pd_mat
 
 
-def xyz_to_tangential(xyz_vec, dofdesc: DOFDescriptorLike = None):
+def xyz_to_tangential(
+        xyz_vec: ObjectArray1D[ArithmeticExpression],
+        dofdesc: DOFDescriptorLike = None,
+    ) -> ObjectArray1D[ArithmeticExpression]:
     ambient_dim = len(xyz_vec)
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
     return obj_array.new_1d([
@@ -2371,7 +2491,10 @@ def xyz_to_tangential(xyz_vec, dofdesc: DOFDescriptorLike = None):
         ])
 
 
-def tangential_to_xyz(tangential_vec, dofdesc: DOFDescriptorLike = None):
+def tangential_to_xyz(
+        tangential_vec: ObjectArray1D[ArithmeticExpression],
+        dofdesc: DOFDescriptorLike = None,
+    ) -> ObjectArray1D[ArithmeticExpression]:
     ambient_dim = len(tangential_vec) + 1
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
     return sum(
@@ -2379,19 +2502,28 @@ def tangential_to_xyz(tangential_vec, dofdesc: DOFDescriptorLike = None):
         for i in range(ambient_dim - 1))
 
 
-def project_to_tangential(xyz_vec, dofdesc: DOFDescriptorLike = None):
+def project_to_tangential(
+        xyz_vec: ObjectArray1D[ArithmeticExpression],
+        dofdesc: DOFDescriptorLike = None,
+    ) -> ObjectArray1D[ArithmeticExpression]:
     return tangential_to_xyz(
             cse(xyz_to_tangential(xyz_vec, dofdesc)),
             dofdesc)
 
 
-def n_dot(vec, dofdesc: DOFDescriptorLike = None):
+def n_dot(
+        vec: ObjectArray1D[ArithmeticExpression],
+        dofdesc: DOFDescriptorLike = None,
+    ) -> ArithmeticExpression:
     nrm = normal(len(vec), dofdesc=dofdesc).as_vector()
 
     return np.dot(nrm, vec)
 
 
-def cross(vec_a, vec_b):
+def cross(
+        vec_a: ObjectArray1D[ArithmeticExpression],
+        vec_b: ObjectArray1D[ArithmeticExpression],
+    ) -> ObjectArray1D[ArithmeticExpression]:
     assert len(vec_a) == len(vec_b) == 3
 
     from pytools import levi_civita
@@ -2402,18 +2534,23 @@ def cross(vec_a, vec_b):
         for i in range(3)])
 
 
-def n_cross(vec, dofdesc: DOFDescriptorLike = None):
+def n_cross(
+        vec: ObjectArray1D[ArithmeticExpression],
+        dofdesc: DOFDescriptorLike = None,
+    ) -> ObjectArray1D[ArithmeticExpression]:
     return cross(normal(3, dofdesc=dofdesc).as_vector(), vec)
 
 
-def div(vec):
+def div(vec: ObjectArray1D[ArithmeticExpression]) -> ArithmeticExpression:
     ambient_dim = len(vec)
     return sum(
             dd_axis(iaxis, ambient_dim, vec[iaxis])
             for iaxis in range(ambient_dim))
 
 
-def curl(vec):
+def curl(
+        vec: ObjectArray1D[ArithmeticExpression],
+    ) -> ObjectArray1D[ArithmeticExpression]:
     from pytools import levi_civita
 
     return obj_array.new_1d([
@@ -2425,7 +2562,7 @@ def curl(vec):
 # }}}
 
 
-def pretty(expr):
+def pretty(expr: Operand) -> str:
     # Doesn't quite belong here, but this is exposed to the user as
     # "pytential.sym", so in here it goes.
 
