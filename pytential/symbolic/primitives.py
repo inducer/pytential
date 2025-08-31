@@ -1109,7 +1109,7 @@ def _equilateral_parametrization_derivative_matrix(
 
     # This is the Jacobian of the (equilateral reference element) -> (global) map.
     return cse(
-            np.dot(pder_mat, equi_to_unit),
+            pder_mat @ equi_to_unit,
             "equilateral_pder_mat")
 
 
@@ -1140,7 +1140,7 @@ def _simplex_mapping_max_stretch_factor(
 
     # Compute eigenvalues of J^T to compute SVD.
     equi_pder_mat_jtj = cse(
-            np.dot(equi_pder_mat.T, equi_pder_mat),
+            equi_pder_mat.T @ equi_pder_mat,
             "pd_mat_jtj")
 
     stretch_factors = [
@@ -1819,8 +1819,8 @@ def hashable_kernel_args(
     ) -> tuple[tuple[Hashable, Hashable], ...]:
     hashable_args: list[tuple[Hashable, Hashable]] = []
     for key, val in sorted(kernel_arguments.items()):
-        if isinstance(val, np.ndarray):
-            val = tuple(val)
+        if isinstance(val, ObjectArray):
+            val = tuple(val.flat)
 
         hashable_args.append((key, val))
 
@@ -2190,7 +2190,7 @@ def int_g_vec(
         source: DOFDescriptorLike = None,
         target: DOFDescriptorLike = None,
         kernel_arguments: KernelArgumentLike | None = None,
-        **kwargs: Operand) -> ObjectArrayND[IntG]: ...
+        **kwargs: Operand) -> MultiVector[ArithmeticExpression]: ...
 
 
 def int_g_vec(
@@ -2464,19 +2464,20 @@ def tangential_onb(
 
     # {{{ Gram-Schmidt
 
-    orth_pd_mat = np.zeros_like(pd_mat)
+    orth_pd_mat = np.zeros_like(obj_array.to_numpy(pd_mat))
     for k in range(pd_mat.shape[1]):
         avec = pd_mat[:, k]
         q = avec
         for j in range(k):
-            q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+            bvec = cast("ObjectArray1D[ArithmeticExpression]", orth_pd_mat[:, j])
+            q = q - (avec @ bvec) * bvec
         q = cse(q, f"q{k}")
 
-        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), f"orth_pd_vec{k}_")
+        orth_pd_mat[:, k] = cse(q/sqrt(obj_array.sum(q**2, None)), f"orth_pd_vec{k}_")
 
     # }}}
 
-    return orth_pd_mat
+    return obj_array.from_numpy(orth_pd_mat, ArithmeticExpression)
 
 
 def xyz_to_tangential(
@@ -2486,7 +2487,7 @@ def xyz_to_tangential(
     ambient_dim = len(xyz_vec)
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
     return obj_array.new_1d([
-        np.dot(tonb[:, i], xyz_vec)
+        tonb[:, i] @ xyz_vec
         for i in range(ambient_dim - 1)
         ])
 
@@ -2497,9 +2498,9 @@ def tangential_to_xyz(
     ) -> ObjectArray1D[ArithmeticExpression]:
     ambient_dim = len(tangential_vec) + 1
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
-    return sum(
-        tonb[:, i] * tangential_vec[i]
-        for i in range(ambient_dim - 1))
+    result = sum(tonb[:, i] * tangential_vec[i] for i in range(ambient_dim - 1))
+
+    return cast("ObjectArray1D[ArithmeticExpression]", result)
 
 
 def project_to_tangential(
@@ -2517,7 +2518,7 @@ def n_dot(
     ) -> ArithmeticExpression:
     nrm = normal(len(vec), dofdesc=dofdesc).as_vector()
 
-    return np.dot(nrm, vec)
+    return nrm @ vec
 
 
 def cross(
