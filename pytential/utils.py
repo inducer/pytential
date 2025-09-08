@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from optype import CanGt, CanLt
 
@@ -41,20 +41,23 @@ if TYPE_CHECKING:
         pass
 
 
+# FIXME: this function is not correctly typed unless all the arrays are of the same
+# type. There doesn't seem to be any way to correctly type this without some
+# variadic generics or something like that though..
 def sort_arrays_together(
             *arys: Sequence[T],
             key: Callable[[tuple[T, ...]], CanComparison] | None = None
-        ):
-    """Sort a sequence of arrays by considering them
-    as an array of sequences using the given sorting key
+        ) -> Iterator[Sequence[T]]:
+    """Sort a sequence of arrays by considering them as an array of sequences
+    using the given sorting key.
 
-    :param key: a function that takes in a tuple of values
-                and returns a value to compare.
+    :param key: a function that takes in a tuple of entries from the *arys* and
+        returns a sorting key (see :func:`sorted`).
     """
     return zip(*sorted(zip(*arys, strict=True), key=key), strict=True)
 
 
-def pytest_teardown_function():
+def pytest_teardown_function() -> None:
     from pyopencl.tools import clear_first_arg_caches
     clear_first_arg_caches()
 
