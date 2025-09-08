@@ -51,6 +51,19 @@ if TYPE_CHECKING:
     from pytential.collection import GeometryCollection
     from pytential.symbolic.primitives import KernelArgumentMapping, Operand
 
+__doc__ = """
+.. autoclass:: Statement
+.. autoclass:: Assign
+.. autoclass:: PotentialOutput
+.. autoclass:: ComputePotential
+
+.. autofunction:: dot_dataflow_graph
+
+.. autoclass:: CodeResultT
+.. autoclass:: Code
+.. autoclass:: OperatorCompiler
+"""
+
 
 # {{{ statements
 
@@ -367,6 +380,7 @@ def dot_dataflow_graph(
 # {{{ code representation
 
 CodeResultT = TypeVar("CodeResultT", "Expression", "ObjectArray1D[Expression]")
+"""An invariant :class:`TypeVar` result expressions from :class:`Code`."""
 
 
 @dataclass(frozen=True)

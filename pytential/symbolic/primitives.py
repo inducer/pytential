@@ -133,7 +133,7 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 :class:`~meshmode.dof_array.DOFArray` is used and otherwise
 :class:`~pyopencl.array.Array` is used.
 
-.. autoclass:: Expression
+.. autoclass:: ExpressionNode
     :show-inheritance:
     :undoc-members:
     :members: mapper_method
@@ -150,14 +150,6 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 
 .. autoclass:: Side
 .. autoclass:: QBXForcedLimit
-
-.. class:: P
-
-    See :class:`pytools.P`
-
-.. class:: ExpressionNode
-
-    See :class:`pymbolic.ExpressionNode`.
 
 Diagnostics
 ^^^^^^^^^^^
@@ -1519,7 +1511,7 @@ class SingleScalarOperandExpression(ExpressionNode):
 
 @expr_dataclass()
 class NodeSum(SingleScalarOperandExpression):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Implements a global sum over all discretization nodes.
     """
@@ -1532,7 +1524,7 @@ def node_sum(expr: ArithmeticExpression) -> ArithmeticExpression:
 
 @expr_dataclass()
 class NodeMax(SingleScalarOperandExpression):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Implements a global maximum over all discretization nodes.
     """
@@ -1545,7 +1537,7 @@ def node_max(expr: ArithmeticExpression) -> ArithmeticExpression:
 
 @expr_dataclass()
 class NodeMin(SingleScalarOperandExpression):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Implements a global minimum over all discretization nodes.
     """
@@ -1614,7 +1606,7 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
 
 @expr_dataclass()
 class ElementwiseSum(SingleScalarOperandExpressionWithWhere):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Returns a vector of DOFs with all entries on each element set
     to the sum of DOFs on that element.
@@ -1629,7 +1621,7 @@ def elementwise_sum(expr: ArithmeticExpression,
 
 @expr_dataclass()
 class ElementwiseMin(SingleScalarOperandExpressionWithWhere):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Returns a vector of DOFs with all entries on each element set
     to the minimum of DOFs on that element.
@@ -1644,7 +1636,7 @@ def elementwise_min(expr: ArithmeticExpression,
 
 @expr_dataclass()
 class ElementwiseMax(SingleScalarOperandExpressionWithWhere):
-    """Bases: :class:`~pytential.symbolic.primitives.Expression`.
+    """Bases: :class:`~pytential.symbolic.primitives.ExpressionNode`.
 
     Returns a vector of DOFs with all entries on each element set
     to the maximum of DOFs on that element.
