@@ -41,6 +41,8 @@ nitpick_ignore_regex = [
     ["py:class", r"_ProxyNeighborEvaluationResult"],
     ["py:class", r"arraycontext.typing._UserDefinedArithArrayContainer"],
     ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
+    ["py:class", r".*DependencyMapper"],
+    ["py:class", r".*EvaluationMapperBase"],
 ]
 
 
@@ -54,6 +56,8 @@ sphinxconfig_missing_reference_aliases = {
     # pytools
     "ObjectArrayND": "obj:pytools.obj_array.ObjectArrayND",
     "T": "obj:pytools.T",
+    "P": "obj:pytools.P",
+    "ObjectArray1D": "obj:pytools.obj_array.ObjectArray1D",
     "obj_array.ObjectArray1D": "obj:pytools.obj_array.ObjectArray1D",
     "obj_array.ObjectArray2D": "obj:pytools.obj_array.ObjectArray2D",
     # pyopencl
@@ -63,6 +67,9 @@ sphinxconfig_missing_reference_aliases = {
     "Expression": "obj:pymbolic.typing.Expression",
     "MultiVector": "obj:pymbolic.geometric_algebra.MultiVector",
     "Variable": "class:pymbolic.primitives.Variable",
+    "prim.Subscript": "class:pymbolic.primitives.Subscript",
+    "prim.Variable": "class:pymbolic.primitives.Variable",
+    "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
     # arraycontext
     "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
@@ -75,12 +82,14 @@ sphinxconfig_missing_reference_aliases = {
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
-    "TreeKind": "obj:boxtree.tree_build.TreeKind",
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
+    "TimingResult": "class:boxtree.timing.TimingResult",
+    "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
     "Kernel": "class:sumpy.kernel.Kernel",
+    "P2P": "class:sumpy.p2p.P2P",
     "P2PBase": "class:sumpy.p2p.P2PBase",
     # pytential
     "DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
@@ -97,6 +106,8 @@ sphinxconfig_missing_reference_aliases = {
     "VectorExpression": "obj:pytential.symbolic.pde.scalar.VectorExpression",
     "pytential.symbolic.dof_desc.DOFDescriptorLike":
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
+    "pytential.symbolic.primitives.ExpressionNode":
+        "class:pytential.symbolic.primitives.ExpressionNode",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",
