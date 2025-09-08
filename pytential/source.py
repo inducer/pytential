@@ -76,12 +76,12 @@ class PotentialSource(ABC):
 
     @property
     @abstractmethod
-    def real_dtype(self):
+    def real_dtype(self) -> np.dtype[np.floating]:
         """:class:`~numpy.dtype` of real data living on the source geometry."""
 
     @property
     @abstractmethod
-    def complex_dtype(self):
+    def complex_dtype(self) -> np.dtype[np.complexfloating]:
         """:class:`~numpy.dtype` of complex data living on the source geometry."""
 
     @abstractmethod
@@ -92,7 +92,6 @@ class PotentialSource(ABC):
             executed together can be grouped.
         """
 
-    @abstractmethod
     def get_p2p(self,
                 actx: PyOpenCLArrayContext,
                 target_kernels: tuple[Kernel, ...],
@@ -102,25 +101,7 @@ class PotentialSource(ABC):
             the *target_kernels* and the *source_kernels* on the source geometry.
         """
 
-    def preprocess_optemplate(self,
-                name: Hashable,
-                discretizations: GeometryCollection,
-                expr: T) -> T:
-        """
-        :returns: a processed *expr*, where each
-            :class:`~pytential.symbolic.primitives.IntG` operator has been
-            modified to work with the current source geometry.
-        """
-        return expr
-
-
-class _SumpyP2PMixin:
-
-    def get_p2p(self,
-                actx: PyOpenCLArrayContext,
-                target_kernels: tuple[Kernel, ...],
-                source_kernels: tuple[Kernel, ...] | None = None) -> P2P:
-        @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
+        @memoize_in(actx, (PotentialSource, "p2p"))
         def p2p(target_kernels: tuple[Kernel, ...],
                 source_kernels: tuple[Kernel, ...] | None) -> P2P:
             if any(knl.is_complex_valued for knl in target_kernels):
@@ -134,6 +115,17 @@ class _SumpyP2PMixin:
                     source_kernels=source_kernels)
 
         return p2p(target_kernels, source_kernels)
+
+    def preprocess_optemplate(self,
+                name: Hashable,
+                discretizations: GeometryCollection,
+                expr: T) -> T:
+        """
+        :returns: a processed *expr*, where each
+            :class:`~pytential.symbolic.primitives.IntG` operator has been
+            modified to work with the current source geometry.
+        """
+        return expr
 
 
 # {{{ point potential source
@@ -150,7 +142,7 @@ def evaluate_kernel_arguments(actx, evaluate, kernel_arguments, flat=True):
     return kernel_args
 
 
-class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
+class PointPotentialSource(PotentialSource):
     """
     .. attribute:: nodes
 
@@ -281,7 +273,7 @@ def _entry_dtype(actx, ary):
         raise TypeError(f"unexpected type: '{type(ary).__name__}'")
 
 
-class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource, ABC):
+class LayerPotentialSourceBase(PotentialSource, ABC):
     """A discretization of a layer potential using element-based geometry, with
     support for refinement and upsampling.
 
