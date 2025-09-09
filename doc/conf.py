@@ -76,6 +76,7 @@ sphinxconfig_missing_reference_aliases = {
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
     "TreeKind": "obj:boxtree.tree_build.TreeKind",
+    "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
