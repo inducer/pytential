@@ -1993,7 +1993,7 @@ class IntG(ExpressionNode):
 
         kernel_arg_names: set[str] = set()
         for kernel in kernels:
-            for karg in (kernel.get_args() + kernel.get_source_args()):
+            for karg in (*kernel.get_args(), *kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
         provided_arg_names = set(self.kernel_arguments.keys())  # pylint: disable=no-member
