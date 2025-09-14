@@ -77,7 +77,9 @@ class StokesletWrapper:
     .. automethod:: apply_stress
     """
 
-    def __init__(self, dim=None):
+    dim: int
+
+    def __init__(self, dim: int):
         self.dim = dim
 
         if dim == 2:
@@ -304,7 +306,9 @@ class StressletWrapper:
     .. automethod:: apply_stress
     """
 
-    def __init__(self, dim=None):
+    dim: int
+
+    def __init__(self, dim: int):
         self.dim = dim
 
         if dim == 2:
