@@ -57,20 +57,32 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, eq=False)
 class Statement:
     """
-    .. attribute:: names
-    .. attribute:: exprs
-    .. attribute:: priority
+    .. autoattribute:: names
+    .. autoattribute:: exprs
+    .. autoattribute:: priority
+
+    .. automethod:: get_assignees
+    .. automethod:: get_dependencies
     """
 
     names: tuple[str, ...]
+    """Names of the variables used in this statement."""
     exprs: tuple[Expression, ...]
+    """Expressions assigned to each variable name in :attr:`names`."""
     priority: int
+    """The priority of the statement."""
 
     def get_assignees(self) -> set[str]:
+        """
+        :returns: names of variables that are assigned to in this statement.
+        """
         raise NotImplementedError(
                 f"get_assignees for '{self.__class__.__name__}'")
 
     def get_dependencies(self, dep_mapper: DependencyMapper) -> set[prim.Variable]:
+        """
+        :returns: variables that are dependencies of the assignees.
+        """
         raise NotImplementedError(
                 f"get_dependencies for '{self.__class__.__name__}'")
 
@@ -82,15 +94,17 @@ class Statement:
 @dataclass(frozen=True, eq=False)
 class Assign(Statement):
     """
-    .. attribute:: do_not_return
-
-        A tuple of booleans indicating whether the corresponding entry in
-        :attr:`Statement.names` and :attr:`Statement.exprs` describes an
-        expression that is not needed beyond this assignment.
+    .. autoattribute:: do_not_return
+    .. autoattribute:: comment
     """
 
     do_not_return: tuple[bool, ...] | None = None
+    """A tuple of booleans indicating whether the corresponding entry in
+    :attr:`Statement.names` and :attr:`Statement.exprs` describes an
+    expression that is not needed beyond this assignment.
+    """
     comment: str = ""
+    """A string added as a comment before the assignment."""
 
     def __post_init__(self) -> None:
         if self.do_not_return is None:
@@ -158,66 +172,57 @@ class Assign(Statement):
 @dataclass(frozen=True)
 class PotentialOutput:
     """
-    .. attribute:: name
-
-        the name of the variable to which the result is assigned
-
-    .. attribute:: target_kernel_index
-
-    .. attribute:: target_name
-
-    .. attribute:: qbx_forced_limit
-
-        ``+1`` if the output is required to originate from a QBX center on the
-        "+" side of the boundary. ``-1`` for the other side. ``0`` if either
-        side of center (or no center at all) is acceptable.
+    .. autoattribute:: name
+    .. autoattribute:: target_kernel_index
+    .. autoattribute:: target_name
+    .. autoattribute:: qbx_forced_limit
     """
 
     name: str
+    """The name of the variable to which the result is assigned."""
     target_kernel_index: int
+    """An index into :attr:`ComputePotential.target_kernels`."""
     target_name: DOFDescriptor
+    """A descriptor for the geometry used by the target kernel."""
     qbx_forced_limit: QBXForcedLimit
+    """The type of the limiting process used by the QBX expansion (``+1`` if the
+    output is required to originate from a QBX center on the "+" side of the
+    boundary. ``-1`` for the other side, etc.).
+    """
 
 
 @dataclass(frozen=True, eq=False)
 class ComputePotential(Statement):
     """
-    .. attribute:: outputs
-
-        A list of :class:`PotentialOutput` instances
-        The entries in the list correspond to :attr:`Statement.names`.
-
-    .. attribute:: target_kernels
-
-        A list of :class:`sumpy.kernel.Kernel` instances, indexed by
-        :attr:`PotentialOutput.target_kernel_index`.
-
-    .. attribute:: kernel_arguments
-
-        A dictionary mapping arg names to kernel arguments
-
-    .. attribute:: source_kernels
-
-        A list of :class:`sumpy.kernel.Kernel` instances with only source
-        derivatives and no target derivatives. See
-        :class:`pytential.symbolic.primitives.IntG` docstring for details.
-
-    .. attribute:: densities
-
-        A list of densities with the same number of entries as
-        :attr:`source_kernels`. See the :class:`pytential.symbolic.primitives.IntG`
-        docstring for details.
-
-    .. attribute:: source
+    .. autoattribute:: outputs
+    .. autoattribute:: target_kernels
+    .. autoattribute:: kernel_arguments
+    .. autoattribute:: source_kernels
+    .. autoattribute:: densities
+    .. autoattribute:: source
     """
 
     outputs: tuple[PotentialOutput, ...]
+    """A tuple of :class:`PotentialOutput` instances. The entries in the list
+    correspond to :attr:`Statement.names`.
+    """
     target_kernels: tuple[Kernel, ...]
+    """A tuple of :class:`sumpy.kernel.Kernel` instances, indexed by
+    :attr:`PotentialOutput.target_kernel_index`.
+    """
     kernel_arguments: KernelArgumentMapping
+    """A dictionary mapping argument names to kernel arguments."""
     source_kernels: tuple[Kernel, ...]
+    """A tuple of :class:`sumpy.kernel.Kernel` instances with only source
+    derivatives and no target derivatives. See the
+    :class:`~pytential.symbolic.primitives.IntG` docstring for details.
+    """
     densities: tuple[Expression, ...]
+    """A tuple of densities with the same number of entries as :attr:`source_kernels`.
+    See the :class:`~pytential.symbolic.primitives.IntG` docstring for details.
+    """
     source: DOFDescriptor
-    priority: int
+    """A descriptor for the geometry used by the source kernel."""
 
     @override
     def get_assignees(self) -> set[str]:
@@ -362,6 +367,12 @@ def dot_dataflow_graph(
 # {{{ code representation
 
 class Code:
+    """
+    .. autoattribute:: inputs
+    .. autoattribute:: result
+    .. autoproperty:: statements
+    """
+
     inputs: set[str]
     result: Expression | ObjectArray1D[Expression]
 
@@ -496,14 +507,37 @@ def _compute_schedule(
 # {{{ compiler
 
 class OperatorCompiler(CachedIdentityMapper):
+    """
+    .. autoattribute:: places
+    .. autoattribute:: prefix
+    .. autoattribute:: code
+    .. autoattribute:: expr_to_var
+    .. autoattribute:: assigned_names
+    .. autoattribute:: group_to_operators
+    .. autoattribute:: dep_mapper
+    """
+
     places: GeometryCollection
+    """A geometry collection used to evaluate a given expression."""
     prefix: str
+    """A prefix for variables generated by the compiler."""
 
     code: list[Statement]
+    """A list of statements accumulated during the expression traversal."""
     expr_to_var: dict[Expression, prim.Variable | prim.Subscript]
+    """A mapping of expressions that have been assigned to variables."""
     assigned_names: set[str]
+    """A set of names that have already been assigned to variables in
+    :attr:`expr_to_var`.
+    """
     group_to_operators: dict[Hashable, set[IntG]]
+    """A mapping of unique identifiers to
+    :class:`~pytential.symbolic.primitives.IntG` instances found in the
+    expression.
+    """
     dep_mapper: DependencyMapper
+    """A dependency mapper used to construct the schedule to evaluate the
+    statements in :attr:`code`."""
 
     def __init__(
             self,
