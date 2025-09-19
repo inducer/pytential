@@ -18,6 +18,10 @@ autodoc_type_aliases = {
         "DOFDescriptorLike": "pytential.symbolic.dof_desc.DOFDescriptorLike",
         }
 
+nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
+    ]
+
 intersphinx_mapping = {
     "arraycontext": ("https://documen.tician.de/arraycontext", None),
     "boxtree": ("https://documen.tician.de/boxtree", None),
@@ -35,6 +39,7 @@ intersphinx_mapping = {
 }
 
 nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
     # Sphinx started complaining about these in 8.2.1(-ish)
     # -AK, 2025-02-24
     ["py:class", r"TypeAliasForwardRef"],
@@ -75,6 +80,7 @@ sphinxconfig_missing_reference_aliases = {
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
+    "Tree": "obj:boxtree.tree.Tree",
     "TreeKind": "obj:boxtree.tree_build.TreeKind",
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     # sumpy
@@ -95,6 +101,7 @@ sphinxconfig_missing_reference_aliases = {
     "pytential.symbolic.dof_desc.DOFDescriptorLike":
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
+    "sym.DOFDescriptorLike": "obj:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",
 }
