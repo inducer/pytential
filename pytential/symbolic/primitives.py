@@ -67,7 +67,6 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import Kernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -93,6 +92,8 @@ if TYPE_CHECKING:
     import modepy as mp
     from pymbolic.mapper.stringifier import StringifyMapper
     from pymbolic.primitives import CommonSubexpression, Quotient
+    from pytools import P
+    from sumpy.kernel import Kernel
 
 
 __doc__ = """
@@ -1992,6 +1993,7 @@ class IntG(ExpressionNode):
             warn(f"'densities' is not tuple ({type(self.densities)}). "
                  "Passing a different type is deprecated and will stop working in "
                  "2025.", DeprecationWarning, stacklevel=2)
+
             object.__setattr__(self, "densities", tuple(self.densities))
 
         if not isinstance(self.source, DOFDescriptor):
@@ -2326,6 +2328,8 @@ def Sp(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2356,6 +2360,7 @@ def Spp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2386,6 +2391,7 @@ def D(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2420,6 +2426,7 @@ def Dp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
