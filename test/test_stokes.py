@@ -36,14 +36,20 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 from pytools import obj_array
+from sumpy.symbolic import SpatialConstant
 
 from pytential import GeometryCollection, bind, sym
+from pytential.symbolic.elasticity import (
+    ElasticityDoubleLayerWrapperBase,
+    Method,
+    make_elasticity_double_layer_wrapper,
+    make_elasticity_wrapper,
+)
+from pytential.symbolic.stokes import StokesletWrapper
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
-
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -73,11 +79,13 @@ def dof_array_rel_error(actx, x, xref, p=None):
 
 def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
-        fmm_order=False,    # FIXME: FMM is slower than direct evaluation
+        fmm_order=None,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
         radius=1.5, aspect_ratio=1.0,
         mu=1.0,
+        nu=0.4,
         visualize=False,
+        method="naive",
 
         _target_association_tolerance=0.05,
         _expansions_in_tree_have_extent=True):
@@ -157,27 +165,44 @@ def run_exterior_stokes(actx_factory, *,
     # {{{ symbolic
 
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
-    sym_mu = sym.var("mu")
+    sym_mu = SpatialConstant("mu2")
+
+    if nu == 0.5:
+        sym_nu = 0.5
+    else:
+        sym_nu = SpatialConstant("nu2")
+
+    stokeslet = make_elasticity_wrapper(ambient_dim, mu=sym_mu,
+                                          nu=sym_nu, method=Method[method])
+    stresslet = make_elasticity_double_layer_wrapper(ambient_dim, mu=sym_mu,
+                                          nu=sym_nu, method=Method[method])
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
         sym_omega = sym.make_sym_vector("omega", ambient_dim)
-        op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, stokeslet=stokeslet,
+                                              stresslet=stresslet)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator()
+        op = HebekerExteriorStokesOperator(stokeslet=stokeslet, stresslet=stresslet)
     else:
         raise AssertionError()
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")
 
-    sym_op = op.operator(sym_sigma, normal=sym_normal, mu=sym_mu)
-    sym_rhs = op.prepare_rhs(sym_bc, mu=mu)
+    sym_op = op.operator(sym_sigma, normal=sym_normal)
+    sym_rhs = op.prepare_rhs(sym_bc)
 
-    sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
+    sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    if ambient_dim == 3:
+        sym_source_pot = op.stokeslet.apply(sym_sigma, qbx_forced_limit=None)
+    else:
+        # Use the naive method here as biharmonic requires source derivatives
+        # of point_source
+        sym_source_pot = make_elasticity_wrapper(ambient_dim, mu=sym_mu,
+            nu=sym_nu, method=Method.Naive).apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -198,19 +223,42 @@ def run_exterior_stokes(actx_factory, *,
         omega = bind(places, total_charge * sym.Ones())(actx)
 
     if ambient_dim == 2:
-        bc_context = {"mu": mu, "omega": omega}
-        op_context = {"mu": mu, "omega": omega, "normal": normal}
+        bc_context = {"mu2": mu, "omega": omega}
+        op_context = {"mu2": mu, "omega": omega, "normal": normal}
     else:
         bc_context = {}
-        op_context = {"mu": mu, "normal": normal}
+        op_context = {"mu2": mu, "normal": normal}
+    direct_context = {"mu2": mu}
 
-    bc = bind(places, sym_source_pot,
-            auto_where=("point_source", "source"))(actx, sigma=charges, mu=mu)
+    if sym_nu != 0.5:
+        bc_context["nu2"] = nu
+        op_context["nu2"] = nu
+        direct_context["nu2"] = nu
+
+    bc_op = bind(places, sym_source_pot,
+            auto_where=("point_source", "source"))
+    bc = bc_op(actx, sigma=charges, **direct_context)
 
     rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
     bound_op = bind(places, sym_op)
 
     # }}}
+
+    fmm_timing_data = {}
+    bound_op.eval({"sigma": rhs, **op_context}, array_context=actx,
+            timing_data=fmm_timing_data)
+
+    def print_timing_data(timings, name):
+        result = dict.fromkeys(next(timings.values()), value=0)
+        total = 0
+        for k, timing in timings.items():
+            for k, v in timing.items():
+                result[k] += v["wall_elapsed"]
+                total += v["wall_elapsed"]
+        result["total"] = total
+        print(f"{name}={result}")
+
+    # print_timing_data(fmm_timing_data, method)
 
     # {{{ solve
 
@@ -224,7 +272,6 @@ def run_exterior_stokes(actx_factory, *,
             progress=visualize,
             stall_iterations=0,
             hard_failure=True)
-
     sigma = result.solution
 
     # }}}
@@ -234,7 +281,8 @@ def run_exterior_stokes(actx_factory, *,
     velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ref_velocity = bind(places, sym_source_pot,
-            auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
+            auto_where=("point_source", "point_target"))(actx, sigma=charges,
+                    **direct_context)
 
     v_error = [0.0] * ambient_dim
     v_error[:ambient_dim] = [
@@ -271,11 +319,19 @@ def run_exterior_stokes(actx_factory, *,
     return h_max, v_error
 
 
-@pytest.mark.parametrize("ambient_dim", [
-    2,
-    pytest.param(3, marks=pytest.mark.slowtest)
+@pytest.mark.parametrize("ambient_dim, method, nu", [
+    (2, "Naive", 0.5),
+    (2, "Laplace", 0.5),
+    (2, "Biharmonic", 0.5),
+    pytest.param(3, "Naive", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "Biharmonic", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "Laplace", 0.5, marks=pytest.mark.slowtest),
+
+    (2, "Biharmonic", 0.4),
+    pytest.param(3, "Biharmonic", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(3, "Laplace", 0.4, marks=pytest.mark.slowtest),
     ])
-def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
+def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -287,8 +343,10 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
     qbx_order = 3
 
     if ambient_dim == 2:
+        fmm_order = 10
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
+        fmm_order = 6
         resolutions = [0, 1, 2]
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
@@ -297,9 +355,12 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
         h_max, errors = run_exterior_stokes(actx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
+                fmm_order=fmm_order,
                 qbx_order=qbx_order,
                 source_ovsmp=source_ovsmp,
                 resolution=resolution,
+                method=method,
+                nu=nu,
                 visualize=visualize)
 
         for eoc, e in zip(eocs, errors, strict=True):
@@ -311,12 +372,17 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
             error_format="%.8e",
             eoc_format="%.2f"))
 
+    orders_lost = 0
+    if method == "Biharmonic":
+        orders_lost += 1
+    elif nu != 0.5:
+        orders_lost += 0.5
     for eoc in eocs:
         # This convergence data is not as clean as it could be. See
         # https://github.com/inducer/pytential/pull/32
         # for some discussion.
         order = min(target_order, qbx_order)
-        assert eoc.order_estimate() > order - 0.5
+        assert eoc.order_estimate() > order - 0.5 - orders_lost
 
 # }}}
 
@@ -408,15 +474,14 @@ class StokesletIdentity:
     """[Pozrikidis1992] Problem 3.1.1"""
 
     def __init__(self, ambient_dim):
-        from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply(
                 sym_density,
-                mu_sym=1, qbx_forced_limit=+1)
+                qbx_forced_limit=+1)
 
     def ref_result(self):
         return obj_array.new_1d([1.0e-15 * sym.Ones()] * self.ambient_dim)
@@ -467,15 +532,14 @@ class StressletIdentity:
     """[Pozrikidis1992] Equation 3.2.7"""
 
     def __init__(self, ambient_dim):
-        from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply_stress(
                 sym_density, sym_density,
-                mu_sym=1, qbx_forced_limit="avg")
+                qbx_forced_limit="avg")
 
     def ref_result(self):
         return -0.5 * sym.normal(self.ambient_dim).as_vector()
@@ -516,6 +580,258 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
     for eoc in eocs:
         order = min(case.target_order, case.qbx_order)
         assert eoc.order_estimate() > order - 1.0
+
+# }}}
+
+
+# {{{ test Stokes PDE
+
+def run_stokes_pde(actx_factory, case, identity, resolution, visualize=False):
+    from sumpy.point_calculus import CalculusPatch
+
+    from pytential.target import PointsTarget
+    actx = actx_factory()
+
+    dim = case.ambient_dim
+    qbx = case.get_layer_potential(actx, resolution, case.target_order)
+
+    h_min = actx.to_numpy(bind(qbx, sym.h_min(dim))(actx))
+    h_max = actx.to_numpy(bind(qbx, sym.h_max(dim))(actx))
+
+    if dim == 2:
+        h = h_max
+    else:
+        h = h_max / 5
+
+    cp = CalculusPatch([0, 0, 0][:dim], h=h, order=case.target_order + 1)
+    targets = PointsTarget(actx.freeze(actx.from_numpy(cp.points)))
+
+    places = GeometryCollection({case.name: qbx, "cp": targets},
+                                auto_where=(case.name, "cp"))
+
+    potential = bind(places, identity.apply_operator())(actx)
+    potential_host = actx.to_numpy(potential)
+    result = identity.apply_pde_using_calculus_patch(cp, potential_host)
+    result_pytential = actx.to_numpy(bind(places,
+            identity.apply_pde_using_pytential())(actx))
+
+    m = np.max([np.linalg.norm(p, ord=np.inf) for p in potential_host])
+    error = (
+        [np.linalg.norm(x, ord=np.inf)/m for x in result]
+        + [np.linalg.norm(x, ord=np.inf)/m for x in result_pytential])
+
+    logger.info(
+            "resolution %4d h_min %.5e h_max %.5e error %s",
+            resolution, h_min, h_max, *error[:places.ambient_dim])
+
+    return h_max, error
+
+
+class StokesPDE:
+    def __init__(self, ambient_dim, wrapper):
+        self.ambient_dim = ambient_dim
+        self.wrapper = wrapper
+
+    @property
+    def dim(self) -> int:
+        return self.ambient_dim + 1
+
+    def apply_operator(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        velocity = self.wrapper.apply(**args)
+        pressure = self.wrapper.apply_pressure(**args)
+        return obj_array.new_1d([*velocity, pressure])
+
+    def apply_pde_using_pytential(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        d_u = [self.wrapper.apply(**args, extra_deriv_dirs=(i,))
+                for i in range(dim)]
+        dd_u = [self.wrapper.apply(**args, extra_deriv_dirs=(i, i))
+                for i in range(dim)]
+        laplace_u = [sum(dd_u[j][i] for j in range(dim)) for i in range(dim)]
+        d_p = [self.wrapper.apply_pressure(**args, extra_deriv_dirs=(i,))
+               for i in range(dim)]
+        eqs = [laplace_u[i] - d_p[i] for i in range(dim)] + \
+                [sum(d_u[i][i] for i in range(dim))]
+        return obj_array.new_1d(eqs)
+
+    def apply_pde_using_calculus_patch(self, cp, potential):
+        dim = self.ambient_dim
+        velocity = potential[:dim]
+        pressure = potential[dim]
+        eqs = [cp.laplace(velocity[i]) - cp.diff(i, pressure) for i in range(dim)] \
+                + [sum(cp.diff(i, velocity[i]) for i in range(dim))]
+        return obj_array.new_1d(eqs)
+
+
+class ElasticityPDE:
+    def __init__(self, ambient_dim, wrapper):
+        self.ambient_dim = ambient_dim
+        self.wrapper = wrapper
+
+    @property
+    def dim(self) -> int:
+        return self.ambient_dim
+
+    def apply_operator(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        return self.wrapper.apply(**args)
+
+    def apply_pde_using_pytential(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        mu = self.wrapper.mu
+        nu = self.wrapper.nu
+        assert nu != 0.5
+        lam = 2*nu*mu/(1-2*nu)
+
+        derivs = {}
+
+        for i in range(dim):
+            for j in range(i + 1):
+                derivs[i, j] = self.wrapper.apply(**args, extra_deriv_dirs=(i, j))
+                derivs[j, i] = derivs[i, j]
+
+        laplace_u = sum(derivs[i, i] for i in range(dim))
+        grad_of_div_u = [sum(derivs[i, j][j] for j in range(dim))
+                         for i in range(dim)]
+
+        # Navier-Cauchy equations
+        eqs = [(lam + mu)*grad_of_div_u[i] + mu*laplace_u[i] for i in range(dim)]
+        return obj_array.new_1d(eqs)
+
+    def apply_pde_using_calculus_patch(self, cp, potential):
+        dim = self.ambient_dim
+        mu = self.wrapper.mu
+        nu = self.wrapper.nu
+        assert nu != 0.5
+        lam = 2*nu*mu/(1-2*nu)
+
+        laplace_u = [cp.laplace(potential[i]) for i in range(dim)]
+        grad_of_div_u = [
+            sum(cp.diff(j, cp.diff(i, potential[j])) for j in range(dim))
+            for i in range(dim)]
+
+        # Navier-Cauchy equations
+        eqs = [(lam + mu)*grad_of_div_u[i] + mu*laplace_u[i] for i in range(dim)]
+        return obj_array.new_1d(eqs)
+
+
+@pytest.mark.parametrize("dim, method, nu, is_double_layer", [
+    # Single layer
+    pytest.param(2, "Biharmonic", 0.4, False),
+    pytest.param(2, "Biharmonic", 0.5, False),
+    pytest.param(2, "Laplace", 0.5, False),
+    pytest.param(3, "Laplace", 0.5, False),
+    pytest.param(3, "Laplace", 0.4, False),
+    pytest.param(2, "Naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(2, "Naive", 0.5, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.5, False, marks=pytest.mark.slowtest),
+    # FIXME: re-enable when merge_int_g_exprs is in
+    pytest.param(3, "Biharmonic", 0.4, False, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.5, False, marks=pytest.mark.skip),
+    # FIXME: re-enable when StokesletWrapperYoshida is implemented for 2D
+    pytest.param(2, "Laplace", 0.4, False, marks=pytest.mark.xfail),
+
+    # Double layer
+    pytest.param(2, "Laplace", 0.5, True),
+    pytest.param(3, "Laplace", 0.5, True),
+    pytest.param(3, "Laplace", 0.4, True),
+    pytest.param(2, "Naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(2, "Naive", 0.5, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.5, True, marks=pytest.mark.slowtest),
+    # FIXME: re-enable when merge_int_g_exprs is in
+    pytest.param(2, "Biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(2, "Biharmonic", 0.5, True, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.5, True, marks=pytest.mark.skip),
+    # FIXME: re-enable when StressletWrapperYoshida is implemented for 2D
+    pytest.param(2, "Laplace", 0.4, True, marks=pytest.mark.xfail),
+    ])
+def test_elasticity_pde(actx_factory, dim, method, nu, is_double_layer,
+                        visualize=False):
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    if dim == 2:
+        case_cls = eid.CircleTestCase
+        resolutions = [4, 8, 16]
+    else:
+        case_cls = eid.SpheroidTestCase
+        resolutions = [0, 1, 2]
+
+    source_ovsmp = 4 if dim == 2 else 8
+    case = case_cls(fmm_backend=None,
+            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
+            resolutions=resolutions)
+
+    if nu == 0.5:
+        pde_class = StokesPDE
+    else:
+        pde_class = ElasticityPDE
+
+    if is_double_layer:
+        identity = pde_class(dim, make_elasticity_double_layer_wrapper(
+            case.ambient_dim, mu=1, nu=nu, method=Method[method]))
+    else:
+        identity = pde_class(dim, make_elasticity_wrapper(
+            case.ambient_dim, mu=1, nu=nu, method=Method[method]))
+
+    from pytools.convergence import EOCRecorder
+    eocs = [EOCRecorder() for _ in range(2*identity.dim)]
+
+    for resolution in case.resolutions:
+        h_max, errors = run_stokes_pde(
+                actx_factory, case, identity,
+                resolution=resolution,
+                visualize=visualize)
+
+        for eoc, e in zip(eocs, errors, strict=True):
+            eoc.add_data_point(h_max, e)
+
+    for eoc in eocs:
+        print(eoc.pretty_print(
+            abscissa_format="%.8e",
+            error_format="%.8e",
+            eoc_format="%.2f"))
+
+    for eoc in eocs:
+        order = min(case.target_order, case.qbx_order)
+        # Sometimes the error has already converged to a value close to
+        # machine epsilon. In that case we have to reduce the resolution
+        # to increase the error to observe the error behaviour, but when
+        # reducing the resolution is not possible, we check that all the
+        # errors are below a certain threshold.
+        assert eoc.order_estimate() > order - 1 or eoc.max_error() < 1e-10
 
 # }}}
 

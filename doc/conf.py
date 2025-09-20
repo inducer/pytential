@@ -80,6 +80,7 @@ sphinxconfig_missing_reference_aliases = {
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
+    "ExpressionKernel": "class:sumpy.kernel.ExpressionKernel",
     "Kernel": "class:sumpy.kernel.Kernel",
     "P2PBase": "class:sumpy.p2p.P2PBase",
     # pytential
@@ -91,7 +92,9 @@ sphinxconfig_missing_reference_aliases = {
     "KernelArgumentMapping": "obj:pytential.symbolic.primitives.KernelArgumentMapping",
     "Operand": "obj:pytential.symbolic.primitives.Operand",
     "QBXForcedLimit": "obj:pytential.symbolic.primitives.QBXForcedLimit",
+    "Side": "obj:pytential.symbolic.primitives.Side",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
+    "VectorExpression": "obj:pytential.symbolic.elasticity.VectorExpression",
     "pytential.symbolic.dof_desc.DOFDescriptorLike":
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
