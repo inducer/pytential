@@ -67,7 +67,6 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import Kernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -93,6 +92,8 @@ if TYPE_CHECKING:
     import modepy as mp
     from pymbolic.mapper.stringifier import StringifyMapper
     from pymbolic.primitives import CommonSubexpression, Quotient
+    from pytools import P
+    from sumpy.kernel import Kernel
 
 
 __doc__ = """
@@ -1938,10 +1939,16 @@ class IntG(ExpressionNode):
             **kwargs: Operand
             ) -> None:
         if kernel_arguments is None:
-            kernel_arguments = {}
+            kernel_arguments = constantdict({})
 
         if isinstance(kernel_arguments, tuple):
-            kernel_arguments = dict(kernel_arguments)
+            kernel_arguments = constantdict(kernel_arguments)
+
+        if source is None:
+            source = DEFAULT_DOFDESC
+
+        if target is None:
+            target = DEFAULT_DOFDESC
 
         if kwargs:
             warn(f"Passing named '**kwargs' to {type(self).__name__!r} is "
@@ -1949,12 +1956,14 @@ class IntG(ExpressionNode):
                  "'kernel_arguments' argument instead.",
                  DeprecationWarning, stacklevel=2)
 
-            kernel_arguments = kernel_arguments.copy()
+            kernel_arguments = dict(kernel_arguments)
             for name, value in kwargs.items():
                 if name in kernel_arguments:
                     raise ValueError(f"'{name}' already set in 'kernel_arguments'")
 
                 kernel_arguments[name] = value
+
+            kernel_arguments = constantdict(kernel_arguments)
 
         object.__setattr__(self, "target_kernel", target_kernel)
         object.__setattr__(self, "source_kernels", source_kernels)
@@ -1984,6 +1993,7 @@ class IntG(ExpressionNode):
             warn(f"'densities' is not tuple ({type(self.densities)}). "
                  "Passing a different type is deprecated and will stop working in "
                  "2025.", DeprecationWarning, stacklevel=2)
+
             object.__setattr__(self, "densities", tuple(self.densities))
 
         if not isinstance(self.source, DOFDescriptor):
@@ -2318,6 +2328,8 @@ def Sp(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2348,6 +2360,7 @@ def Spp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2378,6 +2391,7 @@ def D(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2412,6 +2426,7 @@ def Dp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
