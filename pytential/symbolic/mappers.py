@@ -300,7 +300,12 @@ class EvaluationRewriter(EvaluationRewriterBase):
 # {{{ FlattenMapper
 
 class FlattenMapper(FlattenMapperBase, IdentityMapper):
-    pass
+    def map_int_g(self, expr):
+        densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
+        if not changed:
+            return expr
+
+        return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
 
 def flatten(expr):

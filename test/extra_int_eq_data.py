@@ -643,7 +643,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
         # now centered at origin and extends to -1,1
 
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements), dtype=np.bool)
+        return perform_flips(mesh, np.ones(mesh.nelements))
 
 
 @dataclass

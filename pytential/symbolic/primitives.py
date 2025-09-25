@@ -65,7 +65,6 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import Kernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -92,6 +91,7 @@ if TYPE_CHECKING:
     from pymbolic.mapper.stringifier import StringifyMapper
     from pymbolic.primitives import CommonSubexpression, Quotient
     from pytools import P
+    from sumpy.kernel import Kernel
 
 
 __doc__ = """
@@ -148,6 +148,8 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
     A type variable upper-bounded by :class:`Operand`.
 
 .. autoclass:: ArithmeticExpressionT
+
+.. autoclass:: Side
 
 .. autoclass:: QBXForcedLimit
 
@@ -377,6 +379,18 @@ Pretty-printing expressions
 """
 
 __all__ = (
+    # re-exported from pymbolic
+    "cse", "make_sym_vector", "var",
+
+    # re-exported from sumpy
+    "SpatialConstant",
+
+    # re-exported from dof_desc
+    "DEFAULT_DOFDESC", "DEFAULT_SOURCE", "DEFAULT_TARGET",
+    "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
+    "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
+    "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
+
     "Operand", "OperandTc",
     "Side", "QBXForcedLimit",
     "ArithmeticExpressionT",
@@ -387,7 +401,7 @@ __all__ = (
     "ExpressionNode",
     "ErrorExpression",
 
-    "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
+    "make_sym_mv", "make_sym_surface_mv",
 
     "real", "imag", "conj", "abs",
     "sqrt",
@@ -425,11 +439,7 @@ __all__ = (
 
     "pretty",
 
-    "DEFAULT_SOURCE", "DEFAULT_TARGET",
-    "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
-    "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
-    "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
-    )
+)
 
 
 # {{{ helpers
@@ -2324,6 +2334,8 @@ def Sp(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
+
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2356,6 +2368,7 @@ def Spp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2388,6 +2401,7 @@ def D(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
@@ -2422,6 +2436,7 @@ def Dp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
+    from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
         ambient_dim = kernel.dim
 
