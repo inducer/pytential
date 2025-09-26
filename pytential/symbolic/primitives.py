@@ -1572,7 +1572,6 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
     operand: ArithmeticExpression
     """An expression or an array on which to apply the operation."""
 
-    # pylint: disable-next=invalid-field-call
     dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
     """The descriptor for the geometry where the *operand* is defined."""
 
@@ -1654,7 +1653,6 @@ class Ones(ExpressionNode):
     """A DOF-vector that is constant *one* on the whole discretization.
     """
 
-    # pylint: disable-next=invalid-field-call
     dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
     """A descriptor for the discretization where the array is defined."""
 
@@ -1710,11 +1708,9 @@ class IterativeInverse(ExpressionNode):
     variable_name: str
     """The name of the variable to solve for."""
 
-    # pylint: disable-next=invalid-field-call
     extra_vars: dict[str, Expression] = field(default_factory=dict)
     """A dictionary of additional variables required to define the operator."""
 
-    # pylint: disable-next=invalid-field-call
     dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
     """A descriptor for the geometry on which the solution is defined."""
 
@@ -1996,7 +1992,7 @@ class IntG(ExpressionNode):
             for karg in (*kernel.get_args(), *kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
-        provided_arg_names = set(self.kernel_arguments.keys())  # pylint: disable=no-member
+        provided_arg_names = set(self.kernel_arguments.keys())
         missing_args = kernel_arg_names - provided_arg_names
         if missing_args:
             raise ValueError(

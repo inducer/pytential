@@ -264,7 +264,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 assert isinstance(fmm_order, int) and not isinstance(fmm_order, bool)
 
-                # pylint: disable-next=function-redefined
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
         assert isinstance(fmm_level_to_order, bool) or callable(fmm_level_to_order)
@@ -968,7 +967,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             flat_target_nodes = _flat_nodes(target_name)
 
             # FIXME: (Somewhat wastefully) compute P2P for all targets
-            _, output_for_each_kernel = p2p(  # pylint: disable=possibly-used-before-assignment
+            _, output_for_each_kernel = p2p(
                   queue,
                   targets=flat_target_nodes,
                   sources=flat_source_nodes,
@@ -1011,7 +1010,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 tgt_subset_kwargs[f"result_{i}"] = res_i
 
             if qbx_tgt_count:
-                lpot_applier_on_tgt_subset(  # pylint: disable=possibly-used-before-assignment
+                lpot_applier_on_tgt_subset(
                         queue,
                         targets=flat_target_nodes,
                         sources=flat_source_nodes,

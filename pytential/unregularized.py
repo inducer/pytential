@@ -91,7 +91,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         if fmm_level_to_order is None:
             if fmm_order is not False:
-                # pylint: disable-next=function-redefined
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
             else:
