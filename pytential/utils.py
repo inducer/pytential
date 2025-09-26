@@ -27,20 +27,23 @@ THE SOFTWARE.
 """
 
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from useful_types import SupportsRichComparison
+    from optype import CanGt, CanLt
 
     from pytools import T
+
+    class CanComparison(CanGt[Any], CanLt[Any], Protocol):
+        pass
 
 
 def sort_arrays_together(
             *arys: Sequence[T],
-            key: Callable[[tuple[T, ...]], SupportsRichComparison] | None = None
+            key: Callable[[tuple[T, ...]], CanComparison] | None = None
         ):
     """Sort a sequence of arrays by considering them
     as an array of sequences using the given sorting key
