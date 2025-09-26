@@ -39,7 +39,6 @@ dependencies = [
     "pytools>=2024.1",
     "scipy>=1.2",
     "sumpy>=2022.1",
-    "useful-types",
 ]
 
 [project.optional-dependencies]
@@ -52,7 +51,8 @@ fmmlib = [
     "pyfmmlib>=2023.1",
 ]
 test = [
-    "pylint",
+    "basedpyright",
+    "optype",
     "pytest",
     "ruff",
 ]
