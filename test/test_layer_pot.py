@@ -614,7 +614,7 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
 
         # }}}
 
-    logger.info("\n%s", str(eoc_rec))
+    logger.info("\n%s", eoc_rec)
     assert eoc_rec.order_estimate() >= qbx_order - 1.5
 
 # }}}

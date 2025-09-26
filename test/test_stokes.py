@@ -434,7 +434,7 @@ def test_stokeslet_identity(actx_factory, cls, visualize=False):
     case = cls(fmm_backend=None,
             target_order=5, qbx_order=3, source_ovsmp=source_ovsmp)
     identity = StokesletIdentity(case.ambient_dim)
-    logger.info("\n%s", str(case))
+    logger.info("\n%s", case)
 
     from pytools.convergence import EOCRecorder
     eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
@@ -493,7 +493,7 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
     case = cls(fmm_backend=None,
             target_order=5, qbx_order=3, source_ovsmp=source_ovsmp)
     identity = StressletIdentity(case.ambient_dim)
-    logger.info("\n%s", str(case))
+    logger.info("\n%s", case)
 
     from pytools.convergence import EOCRecorder
     eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
