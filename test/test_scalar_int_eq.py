@@ -481,7 +481,7 @@ def test_integral_equation(actx_factory, case, visualize=False):
     actx = actx_factory()
 
     from pytools.convergence import EOCRecorder
-    logger.info("\n%s", str(case))
+    logger.info("\n%s", case)
 
     eoc_rec_target = EOCRecorder()
     eoc_rec_td = EOCRecorder()
