@@ -377,6 +377,19 @@ Pretty-printing expressions
 """
 
 __all__ = (
+    # re-export from pymbolic
+    "Variable",
+    "cse",
+    "make_sym_vector",
+    "var",
+    # re-export from sumpy
+    "SpatialConstant",
+    # re-export from pytential.symbolic.dof_desc
+    "DEFAULT_SOURCE", "DEFAULT_TARGET",
+    "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
+    "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
+    "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
+
     "Operand", "OperandTc",
     "Side", "QBXForcedLimit",
     "ArithmeticExpressionT",
@@ -387,7 +400,7 @@ __all__ = (
     "ExpressionNode",
     "ErrorExpression",
 
-    "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
+    "make_sym_mv", "make_sym_surface_mv",
 
     "real", "imag", "conj", "abs",
     "sqrt",
@@ -412,7 +425,6 @@ __all__ = (
 
     "dd_axis", "d_dx", "d_dy", "d_dz", "grad_mv", "grad", "laplace",
 
-
     "IntG", "int_g_dsource", "int_g_vec",
 
     "S", "Sp", "Spp", "D", "Dp",
@@ -424,12 +436,7 @@ __all__ = (
     "cross", "n_dot", "n_cross", "curl",
 
     "pretty",
-
-    "DEFAULT_SOURCE", "DEFAULT_TARGET",
-    "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
-    "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
-    "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
-    )
+)
 
 
 # {{{ helpers
