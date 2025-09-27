@@ -148,6 +148,7 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 
 .. autoclass:: ArithmeticExpressionT
 
+.. autoclass:: Side
 .. autoclass:: QBXForcedLimit
 
 .. class:: P

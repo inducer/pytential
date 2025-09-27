@@ -90,8 +90,11 @@ sphinxconfig_missing_reference_aliases = {
     "KernelArgumentLike": "obj:pytential.symbolic.primitives.KernelArgumentLike",
     "KernelArgumentMapping": "obj:pytential.symbolic.primitives.KernelArgumentMapping",
     "Operand": "obj:pytential.symbolic.primitives.Operand",
+    "PotentialMapper": "obj:pytential.symbolic.pde.scalar.PotentialMapper",
     "QBXForcedLimit": "obj:pytential.symbolic.primitives.QBXForcedLimit",
+    "Side": "obj:pytential.symbolic.primitives.Side",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
+    "VectorExpression": "obj:pytential.symbolic.pde.scalar.VectorExpression",
     "pytential.symbolic.dof_desc.DOFDescriptorLike":
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
