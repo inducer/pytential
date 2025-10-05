@@ -173,7 +173,7 @@ class TreeWithQBXMetadata(Tree):
     attributes, along with the following:
 
     .. attribute:: nqbxelements
-    .. attribuet:: nqbxsources
+    .. attribute:: nqbxsources
     .. attribute:: nqbxcenters
     .. attribute:: nqbxtargets
 

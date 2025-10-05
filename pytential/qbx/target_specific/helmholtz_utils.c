@@ -442,7 +442,7 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 /*     nterms  : highest order of the Hankel functions to be computed. */
 /*     z       : argument of the Hankel functions. */
 /*     scale   : scaling parameter discussed above */
-/*     ifder   : flag indcating whether derivatives should be computed. */
+/*     ifder   : flag indicating whether derivatives should be computed. */
 /* 		ifder = 1   ==> compute */
 /* 		ifder = 0   ==> do not compute */
 
