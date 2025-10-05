@@ -32,12 +32,12 @@ def main(mesh_name="torus", visualize=False):
     actx = PyOpenCLArrayContext(queue)
 
     if mesh_name == "torus":
-        rout = 10
-        rin = 1
+        r_out = 10
+        r_in = 1
 
         from meshmode.mesh.generation import generate_torus
         base_mesh = generate_torus(
-                rout, rin, 40, 4,
+                r_out, r_in, 40, 4,
                 order=mesh_order)
 
         from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
@@ -111,7 +111,7 @@ def main(mesh_name="torus", visualize=False):
     # {{{ fix rhs and solve
 
     nodes = actx.thaw(density_discr.nodes())
-    source = np.array([rout, 0, 0], dtype=object)
+    source = np.array([r_out, 0, 0], dtype=object)
 
     def u_incoming_func(x):
         dists = x - source
