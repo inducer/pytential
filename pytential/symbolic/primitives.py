@@ -455,7 +455,8 @@ Operand: TypeAlias = (
         | MultiVector[ArithmeticExpression])
 OperandTc = TypeVar("OperandTc",
         ArithmeticExpression,
-        ObjectArrayND[ArithmeticExpression],
+        ObjectArray1D[ArithmeticExpression],
+        ObjectArray2D[ArithmeticExpression],
         MultiVector[ArithmeticExpression],
         Operand)
 
