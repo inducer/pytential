@@ -23,18 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections import namedtuple
+from dataclasses import dataclass
 from functools import partial
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from pytools import obj_array
+from sumpy.kernel import HelmholtzKernel
 
 from pytential import sym
 
 
-tangential_to_xyz = sym.tangential_to_xyz
-xyz_to_tangential = sym.xyz_to_tangential
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pymbolic import ArithmeticExpression
+
+    from pytential.symbolic.primitives import Side
+
+
 cse = sym.cse
 
 __doc__ = """
@@ -47,7 +55,10 @@ __doc__ = """
 
 # {{{ point source
 
-def get_sym_maxwell_point_source(kernel, jxyz, k):
+def get_sym_maxwell_point_source(
+            kernel: HelmholtzKernel,
+            jxyz: obj_array.ObjectArray1D[ArithmeticExpression],
+            k: ArithmeticExpression):
     r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
@@ -150,22 +161,22 @@ class PECChargeCurrentMFIEOperator:
         self.kernel = HelmholtzKernel(3)
         self.k = k
 
-    def j_operator(self, loc, Jt):
-        Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
-        return xyz_to_tangential(
+    def j_operator(self, loc: Side, Jt):
+        Jxyz = cse(sym.tangential_to_xyz(Jt), "Jxyz")
+        return sym.xyz_to_tangential(
                 loc*0.5*Jxyz - sym.n_cross(
                     sym.curl(sym.S(self.kernel, Jxyz, k=self.k,
                         qbx_forced_limit="avg"))))
 
     def j_rhs(self, Hinc_xyz):
-        return xyz_to_tangential(sym.n_cross(Hinc_xyz))
+        return sym.xyz_to_tangential(sym.n_cross(Hinc_xyz))
 
     def rho_operator(self, loc, rho):
         return loc*0.5*rho+sym.Sp(
                 self.kernel, rho, k=self.k, qbx_forced_limit="avg")
 
     def rho_rhs(self, Jt, Einc_xyz):
-        Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
+        Jxyz = cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         return (sym.n_dot(Einc_xyz)
                 + 1j*self.k*sym.n_dot(sym.S(
@@ -195,47 +206,68 @@ class PECChargeCurrentMFIEOperator:
 
 # {{{ Charge-Current Mueller MFIE
 
+@dataclass(frozen=True)
+class MaxwellDomain:
+    epsilon: complex
+    mu: complex
+
+
+@dataclass(frozen=True)
+class MuellerUnknowns:
+    jt: obj_array.ObjectArray1D[ArithmeticExpression]
+    rho_e: ArithmeticExpression
+    mt: obj_array.ObjectArray1D[ArithmeticExpression]
+    rho_m: ArithmeticExpression
+
+
+@dataclass(frozen=True)
 class MuellerAugmentedMFIEOperator:
     """
     ... warning:: currently untested
     """
 
-    def __init__(self, omega, mus, epss):
-        from sumpy.kernel import HelmholtzKernel
-        self.kernel = HelmholtzKernel(3)
-        self.omega = omega
-        self.mus = mus
-        self.epss = epss
-        self.ks = [
-                sym.cse(omega*(eps*mu)**0.5, f"k{i}")
-                for i, (eps, mu) in enumerate(zip(epss, mus, strict=True))]
+    omega: float
+    domains: Sequence[MaxwellDomain]
 
-    def make_unknown(self, name):
+    @property
+    def kernel(self):
+        return HelmholtzKernel(3)
+
+    @property
+    def ks(self):
+        return [
+                sym.cse(self.omega*(dom.epsilon*dom.mu)**0.5, f"k{i}")
+                for i, dom in enumerate(self.domains)]
+
+    def make_unknown(self, name: str):
         return sym.make_sym_vector(name, 6)
 
-    MuellerUnknowns = namedtuple("MuellerUnknowns", ["jt", "rho_e", "mt", "rho_m"])
-
-    def split_unknown(self, unk):
-        return self.MuellerUnknowns(
+    def split_unknown(self, unk: obj_array.ObjectArray1D[ArithmeticExpression]):
+        return MuellerUnknowns(
             jt=unk[:2],
             rho_e=unk[2],
             mt=unk[3:5],
             rho_m=unk[5])
 
-    def operator(self, unk):
+    def operator(self, unk: obj_array.ObjectArray1D[ArithmeticExpression]):
         u = self.split_unknown(unk)
 
-        Jxyz = cse(tangential_to_xyz(u.jt), "Jxyz")
-        Mxyz = cse(tangential_to_xyz(u.mt), "Mxyz")
+        Jxyz = cse(sym.tangential_to_xyz(u.jt), "Jxyz")
+        Mxyz = cse(sym.tangential_to_xyz(u.mt), "Mxyz")
 
         omega = self.omega
-        mu0, mu1 = self.mus
-        eps0, eps1 = self.epss
+        dom0, dom1 = self.domains
+        eps0 = dom0.epsilon
+        mu0 = dom0.mu
+        eps1 = dom1.epsilon
+        mu1 = dom1.mu
         k0, k1 = self.ks
 
         S = partial(sym.S, self.kernel, qbx_forced_limit="avg")
 
-        def curl_S(dens, k):
+        def curl_S(
+                dens: obj_array.ObjectArray1D[ArithmeticExpression],
+                k: ArithmeticExpression):
             return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg", k=k))
 
         grad = partial(sym.grad, 3)
@@ -249,9 +281,9 @@ class MuellerAugmentedMFIEOperator:
         H1 = sym.cse(-1j*omega*mu1*eps1*S(Mxyz, k=k1)
             + eps1*curl_S(Jxyz, k=k1) + grad(S(u.rho_m, k=k1)), "H1")
 
-        F1 = (xyz_to_tangential(sym.n_cross(H1-H0) + 0.5*(eps0+eps1)*Jxyz))
+        F1 = (sym.xyz_to_tangential(sym.n_cross(H1-H0) + 0.5*(eps0+eps1)*Jxyz))
         F2 = (sym.n_dot(eps1*E1-eps0*E0) + 0.5*(eps1+eps0)*u.rho_e)
-        F3 = (xyz_to_tangential(sym.n_cross(E1-E0) + 0.5*(mu0+mu1)*Mxyz))
+        F3 = (sym.xyz_to_tangential(sym.n_cross(E1-E0) + 0.5*(mu0+mu1)*Mxyz))
 
         # sign flip included
         F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
@@ -259,28 +291,32 @@ class MuellerAugmentedMFIEOperator:
         return obj_array.flat(F1, F2, F3, F4)
 
     def rhs(self, Einc_xyz, Hinc_xyz):
-        mu1 = self.mus[1]
-        eps1 = self.epss[1]
+        _dom0, dom1 = self.domains
+        mu1 = dom1.mu
+        eps1 = dom1.epsilon
 
         return obj_array.flat(
-            xyz_to_tangential(sym.n_cross(Hinc_xyz)),
+            sym.xyz_to_tangential(sym.n_cross(Hinc_xyz)),
             sym.n_dot(eps1*Einc_xyz),
-            xyz_to_tangential(sym.n_cross(Einc_xyz)),
+            sym.xyz_to_tangential(sym.n_cross(Einc_xyz)),
             sym.n_dot(-mu1*Hinc_xyz))
 
-    def representation(self, i, sol):
+    def representation(self,
+                i: int,
+                sol: obj_array.ObjectArray1D[ArithmeticExpression]):
         u = self.split_unknown(sol)
         Jxyz = sym.cse(sym.tangential_to_xyz(u.jt), "Jxyz")
         Mxyz = sym.cse(sym.tangential_to_xyz(u.mt), "Mxyz")
 
         # omega = self.omega
-        mu = self.mus[i]
-        eps = self.epss[i]
+        domain = self.domains[i]
+        eps = domain.epsilon
+        mu = domain.mu
         k = self.ks[i]
 
         S = partial(sym.S, self.kernel, qbx_forced_limit=None, k=k)
 
-        def curl_S(dens):
+        def curl_S(dens: obj_array.ObjectArray1D[ArithmeticExpression]):
             return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit=None, k=k))
 
         grad = partial(sym.grad, 3)
