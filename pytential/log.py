@@ -24,6 +24,11 @@ THE SOFTWARE.
 """
 
 import logging
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 #
@@ -92,7 +97,7 @@ class ColoredFormatter(logging.Formatter):
 # }}}
 
 
-def set_up_logging(modules, level, use_color=True):
+def set_up_logging(modules: Sequence[str], level: int, use_color: bool = True):
     """
     :arg modules: A list of modules for which logging output should be enabled
     """
