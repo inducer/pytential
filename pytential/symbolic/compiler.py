@@ -30,6 +30,7 @@ import numpy as np
 from typing_extensions import override
 
 import pymbolic.primitives as prim
+from pymbolic import ArithmeticExpression
 from pytools.obj_array import ObjectArray, ObjectArray1D, ShapeT, from_numpy
 
 from pytential.symbolic.mappers import CachedIdentityMapper, DependencyMapper
@@ -44,6 +45,7 @@ from pytential.symbolic.primitives import (
 if TYPE_CHECKING:
     from collections.abc import Collection, Hashable, Iterator, Sequence, Set
 
+    from pymbolic.geometric_algebra import MultiVector
     from pymbolic.mapper.dependency import Dependency
     from pymbolic.typing import Expression
     from sumpy.kernel import Kernel
@@ -379,7 +381,10 @@ def dot_dataflow_graph(
 
 # {{{ code representation
 
-CodeResultT = TypeVar("CodeResultT", "Expression", "ObjectArray1D[Expression]")
+CodeResultT = TypeVar("CodeResultT",
+                "ArithmeticExpression",
+                "ObjectArray1D[ArithmeticExpression]",
+                "MultiVector[ArithmeticExpression]")
 """An invariant :class:`TypeVar` result expressions from :class:`Code`."""
 
 

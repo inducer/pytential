@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from typing_extensions import override
@@ -45,6 +45,7 @@ from sumpy.fmm import UnableToCollectTimingData
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, Iterable
 
+    import pyopencl as cl
     from meshmode.discretization import Discretization
     from sumpy.kernel import Kernel
     from sumpy.p2p import P2P
@@ -265,7 +266,7 @@ class PointPotentialSource(PotentialSource):
 
         kernel_args = evaluate_kernel_arguments(
                 actx, evaluate, insn.kernel_arguments, flat=False)
-        strengths = [evaluate(density) for density in insn.densities]
+        strengths = [cast("Array", evaluate(density)) for density in insn.densities]
 
         from meshmode.discretization import Discretization
 
@@ -316,7 +317,7 @@ def _entry_dtype(actx: PyOpenCLArrayContext,
             return single_valued(_entry_dtype(actx, entry) for entry in ary.flat)
         else:
             return ary.dtype
-    elif isinstance(ary, actx.array_types):
+    elif actx.is_array_type(ary):
         # for "unregularized" layer potential sources
         return ary.dtype
     else:
@@ -337,10 +338,12 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
 
     @property
     def _setup_actx(self) -> PyOpenCLArrayContext:
-        return self.density_discr._setup_actx
+        actx = self.density_discr._setup_actx
+        assert isinstance(actx, PyOpenCLArrayContext)
+        return actx
 
     @property
-    def cl_context(self) -> Any:
+    def cl_context(self) -> cl.Context:
         return self._setup_actx.context
 
     @property
@@ -412,7 +415,7 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
             if isinstance(source_array, DOFArray):
                 source_array = flatten(source_array, actx)
 
-            if isinstance(source_array, actx.array_types):
+            if actx.is_array_type(source_array):
                 return actx.freeze(
                         actx.thaw(source_array)[tree_user_source_ids]
                         )

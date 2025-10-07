@@ -58,13 +58,13 @@ if TYPE_CHECKING:
     from pymbolic import ArithmeticExpression
     from sumpy.kernel import Kernel
 
-    from pytential.collection import GeometryCollection
+    from pytential.collection import GeometryCollection, GeometryLike
     from pytential.qbx.cost import AbstractQBXCostModel
     from pytential.symbolic.compiler import ComputePotential
     from pytential.symbolic.dof_desc import GeometryId
     from pytential.symbolic.execution import BoundExpression
     from pytential.symbolic.primitives import IntG, Operand, QBXForcedLimit
-    from pytential.target import TargetBase, TargetOrDiscretization
+    from pytential.target import TargetOrDiscretization
 
 
 logger = logging.getLogger(__name__)
@@ -641,7 +641,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # map (name, qbx_side) to number in list
         target_name_and_side_to_number: dict[GeometryId, int] = {}
         # list of tuples (discr, qbx_side)
-        target_discrs_and_qbx_sides: list[tuple[TargetBase, QBXForcedLimit]] = []
+        target_discrs_and_qbx_sides: list[
+                tuple[GeometryLike, Literal[-2, -1, +1, +2, "avg", 0]]
+            ] = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
