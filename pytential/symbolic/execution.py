@@ -44,7 +44,13 @@ from pytools import memoize_in, memoize_method
 
 from pytential import sym
 from pytential.qbx.cost import AbstractQBXCostModel
-from pytential.symbolic.compiler import Assign, Code, ComputePotential, Statement
+from pytential.symbolic.compiler import (
+    Assign,
+    Code,
+    CodeResultT,
+    ComputePotential,
+    Statement,
+)
 from pytential.symbolic.dof_desc import (
     _UNNAMED_SOURCE,
     _UNNAMED_TARGET,
@@ -660,14 +666,14 @@ def _get_exec_function(stmt: Statement, exec_mapper):
     raise ValueError(f"unknown statement class: {type(stmt)}")
 
 
-def execute(code: Code, exec_mapper, pre_assign_check=None) -> np.ndarray:
+def execute(code: Code[CodeResultT], exec_mapper, pre_assign_check=None) -> np.ndarray:
     for name in code.inputs:
         if name not in exec_mapper.context:
             raise ValueError(f"missing input: '{name}'")
 
     context = exec_mapper.context
 
-    for stmt, discardable_vars in code._schedule:
+    for stmt, discardable_vars in code.schedule:
         for name in discardable_vars:
             del context[name]
 
@@ -756,7 +762,7 @@ class BoundExpression(Generic[OperandTc]):
 
     @property
     @memoize_method
-    def code(self):
+    def code(self) -> Code[CodeResultT]:
         from pytential.symbolic.compiler import OperatorCompiler
         return OperatorCompiler(self.places)(self.sym_op_expr)
 
