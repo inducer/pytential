@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 import numpy as np
 from typing_extensions import override
@@ -305,7 +305,7 @@ class ComputePotential(Statement):
 
 def dot_dataflow_graph(
         dep_mapper: DependencyMapper,
-        code: Code,
+        code: Code[CodeResultT],
         max_node_label_length: int | None = 30,
         label_wrap_width: int | None = 50) -> str:
     origins: dict[str, str] = {}
@@ -366,38 +366,36 @@ def dot_dataflow_graph(
 
 # {{{ code representation
 
-class Code:
+CodeResultT = TypeVar("CodeResultT", "Expression", "ObjectArray1D[Expression]")
+
+
+@dataclass(frozen=True)
+class Code(Generic[CodeResultT]):
     """
     .. autoattribute:: inputs
+    .. autoattribute:: schedule
     .. autoattribute:: result
+
     .. autoproperty:: statements
     """
 
     inputs: set[str]
-    result: Expression | ObjectArray1D[Expression]
-
-    _schedule: Sequence[tuple[Statement, Collection[str]]]
-
-    def __init__(
-            self,
-            inputs: set[str],
-            schedule: Sequence[tuple[Statement, Collection[str]]],
-            result: Expression | ObjectArray1D[Expression],
-           ) -> None:
-        self.inputs = inputs
-        self.result = result
-        self._schedule = schedule
+    """A set of variable names required for this code block."""
+    schedule: Sequence[tuple[Statement, Collection[str]]]
+    """A sequence of statements and corresponding variables."""
+    result: CodeResultT
+    """Result expression for the code block."""
 
     @property
     def statements(self) -> list[Statement]:
-        return [stmt for stmt, _discardable_vars in self._schedule]
+        return [stmt for stmt, _discardable_vars in self.schedule]
 
     @override
     def __str__(self) -> str:
         lines: list[str] = []
         for insn in self.statements:
             lines.extend(str(insn).split("\n"))
-        lines.append("RESULT: " + str(self.result))
+        lines.append(f"RESULT: {self.result}")
 
         return "\n".join(lines)
 
@@ -413,7 +411,7 @@ class _NoStatementAvailableError(Exception):
 def _get_next_step(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
-        result: Expression | ObjectArray1D[Expression],
+        result: CodeResultT,
         available_names: Set[str],
         done_stmts: Set[Statement]
         ) -> tuple[Statement, set[str]]:
@@ -463,7 +461,7 @@ def _get_next_step(
 def _compute_schedule(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
-        result: Expression | ObjectArray1D[Expression],
+        result: CodeResultT,
         ) -> tuple[set[str], list[tuple[Statement, set[str]]]]:
     # FIXME: I'm O(n**2). I want to be replaced with a normal topological sort.
 
@@ -573,7 +571,7 @@ class OperatorCompiler(CachedIdentityMapper):
     # {{{ top-level driver
 
     @override
-    def __call__(self, expr: Expression) -> Code:
+    def __call__(self, expr: CodeResultT) -> Code[CodeResultT]:
         # {{{ collect operators by operand
 
         from pytential.symbolic.mappers import OperatorCollector
@@ -591,7 +589,7 @@ class OperatorCompiler(CachedIdentityMapper):
 
         # Traverse the expression, generate code.
 
-        result = super().__call__(expr)
+        result = cast("CodeResultT", super().__call__(expr))
 
         inputs, schedule = _compute_schedule(self.dep_mapper, self.code, result)
         return Code(inputs, schedule, result)
