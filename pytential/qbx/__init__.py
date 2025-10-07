@@ -639,15 +639,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         provided instruction.
         """
         # map (name, qbx_side) to number in list
-        target_name_and_side_to_number: dict[GeometryId, tuple[int, int]] = {}
+        target_name_and_side_to_number: dict[GeometryId, int] = {}
         # list of tuples (discr, qbx_side)
-        target_discrs_and_qbx_sides: list[tuple[TargetBase, int]] = []
+        target_discrs_and_qbx_sides: list[tuple[TargetBase, QBXForcedLimit]] = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
             if key not in target_name_and_side_to_number:
-                target_name_and_side_to_number[key] = \
-                        len(target_discrs_and_qbx_sides)
+                target_name_and_side_to_number[key] = len(target_discrs_and_qbx_sides)
 
                 target_discr = bound_expr.places.get_discretization(
                         o.target_name.geometry, o.target_name.discr_stage)
