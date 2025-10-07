@@ -89,6 +89,7 @@ sphinxconfig_missing_reference_aliases = {
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
     "Kernel": "class:sumpy.kernel.Kernel",
+    "HelmholtzKernel": "class:sumpy.kernel.HelmholtzKernel",
     "P2P": "class:sumpy.p2p.P2P",
     "P2PBase": "class:sumpy.p2p.P2PBase",
     # pytential
