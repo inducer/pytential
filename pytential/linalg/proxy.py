@@ -48,7 +48,6 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from boxtree.tree_build import TreeKind
     from sumpy.expansion import ExpansionBase
     from sumpy.kernel import Kernel
 
@@ -71,88 +70,11 @@ Proxy Point Generation
 .. autoclass:: ProxyGenerator
 .. autoclass:: QBXProxyGenerator
 
-.. autofunction:: partition_by_nodes
 .. autofunction:: gather_cluster_neighbor_points
 """
 
 # FIXME: this is just an arbitrary value
 _DEFAULT_MAX_PARTICLES_IN_BOX = 32
-
-
-# {{{ point index partitioning
-
-def partition_by_nodes(
-        actx: PyOpenCLArrayContext,
-        places: GeometryCollection, *,
-        dofdesc: DOFDescriptorLike | None = None,
-        tree_kind: TreeKind | None = "adaptive-level-restricted",
-        max_particles_in_box: int | None = None) -> IndexList:
-    """Generate equally sized ranges of nodes. The partition is created at the
-    lowest level of granularity, i.e. nodes. This results in balanced ranges
-    of points, but will split elements across different ranges.
-
-    :arg dofdesc: a :class:`~pytential.symbolic.dof_desc.DOFDescriptor` for
-        the geometry in *places* which should be partitioned.
-    :arg tree_kind: if not *None*, it is passed to :class:`boxtree.TreeBuilder`.
-    :arg max_particles_in_box: value used to control the number of points
-        in each partition (and thus the number of partitions). See the documentation
-        in :class:`boxtree.TreeBuilder`.
-    """
-    if dofdesc is None:
-        dofdesc = places.auto_source
-    dofdesc = sym.as_dofdesc(dofdesc)
-
-    if max_particles_in_box is None:
-        max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
-
-    from pytential.source import LayerPotentialSourceBase
-
-    lpot_source = places.get_geometry(dofdesc.geometry)
-    assert isinstance(lpot_source, LayerPotentialSourceBase)
-
-    discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-    assert isinstance(discr, Discretization)
-
-    if tree_kind is not None:
-        from pytential.qbx.utils import tree_code_container
-        tcc = tree_code_container(lpot_source._setup_actx)
-
-        tree, _ = tcc.build_tree()(actx.queue,
-                particles=flatten(
-                    actx.thaw(discr.nodes()), actx, leaf_class=DOFArray
-                    ),
-                max_particles_in_box=max_particles_in_box,
-                kind=tree_kind)
-
-        from boxtree import box_flags_enum
-        tree = tree.get(actx.queue)
-        # FIXME: maybe this should use IS_LEAF once available?
-        assert tree.box_flags is not None
-        leaf_boxes, = (
-                tree.box_flags & box_flags_enum.HAS_SOURCE_OR_TARGET_CHILD_BOXES == 0
-                ).nonzero()
-
-        indices = np.empty(len(leaf_boxes), dtype=object)
-        starts: NDArray[np.integer] | None = None
-
-        for i, ibox in enumerate(leaf_boxes):
-            box_start = tree.box_source_starts[ibox]
-            box_end = box_start + tree.box_source_counts_cumul[ibox]
-            indices[i] = tree.user_source_ids[box_start:box_end]
-    else:
-        if discr.ambient_dim != 2 and discr.dim == 1:
-            raise ValueError("only curves are supported for 'tree_kind=None'")
-
-        nclusters = max(discr.ndofs // max_particles_in_box, 2)
-        indices = np.arange(0, discr.ndofs, dtype=np.int64)
-        starts = np.linspace(0, discr.ndofs, nclusters + 1, dtype=np.int64)
-
-        assert starts[-1] == discr.ndofs
-
-    from pytential.linalg.utils import make_index_list
-    return make_index_list(indices, starts=starts)
-
-# }}}
 
 
 # {{{ proxy points
@@ -228,6 +150,7 @@ class ProxyClusterGeometryData:
     """
 
     places: GeometryCollection
+    """Geometry collection containing the used :attr:`dofdesc`."""
     dofdesc: sym.DOFDescriptor
     """A descriptor for the geometry used to compute the proxy points."""
 
