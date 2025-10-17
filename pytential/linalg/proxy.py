@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -46,7 +47,7 @@ from pytential.target import PointsTarget
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from numpy.typing import NDArray
+    import optype.numpy as onp
 
     from boxtree.tree_build import TreeKind
     from sumpy.expansion import ExpansionBase
@@ -69,7 +70,9 @@ Proxy Point Generation
 
 .. autoclass:: ProxyGeneratorBase
 .. autoclass:: ProxyGenerator
+    :show-inheritance:
 .. autoclass:: QBXProxyGenerator
+    :show-inheritance:
 
 .. autofunction:: partition_by_nodes
 .. autofunction:: gather_cluster_neighbor_points
@@ -133,7 +136,7 @@ def partition_by_nodes(
                 ).nonzero()
 
         indices = np.empty(len(leaf_boxes), dtype=object)
-        starts: NDArray[np.integer] | None = None
+        starts: onp.Array1D[np.integer] | None = None
 
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
@@ -293,9 +296,10 @@ class ProxyClusterGeometryData:
 
 # {{{ proxy point generator
 
+
 def _generate_unit_sphere(
         ambient_dim: int,
-        approx_npoints: int) -> NDArray[np.floating]:
+        approx_npoints: int) -> onp.Array2D[np.floating]:
     """Generate uniform points on a unit sphere.
 
     :arg ambient_dim: dimension of the ambient space.
@@ -372,7 +376,7 @@ def make_compute_cluster_centers_kernel_ex(
     return prg()
 
 
-class ProxyGeneratorBase:
+class ProxyGeneratorBase(ABC):
     r"""
     .. autoattribute:: places
     .. autoattribute:: radius_factor
@@ -394,7 +398,7 @@ class ProxyGeneratorBase:
     "radius" is also computed in terms of this norm. Can be one of ``"l2"`` or
     ``"linf"``.
     """
-    ref_points: NDArray[np.floating]
+    ref_points: onp.Array2D[np.floating]
     """Reference proxy points on the unit sphere. The reference points are
     translated and scaled for each cluster.
     """
@@ -406,7 +410,8 @@ class ProxyGeneratorBase:
             radius_factor: float | None = None,
             norm_type: str = "linf",
 
-            _generate_ref_proxies: Callable[[int], NDArray[np.floating]] | None = None,
+            _generate_ref_proxies:
+                Callable[[int], onp.Array2D[np.floating]] | None = None,
             ) -> None:
         """
         :param approx_nproxy: desired number of proxy points. In higher
@@ -460,8 +465,9 @@ class ProxyGeneratorBase:
         return make_compute_cluster_centers_kernel_ex(
                 actx, self.ambient_dim, self.norm_type)
 
+    @abstractmethod
     def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
-        raise NotImplementedError
+        pass
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
@@ -580,8 +586,6 @@ def make_compute_cluster_radii_kernel_ex(
 class ProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that only considers the points in the current
     cluster when determining the radius of the proxy ball.
-
-    Inherits from :class:`ProxyGeneratorBase`.
     """
 
     @override
@@ -644,8 +648,6 @@ def make_compute_cluster_qbx_radii_kernel_ex(
 class QBXProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that also considers the QBX expansion
     when determining the radius of the proxy ball.
-
-    Inherits from :class:`ProxyGeneratorBase`.
     """
 
     @override
@@ -778,7 +780,7 @@ def gather_cluster_neighbor_points(
     pxycenters = actx.to_numpy(pxy.centers)
     pxyradii = actx.to_numpy(pxy.radii)
 
-    eps = 100 * np.finfo(pxyradii.dtype).eps
+    eps = float(100 * np.finfo(pxyradii.dtype).eps)
     nbrindices = np.empty(nclusters, dtype=object)
     for icluster in range(nclusters):
         # get list of boxes intersecting the current ball
