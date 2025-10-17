@@ -43,6 +43,10 @@ nitpick_ignore_regex = [
     ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
     ["py:class", r".*DependencyMapper"],
     ["py:class", r".*EvaluationMapperBase"],
+    # optype is missing sphinx docs
+    # https://github.com/jorenham/optype/issues/430
+    ["py:class", r"optype.*"],
+    ["py:class", r"onp.*"],
 ]
 
 
