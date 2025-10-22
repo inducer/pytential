@@ -632,7 +632,12 @@ class DerivativeTaker(Mapper[ArithmeticExpression, []]):
         if len(nonconst) > 1:
             raise _DerivativeTakerUnsupoortedProductError(
                     "DerivativeTaker doesn't support products with "
-                    "more than one non-constant")
+                    "more than one non-constant. "
+                    "The following were recognized as non-constant: "
+                    f"{', '.join(str(nc) for nc in nonconst)}. "
+                    "If some of these are spatially constant, use sym.SpatialConstant "
+                    "when creating them."
+                )
 
         if not nonconst:
             nonconst = [1]
