@@ -736,7 +736,7 @@ class OperatorCompiler(CachedIdentityMapper):
     @override
     def map_int_g(
             self, expr: IntG, name_hint: str | None = None,
-        ) -> Expression:
+        ) -> ArithmeticExpression:
         try:
             return self.expr_to_var[expr]
         except KeyError:

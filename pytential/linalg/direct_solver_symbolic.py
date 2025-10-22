@@ -248,7 +248,7 @@ class DOFDescriptorReplacer(_LocationReplacer):
     .. automethod:: __init__
     """
 
-    operand_rec: _LocationReplacer
+    rec: _LocationReplacer
 
     def __init__(self, source: DOFDescriptorLike, target: DOFDescriptorLike) -> None:
         """
@@ -258,7 +258,7 @@ class DOFDescriptorReplacer(_LocationReplacer):
             the target geometry.
         """
         super().__init__(target, default_source=source)
-        self.operand_rec = _LocationReplacer(source, default_source=source)
+        self.rec = _LocationReplacer(source, default_source=source)
 
 # }}}
 

@@ -39,7 +39,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from typing_extensions import deprecated, override
+from typing_extensions import override
 
 from pymbolic import Expression, ExpressionNode as ExpressionNodeBase, Variable
 from pymbolic.geometric_algebra import MultiVector, componentwise
@@ -455,8 +455,12 @@ Operand: TypeAlias = (
         | MultiVector[ArithmeticExpression])
 OperandTc = TypeVar("OperandTc",
         ArithmeticExpression,
+
+        # We list 1D and 2D explicitly so that dimension info gets preserved if used.
         ObjectArray1D[ArithmeticExpression],
         ObjectArray2D[ArithmeticExpression],
+        ObjectArrayND[ArithmeticExpression],
+
         MultiVector[ArithmeticExpression],
         Operand)
 
@@ -698,7 +702,7 @@ class NumReferenceDerivative(DiscretizationProperty):
     input as it is sorted and each axis is unique. It denotes a second derivative
     with respect to $x$ (0) and a first derivative with respect to $y$ (1).
     """
-    operand: Operand
+    operand: ArithmeticExpression
     """An operand to differentiate."""
 
     def __new__(cls,
@@ -1413,7 +1417,7 @@ class Interpolation(ExpressionNode):
     """A descriptor for the geometry on which *operand* is defined."""
     to_dd: DOFDescriptor
     """A descriptor for the geometry to which to interpolate *operand* to."""
-    operand: Operand
+    operand: ArithmeticExpression
     """An expression or array of expressions to interpolate. Arrays are
     interpolated componentwise.
     """
@@ -1457,17 +1461,6 @@ class Interpolation(ExpressionNode):
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "to_dd", as_dofdesc(self.to_dd))
-
-
-@deprecated("Use interpolate")
-def interp(from_dd: DOFDescriptorLike,
-           to_dd: DOFDescriptorLike,
-           operand: Operand) -> Interpolation:
-    warn("Calling 'interp' is deprecated and it will be removed in 2025. Use "
-         "'interpolate' instead (has a different argument order).",
-         DeprecationWarning, stacklevel=2)
-
-    return Interpolation(as_dofdesc(from_dd), as_dofdesc(to_dd), operand)
 
 
 @for_each_expression

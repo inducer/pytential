@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from arraycontext import Array
     from meshmode.discretization import Discretization
     from meshmode.dof_array import DOFArray
-    from pymbolic.geometric_algebra import MultiVector
     from pytools.obj_array import ObjectArray1D
 
 
@@ -112,7 +111,7 @@ def _norm_inf_op(discr: Discretization, num_components: int | None):
 
 def norm(
             discr: Discretization,
-            x: DOFArray | ObjectArray1D[DOFArray] | MultiVector[DOFArray],
+            x: DOFArray | ObjectArray1D[DOFArray],
             p: float | Literal["inf"] = 2):
     from pymbolic.geometric_algebra import MultiVector
     if isinstance(x, MultiVector):
@@ -128,7 +127,10 @@ def norm(
 
     elif p == np.inf or p == "inf":
         norm_op = _norm_inf_op(discr, num_components)
-        norm_res = norm_op(arg=x)
+
+        # FIXME: norm_op (correctly) becomes BoundExpression[Operand], but
+        # then none of the overloads fit, hence the type-ignore.
+        norm_res = norm_op(arg=x)  # pyright: ignore[reportCallIssue]
         if isinstance(norm_res, obj_array.ObjectArray):
             # FIXME: Pyright may have a point: It's not clear how/if this works
             return max(cast("ObjectArray1D[Array]", norm_res))  # pyright: ignore[reportArgumentType]
