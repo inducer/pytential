@@ -71,14 +71,14 @@ _set_up_errors()
 
 
 @memoize_on_first_arg
-def _integral_op(discr):
+def _integral_op(discr: Discretization):
     from pytential import bind, sym
     return bind(discr,
             sym.integral(
                 discr.ambient_dim, discr.dim, sym.var("integrand")))
 
 
-def integral(discr, x):
+def integral(discr: Discretization, x: DOFArray):
     return _integral_op(discr)(integrand=x)
 
 
