@@ -97,7 +97,7 @@ class DefaultExpansionFactory(QBXExpansionFactory, DefaultExpansionFactoryBase):
         factory = NonFFTM2LTranslationClassFactory()
         m2l_translation = factory.get_m2l_translation_class(kernel,
             local_expn_class)()
-        return partial(local_expn_class, m2l_translation=m2l_translation)
+        return partial(local_expn_class, m2l_translation_override=m2l_translation)
 
 
 class NonFFTExpansionFactory(DefaultExpansionFactoryBase):
