@@ -82,7 +82,10 @@ Python 3 Conda:
 
 Documentation:
   script: |
+    # symengine does not have Sphinx docs, so we use sympy
+    export SUMPY_FORCE_SYMBOLIC_BACKEND=sympy
     export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+
     curl -L -O https://tiker.net/ci-support-v0
     . ci-support-v0
     build_py_project
