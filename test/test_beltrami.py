@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import extra_int_eq_data as eid
 import pytest
@@ -39,12 +40,6 @@ from pytential.symbolic.pde.beltrami import (
     LaplaceBeltramiOperator,
     YukawaBeltramiOperator,
 )
-
-
-logger = logging.getLogger(__name__)
-
-from typing import TYPE_CHECKING
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -52,6 +47,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])

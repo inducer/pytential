@@ -18,6 +18,10 @@ autodoc_type_aliases = {
         "DOFDescriptorLike": "pytential.symbolic.dof_desc.DOFDescriptorLike",
         }
 
+nitpick_ignore_regex = [
+        ["py:class", r"boxtree\.array_context\.(.+)"],
+        ]
+
 intersphinx_mapping = {
     "arraycontext": ("https://documen.tician.de/arraycontext", None),
     "boxtree": ("https://documen.tician.de/boxtree", None),

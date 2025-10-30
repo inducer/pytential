@@ -43,13 +43,10 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 from pytential import GeometryCollection, bind, sym
 from pytential.qbx import QBXLayerPotentialSource
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -338,8 +335,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
 
     # {{{ generate targets
 
-    from pyopencl.clrandom import PhiloxGenerator
-    rng = PhiloxGenerator(actx.context, seed=RNG_SEED)
+    rng = np.random.default_rng(RNG_SEED)
 
     ambient_dim = places.ambient_dim
     dd = places.auto_source.to_stage1()
@@ -350,11 +346,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
         actx)).reshape(ambient_dim, -1)
 
     density_discr = places.get_discretization(dd.geometry)
-
-    noise = actx.to_numpy(
-            rng.uniform(actx.queue, density_discr.ndofs,
-                dtype=np.float64, a=0.01, b=1.0)
-            )
+    noise = rng.uniform(0.01, 1.0, density_discr.ndofs)
 
     tunnel_radius = actx.to_numpy(flatten(
         bind(places, sym._close_target_tunnel_radii(ambient_dim, dofdesc=dd))(actx),
@@ -409,14 +401,14 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     )
     code_container = target_association_code_container(actx)
 
-    target_assoc = (
+    target_assoc = actx.to_numpy(
             associate_targets_to_qbx_centers(
                 places,
                 places.auto_source,
                 code_container.get_wrangler(actx),
                 target_discrs,
                 target_association_tolerance=1e-10)
-            ).get(queue=actx.queue)
+            )
 
     expansion_radii = actx.to_numpy(flatten(
             bind(places, sym.expansion_radii(ambient_dim,

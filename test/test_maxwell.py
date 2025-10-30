@@ -34,18 +34,12 @@ from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.processing import find_bounding_box
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
-from sumpy.tools import vector_from_device
-from sumpy.visualization import make_field_plotter_from_bbox
 
 from pytential import bind, norm, sym
 from pytential.target import PointsTarget
 
 
 logger = logging.getLogger(__name__)
-
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
-
-
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -247,13 +241,13 @@ def test_pec_mfie_extinction(actx_factory, case,
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
-    import pyopencl.clrandom as clrandom
-    rng = clrandom.PhiloxGenerator(actx.context, seed=12)
-
     from pytools import obj_array
 
+    rng = np.random.default_rng(12)
     src_j = obj_array.new_1d([
-            rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
+            actx.from_numpy(
+                rng.standard_normal(test_source.ndofs, dtype=np.float64)
+                )
             for _ in range(3)])
 
     def eval_inc_field_at(places, source=None, target=None):
@@ -324,8 +318,9 @@ def test_pec_mfie_extinction(actx_factory, case,
             })
 
         if visualize:
-            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
+            from sumpy.visualization import make_field_plotter_from_bbox
 
+            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
             fplot = make_field_plotter_from_bbox(
                     find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
                     extend_factor=0.3)
@@ -346,8 +341,9 @@ def test_pec_mfie_extinction(actx_factory, case,
                 bind(places, sym.h_max(qbx.ambient_dim))(actx)
                 )
 
-        pde_test_inc = EHField(vector_from_device(actx.queue,
-            eval_inc_field_at(places, target="patch_target")))
+        pde_test_inc = EHField(
+            actx.from_numpy(eval_inc_field_at(places, target="patch_target"))
+            )
 
         source_maxwell_resids = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
@@ -404,8 +400,9 @@ def test_pec_mfie_extinction(actx_factory, case,
                 places, sym_repr, auto_where=(source, target)       # noqa: B023
                 )(actx, jt=jt, rho=rho, **knl_kwargs)               # noqa: B023
 
-        pde_test_repr = EHField(vector_from_device(actx.queue,
-            eval_repr_at(places, target="patch_target")))
+        pde_test_repr = EHField(
+            actx.from_numpy(eval_repr_at(places, target="patch_target"))
+            )
 
         maxwell_residuals = [
                 actx.to_numpy(
@@ -479,9 +476,10 @@ def test_pec_mfie_extinction(actx_factory, case,
                             ])
                 raise
 
-            fplot_repr = EHField(vector_from_device(actx.queue, fplot_repr))
-            fplot_inc = EHField(vector_from_device(actx.queue,
-                eval_inc_field_at(places, target="plot_targets")))
+            fplot_repr = EHField(actx.from_numpy(fplot_repr))
+            fplot_inc = EHField(
+                actx.from_numpy(eval_inc_field_at(places, target="plot_targets"))
+                )
 
             fplot.write_vtk_file(
                     "potential-%s.vts" % resolution,

@@ -38,13 +38,10 @@ from pytools import obj_array
 from sumpy.kernel import BiharmonicKernel, HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, sym
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])

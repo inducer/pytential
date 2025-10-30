@@ -31,20 +31,17 @@ import numpy as np
 import pytest
 
 from arraycontext import flatten, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
+from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 from pytools import obj_array
 
 from pytential import GeometryCollection, bind, sym
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
