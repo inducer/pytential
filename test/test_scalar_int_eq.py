@@ -102,7 +102,7 @@ def run_int_eq_test(actx,
                 extend_factor=vis_extend_factor)
 
         from pytential.target import PointsTarget
-        plot_targets = PointsTarget(fplot.points)
+        plot_targets = PointsTarget(actx.freeze(actx.from_numpy(fplot.points)))
 
         places.update({
             "qbx_target_tol": qbx.copy(target_association_tolerance=0.15),
