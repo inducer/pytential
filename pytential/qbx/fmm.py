@@ -22,18 +22,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 import logging
-from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from typing_extensions import override
 
 import pyopencl.array as cl_array
 from boxtree.timing import TimingRecorder
-from pytools import ProcessLogger, log_process, memoize_method, obj_array
-from sumpy.expansion import ExpansionFactoryBase
+from pytools import ProcessLogger, log_process, memoize_method, not_none, obj_array
 from sumpy.fmm import (
+    FMMLevelToOrder,
+    LocalExpansionFromOrderFactory,
+    MultipoleExpansionFromOrderFactory,
     SumpyExpansionWrangler,
     SumpyTimingFuture,
     SumpyTreeIndependentDataForWrangler,
@@ -43,10 +43,11 @@ from pytential.qbx.interactions import L2QBXL, M2QBXL, QBXL2P, P2QBXLFromCSR
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Sequence
 
-    from sumpy.expansion import LocalExpansionBase
-    from sumpy.kernel import Kernel
+    import numpy as np
+
+    from pytential.qbx.geometry import QBXFMMGeometryData
 
 
 logger = logging.getLogger(__name__)
@@ -61,53 +62,50 @@ __doc__ = """
 """
 
 
-class QBXExpansionFactory(ExpansionFactoryBase, ABC):
-    @abstractmethod
-    def get_qbx_local_expansion_class(self,
-            kernel: Kernel
-        ) -> Callable[[Kernel, int], LocalExpansionBase]: ...
-
-
 # {{{ sumpy expansion wrangler
 
 class QBXSumpyTreeIndependentDataForWrangler(SumpyTreeIndependentDataForWrangler):
+    qbx_local_expansion_factory: LocalExpansionFromOrderFactory
+
     def __init__(self,
                 cl_context,
-                multipole_expansion_factory,
-                local_expansion_factory,
-                qbx_local_expansion_factory,
+                multipole_expansion_factory: MultipoleExpansionFromOrderFactory,
+                local_expansion_factory: LocalExpansionFromOrderFactory,
+                qbx_local_expansion_factory: LocalExpansionFromOrderFactory,
                 target_kernels,
                 source_kernels):
         super().__init__(
                 cl_context, multipole_expansion_factory, local_expansion_factory,
                 target_kernels=target_kernels, source_kernels=source_kernels)
 
-        self.qbx_local_expansion_factory: QBXExpansionFactory = (
-            qbx_local_expansion_factory)
+        self.qbx_local_expansion_factory = qbx_local_expansion_factory
 
     @memoize_method
-    def qbx_local_expansion(self, order):
-        return self.qbx_local_expansion_factory(order, self.use_rscale)
+    def qbx_local_expansion(self, order: int):
+        if self.use_rscale is None:
+            return self.qbx_local_expansion_factory(order)
+        else:
+            return self.qbx_local_expansion_factory(order, use_rscale=self.use_rscale)
 
     @memoize_method
-    def p2qbxl(self, order):
+    def p2qbxl(self, order: int):
         return P2QBXLFromCSR(self.cl_context,
                 self.qbx_local_expansion(order), kernels=self.source_kernels)
 
     @memoize_method
-    def m2qbxl(self, source_order, target_order):
+    def m2qbxl(self, source_order: int, target_order: int):
         return M2QBXL(self.cl_context,
                 self.multipole_expansion_factory(source_order),
                 self.qbx_local_expansion_factory(target_order))
 
     @memoize_method
-    def l2qbxl(self, source_order, target_order):
+    def l2qbxl(self, source_order: int, target_order: int):
         return L2QBXL(self.cl_context,
                 self.local_expansion_factory(source_order),
                 self.qbx_local_expansion_factory(target_order))
 
     @memoize_method
-    def qbxl2p(self, order):
+    def qbxl2p(self, order: int):
         return QBXL2P(self.cl_context,
                 self.qbx_local_expansion_factory(order),
                 self.target_kernels)
@@ -136,11 +134,20 @@ non_qbx_box_target_lists`),
     .. automethod:: eval_qbx_expansions
     """
 
-    def __init__(self, tree_indep, geo_data, dtype,
-            qbx_order, fmm_level_to_order,
-            source_extra_kwargs, kernel_extra_kwargs,
-            translation_classes_data=None,
-            _use_target_specific_qbx=None):
+    tree_indep: QBXSumpyTreeIndependentDataForWrangler  # pyright: ignore[reportIncompatibleVariableOverride]
+    qbx_order: int
+    geo_data: QBXFMMGeometryData
+
+    def __init__(self,
+                tree_indep: QBXSumpyTreeIndependentDataForWrangler,
+                geo_data: QBXFMMGeometryData,
+                dtype: np.dtype[np.inexact],
+                qbx_order: int,
+                fmm_level_to_order: FMMLevelToOrder,
+                source_extra_kwargs,
+                kernel_extra_kwargs,
+                translation_classes_data=None,
+                _use_target_specific_qbx=None):
         if _use_target_specific_qbx:
             raise ValueError("TSQBX is not implemented in sumpy")
 
@@ -180,17 +187,17 @@ non_qbx_box_target_lists`),
                     dtype=self.dtype)
                 for k in self.tree_indep.target_kernels])
 
-    def full_output_zeros(self, template_ary):
+    def full_output_zeros(self, template_ary: cl_array.Array):
         # The superclass generates a full field of zeros, for all
         # (not just non-QBX) targets.
         return super().output_zeros(template_ary)
 
-    def qbx_local_expansion_zeros(self, template_ary):
+    def qbx_local_expansion_zeros(self, template_ary: cl_array.Array):
         order = self.qbx_order
         qbx_l_expn = self.tree_indep.qbx_local_expansion(order)
 
         return cl_array.zeros(
-                    template_ary.queue,
+                    not_none(template_ary.queue),
                     (self.geo_data.ncenters,
                         len(qbx_l_expn)),
                     dtype=self.dtype)
@@ -212,6 +219,7 @@ non_qbx_box_target_lists`),
 
     # box_source_list_kwargs inherited from superclass
 
+    @override
     def box_target_list_kwargs(self):
         # This only covers the non-QBX targets.
 
@@ -227,7 +235,7 @@ non_qbx_box_target_lists`),
     # {{{ qbx-related
 
     @log_process(logger)
-    def form_global_qbx_locals(self, src_weight_vecs):
+    def form_global_qbx_locals(self, src_weight_vecs: Sequence[cl_array.Array]):
         queue = src_weight_vecs[0].queue
 
         local_exps = self.qbx_local_expansion_zeros(src_weight_vecs[0])
@@ -242,7 +250,7 @@ non_qbx_box_target_lists`),
         starts = traversal.neighbor_source_boxes_starts
         lists = traversal.neighbor_source_boxes_lists
 
-        kwargs = self.extra_kwargs.copy()
+        kwargs = dict(self.extra_kwargs)
         kwargs.update(self.box_source_list_kwargs())
 
         p2qbxl = self.tree_indep.p2qbxl(self.qbx_order)
@@ -398,7 +406,7 @@ non_qbx_box_target_lists`),
                 qbx_expansions=qbx_expansions,
                 result=pot,
 
-                **self.kernel_extra_kwargs.copy())
+                **self.kernel_extra_kwargs)
 
         for pot_i, pot_res_i in zip(pot, pot_res, strict=True):
             assert pot_i is pot_res_i

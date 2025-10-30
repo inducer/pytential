@@ -270,14 +270,11 @@ class PointPotentialSource(PotentialSource):
 
         from meshmode.discretization import Discretization
 
-        from pytential.target import TargetBase
-
         # FIXME: Do this all at once
         results: list[tuple[str, ArrayOrContainerOrScalar]] = []
         for o in insn.outputs:
-            target_discr = bound_expr.places.get_discretization(
+            target_or_discr = bound_expr.places.get_target_or_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
-            assert isinstance(target_discr, (TargetBase, Discretization))
 
             # no on-disk kernel caching
             if p2p is None:
@@ -285,13 +282,13 @@ class PointPotentialSource(PotentialSource):
                 target_kernels=insn.target_kernels)
 
             _, output_for_each_kernel = p2p(actx.queue,
-                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    targets=flatten(target_or_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=self._nodes,
                     strength=strengths, **kernel_args)
 
             result = output_for_each_kernel[o.target_kernel_index]
-            if isinstance(target_discr, Discretization):
-                template_ary = actx.thaw(target_discr.nodes()[0])
+            if isinstance(target_or_discr, Discretization):
+                template_ary = actx.thaw(target_or_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))

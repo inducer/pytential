@@ -428,7 +428,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     def map_error_expression(self, expr):
         return expr
 
-    def operand_rec(self, expr):
+    def operand_rec(self, expr, /):
         return self.rec(expr)
 
 
@@ -710,17 +710,15 @@ class QBXPreprocessor(IdentityMapper):
         if expr.source.geometry != self.geometry:
             return expr
 
-        source_discr = self.places.get_discretization(
-                expr.source.geometry, expr.source.discr_stage)
-        target_discr = self.places.get_discretization(
-                expr.target.geometry, expr.target.discr_stage)
-
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "
                     "is no longer supported. Use qbx_forced_limit == 'avg' "
                     "to request two-sided averaging explicitly if needed.")
 
-        is_self = source_discr is target_discr
+        is_self = (
+            expr.source.geometry == expr.target.geometry
+            and expr.source.discr_stage == expr.target.discr_stage
+            )
 
         expr = replace(
                 expr,

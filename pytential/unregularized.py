@@ -46,9 +46,14 @@ if TYPE_CHECKING:
 
     from meshmode.discretization import Discretization
     from sumpy.expansion import ExpansionFactoryBase
+    from sumpy.fmm import FMMLevelToOrder
 
     from pytential.collection import GeometryLike
+    from pytential.symbolic.compiler import ComputePotential
+    from pytential.symbolic.execution import BoundExpression
+    from pytential.symbolic.primitives import Operand
     from pytential.target import TargetOrDiscretization
+
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +73,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """
 
     density_discr: Discretization
-    fmm_level_to_order: Literal[False] | Callable[..., int]
+    fmm_level_to_order: Literal[False] | FMMLevelToOrder
     expansion_factory: ExpansionFactoryBase
 
     debug: bool
@@ -158,8 +163,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self,
+                actx: PyOpenCLArrayContext,
+                insn: ComputePotential,
+                bound_expr: BoundExpression[Operand],
+                evaluate):
         kernel_args = {}
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
@@ -177,7 +185,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         p2p = None
 
         for o in insn.outputs:
-            target_discr = bound_expr.places.get_discretization(
+            target_or_discr = bound_expr.places.get_target_or_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
@@ -185,7 +193,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             _, output_for_each_kernel = p2p(actx.queue,
-                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    targets=flatten(target_or_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(
                         self.density_discr.nodes(), actx, leaf_class=DOFArray
                         ),
@@ -193,8 +201,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
-            if isinstance(target_discr, Discretization):
-                template_ary = actx.thaw(target_discr.nodes()[0])
+            if isinstance(target_or_discr, Discretization):
+                template_ary = actx.thaw(target_or_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
@@ -237,6 +245,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate):
+        assert self.fmm_level_to_order is not False
+
         # {{{ gather unique target discretizations used
 
         target_name_to_index = {}

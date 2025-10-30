@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 
 import numpy as np
 from typing_extensions import override
@@ -199,11 +199,13 @@ class PotentialOutput:
     """An index into :attr:`ComputePotential.target_kernels`."""
     target_name: DOFDescriptor
     """A descriptor for the geometry used by the target kernel."""
-    qbx_forced_limit: QBXForcedLimit
+
+    qbx_forced_limit: Literal[-2, -1, +1, +2] | None
     """The type of the limiting process used by the QBX expansion (``+1`` if the
     output is required to originate from a QBX center on the "+" side of the
     boundary. ``-1`` for the other side, etc.).
     """
+    # This removes "avg" and None compared to QBXForcedLimit
 
 
 @dataclass(frozen=True, eq=False)
@@ -232,7 +234,7 @@ class ComputePotential(Statement):
     derivatives and no target derivatives. See the
     :class:`~pytential.symbolic.primitives.IntG` docstring for details.
     """
-    densities: tuple[Expression, ...]
+    densities: tuple[ArithmeticExpression, ...]
     """A tuple of densities with the same number of entries as :attr:`source_kernels`.
     See the :class:`~pytential.symbolic.primitives.IntG` docstring for details.
     """
@@ -281,8 +283,6 @@ class ComputePotential(Statement):
                 limit_str = "[(+)] "
             elif o.qbx_forced_limit == -2:
                 limit_str = "[(-)] "
-            elif o.qbx_forced_limit == "avg":
-                limit_str = "[avg] "
             elif o.qbx_forced_limit is None:
                 limit_str = ""
             else:
@@ -766,12 +766,16 @@ class OperatorCompiler(CachedIdentityMapper):
                     arg_name: cast("Operand", self.rec(arg_val))
                     for arg_name, arg_val in expr.kernel_arguments.items()}
 
+            def not_avg(qbxfl: QBXForcedLimit):
+                assert qbxfl != "avg"
+                return qbxfl
+
             outputs = tuple(
                 PotentialOutput(
                     name=name,
                     target_kernel_index=target_kernel_to_index[op.target_kernel],
                     target_name=op.target,
-                    qbx_forced_limit=op.qbx_forced_limit,
+                    qbx_forced_limit=not_avg(op.qbx_forced_limit),
                     )
                 for name, op in zip(names, group, strict=True))
 
