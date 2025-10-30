@@ -348,7 +348,7 @@ def test_cluster_builder(actx_factory, ambient_dim,
 
     # {{{ matrix
 
-    mindex = case.get_tgt_src_cluster_index(actx, places)
+    mindex, _ = case.get_tgt_src_cluster_index(actx, places)
     kwargs = {
             "dep_expr": sym_u,
             "other_dep_exprs": [],
@@ -472,8 +472,8 @@ def test_build_matrix_fixed_stage(actx_factory,
     logger.info("ndofs:         %d", target_discr.ndofs)
 
     from pytential.linalg import TargetAndSourceClusterList
-    itargets = case.get_cluster_index(actx, places, target_dd)
-    jsources = case.get_cluster_index(actx, places, source_dd)
+    itargets, _ = case.get_cluster_index(actx, places, target_dd)
+    jsources, _ = case.get_cluster_index(actx, places, source_dd)
     mindex = TargetAndSourceClusterList(itargets, jsources)
 
     kwargs = {

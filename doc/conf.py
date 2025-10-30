@@ -88,6 +88,7 @@ sphinxconfig_missing_reference_aliases = {
     # boxtree
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     "TimingResult": "class:boxtree.timing.TimingResult",
+    "Tree": "obj:boxtree.tree.Tree",
     "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
@@ -114,6 +115,7 @@ sphinxconfig_missing_reference_aliases = {
     "pytential.symbolic.primitives.ExpressionNode":
         "class:pytential.symbolic.primitives.ExpressionNode",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
+    "sym.DOFDescriptorLike": "obj:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",
 }
