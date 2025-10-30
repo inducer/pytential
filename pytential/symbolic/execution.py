@@ -39,6 +39,7 @@ from arraycontext import (
     ScalarLike,
 )
 from meshmode.dof_array import DOFArray
+from pymbolic.geometric_algebra import componentwise
 from pymbolic.mapper.evaluator import EvaluationMapper as PymbolicEvaluationMapper
 from pytools import memoize_in, memoize_method
 
@@ -639,7 +640,9 @@ def _prepare_expr(places: GeometryCollection,
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import DerivativeBinder, ToTargetTagger, flatten
 
-    expr = flatten(expr)
+    # FIXME: There's some mismatch between OperandTc and a conditional union
+    # type that I was too impatient to figure out in detail.
+    expr = componentwise(flatten, expr)  # pyright: ignore[reportAssignmentType]
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
     expr = ToTargetTagger(auto_source, auto_target)(expr)
     expr = DerivativeBinder()(expr)

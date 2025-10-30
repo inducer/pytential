@@ -89,6 +89,7 @@ Documentation:
     curl -L -O https://tiker.net/ci-support-v0
     . ci-support-v0
     build_py_project
+    export SUMPY_FORCE_SYMBOLIC_BACKEND=sympy
     build_docs
     maybe_upload_docs
   tags:
