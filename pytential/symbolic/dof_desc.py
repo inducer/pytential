@@ -226,7 +226,7 @@ class DOFDescriptor:
         discr_stage = self.discr_stage \
                 if self.discr_stage is None else self.discr_stage.__name__
         granularity = self.granularity.__name__
-        return "{}(geometry={}, stage={}, granularity={})".format(
+        return "{}(geometry={!r}, stage={}, granularity={})".format(
                 type(self).__name__, self.geometry, discr_stage, granularity)
 
     @override
