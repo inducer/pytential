@@ -25,13 +25,13 @@ THE SOFTWARE.
 
 import logging
 from functools import partial
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 import numpy as np
 from typing_extensions import override
 
 from arraycontext import (
-    ArrayContext,
+    Array,
     ArrayOrArithContainer,
     PyOpenCLArrayContext,
     flatten,
@@ -46,7 +46,6 @@ from sumpy.expansion import (
 )
 from sumpy.expansion.local import LocalExpansionBase
 
-from pytential.qbx.fmm import QBXExpansionFactory
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedError
 from pytential.source import LayerPotentialSourceBase
 
@@ -56,12 +55,14 @@ if TYPE_CHECKING:
 
     from boxtree.tree_build import ExtentNorm, TreeKind
     from pymbolic import ArithmeticExpression
+    from sumpy.expansion import LocalExpansionFactory
+    from sumpy.fmm import FMMLevelToOrder
     from sumpy.kernel import Kernel
 
     from pytential.collection import GeometryCollection, GeometryLike
     from pytential.qbx.cost import AbstractQBXCostModel
-    from pytential.symbolic.compiler import ComputePotential
-    from pytential.symbolic.dof_desc import GeometryId
+    from pytential.symbolic.compiler import ComputePotential, PotentialOutput
+    from pytential.symbolic.dof_desc import DOFDescriptor, GeometryId
     from pytential.symbolic.execution import BoundExpression
     from pytential.symbolic.primitives import IntG, Operand, QBXForcedLimit
     from pytential.target import TargetOrDiscretization
@@ -75,7 +76,7 @@ __doc__ = """
 
 .. autoclass:: QBXTargetAssociationFailedError
 
-.. autoclass:: DefaultExpansionFactory
+.. autoclass:: QBXDefaultExpansionFactory
 
 .. autoclass:: NonFFTExpansionFactory
 """
@@ -86,11 +87,12 @@ FMMBackend: TypeAlias = Literal["sumpy"] | Literal["fmmlib"]
 
 # {{{ QBX layer potential source
 
-class DefaultExpansionFactory(QBXExpansionFactory, DefaultExpansionFactoryBase):
+class QBXDefaultExpansionFactory(DefaultExpansionFactoryBase):
     """An expansion factory to create QBX local, local and multipole expansions
     """
-    @override
-    def get_qbx_local_expansion_class(self, kernel: Kernel):
+    def get_qbx_local_expansion_class(self,
+                kernel: Kernel, /
+            ) -> LocalExpansionFactory:
         local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
                 self, kernel)
         from sumpy.expansion.m2l import NonFFTM2LTranslationClassFactory
@@ -100,11 +102,11 @@ class DefaultExpansionFactory(QBXExpansionFactory, DefaultExpansionFactoryBase):
         return partial(local_expn_class, m2l_translation_override=m2l_translation)
 
 
-class NonFFTExpansionFactory(DefaultExpansionFactoryBase):
+class NonFFTExpansionFactory(QBXDefaultExpansionFactory):
     """A expansion factory to create QBX local, local and multipole expansions
     with no FFT for multipole-to-local translations
     """
-    get_local_expansion_class = DefaultExpansionFactory.get_qbx_local_expansion_class
+    get_local_expansion_class = QBXDefaultExpansionFactory.get_qbx_local_expansion_class
 
 
 class _not_provided:  # noqa: N801
@@ -126,13 +128,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ constructor / copy
 
     density_discr: Discretization
-    fmm_level_to_order: Literal[False] | Callable[..., int]
+    fmm_level_to_order: Literal[False] | FMMLevelToOrder
 
     fine_order: int
     qbx_order: int
     fmm_backend: FMMBackend
 
-    expansion_factory: QBXExpansionFactory
+    expansion_factory: QBXDefaultExpansionFactory
     target_association_tolerance: float
 
     debug: bool
@@ -156,8 +158,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fine_order: int | None,
             qbx_order: int | None = None,
             fmm_order: bool | int | None = None,
-            fmm_level_to_order: Literal[False] | Callable[..., int] | None = None,
-            expansion_factory: QBXExpansionFactory | None = None,
+            fmm_level_to_order: Literal[False] | FMMLevelToOrder | None = None,
+            expansion_factory: QBXDefaultExpansionFactory | None = None,
             target_association_tolerance: (
                 float | type[_not_provided] | None) = _not_provided,
 
@@ -264,8 +266,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 assert isinstance(fmm_order, int) and not isinstance(fmm_order, bool)
 
-                def fmm_level_to_order(kernel, kernel_args, tree, level):
+                def fmm_lto(kernel, kernel_args, tree, level):
                     return fmm_order
+
+                fmm_level_to_order = fmm_lto
+
         assert isinstance(fmm_level_to_order, bool) or callable(fmm_level_to_order)
 
         max_leaf_refine_weight = _max_leaf_refine_weight
@@ -297,7 +302,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         assert isinstance(from_sep_smaller_min_nsources_cumul, int)
 
         if expansion_factory is None:
-            expansion_factory = DefaultExpansionFactory()
+            expansion_factory = QBXDefaultExpansionFactory()
 
         if cost_model is None:
             from pytential.qbx.cost import QBXCostModel
@@ -493,7 +498,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal functionality for execution
 
     def exec_compute_potential_insn(self,
-                actx: ArrayContext,
+                actx: PyOpenCLArrayContext,
                 insn: ComputePotential,
                 bound_expr: BoundExpression[Operand],
                 evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
@@ -650,17 +655,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             if key not in target_name_and_side_to_number:
                 target_name_and_side_to_number[key] = len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places.get_discretization(
+                target_or_discr = bound_expr.places.get_target_or_discretization(
                         o.target_name.geometry, o.target_name.discr_stage)
-                if isinstance(target_discr, LayerPotentialSourceBase):
-                    target_discr = target_discr.density_discr
+                if isinstance(target_or_discr, LayerPotentialSourceBase):
+                    target_or_discr = target_or_discr.density_discr
 
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
                 target_discrs_and_qbx_sides.append(
-                        (target_discr, qbx_forced_limit))
+                        (target_or_discr, qbx_forced_limit))
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
@@ -679,6 +684,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             *extra_outputs* is data that *fmm_driver* may return
             (such as timing data), passed through unmodified.
         """
+        assert self.fmm_level_to_order is not False
+
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
@@ -838,8 +845,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate,
-            return_timing_data):
+    def exec_compute_potential_insn_direct(self,
+                actx: PyOpenCLArrayContext,
+                insn: ComputePotential,
+                bound_expr: BoundExpression[Operand],
+                evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
+                return_timing_data: bool):
         from meshmode.discretization import Discretization
 
         from pytential import bind, sym
@@ -847,7 +858,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if return_timing_data:
             from warnings import warn
 
-            from pytential.source import UnableToCollectTimingData
+            from sumpy.fmm import UnableToCollectTimingData
             warn(
                     "Timing data collection not supported.",
                     category=UnableToCollectTimingData,
@@ -857,14 +868,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_nodes"))
-        def _flat_nodes(dofdesc):
-            discr = bound_expr.places.get_discretization(
+        def _flat_nodes(dofdesc: DOFDescriptor):
+            discr = bound_expr.places.get_target_or_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
             return actx.freeze(flatten(discr.nodes(), actx, leaf_class=DOFArray))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
-        def _flat_expansion_radii(dofdesc):
+        def _flat_expansion_radii(dofdesc: DOFDescriptor):
             radii = bind(
                     bound_expr.places,
                     sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
@@ -894,34 +905,39 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # {{{ partition interactions in target kernels
 
         from collections import defaultdict
-        self_outputs = defaultdict(list)
-        other_outputs = defaultdict(list)
+        self_outputs: defaultdict[
+                tuple[DOFDescriptor, Literal[-1, -2, 0, 1, 2]],
+                list[tuple[int, PotentialOutput]]
+            ] = defaultdict(list)
+        other_outputs: defaultdict[
+                tuple[DOFDescriptor, Literal[-1, -2, 0, 1, 2]],
+                list[tuple[int, PotentialOutput]]
+            ] = defaultdict(list)
 
         for i, o in enumerate(insn.outputs):
             # For purposes of figuring out whether this is a self-interaction,
             # disregard discr_stage.
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
 
-            target_discr = bound_expr.places.get_discretization(
+            target_discr = bound_expr.places.get_target_or_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
             density_discr = bound_expr.places.get_discretization(
                     source_dd.geometry, source_dd.discr_stage)
 
             if target_discr is density_discr:
-                # NOTE: QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None
+                # NOTE: QBXPreprocessor is supposed to have taken care of this
                 assert abs(o.qbx_forced_limit) > 0
 
                 self_outputs[o.target_name, o.qbx_forced_limit].append((i, o))
             else:
-                qbx_forced_limit = o.qbx_forced_limit
-                if qbx_forced_limit is None:
-                    qbx_forced_limit = 0
+                qbx_forced_limit = (
+                    0 if o.qbx_forced_limit is None else o.qbx_forced_limit)
 
                 other_outputs[o.target_name, qbx_forced_limit].append((i, o))
 
         queue = actx.queue
-        results = [None] * len(insn.outputs)
+        results: list[tuple[str, DOFArray | Array] | None] = [None] * len(insn.outputs)
 
         # }}}
 
@@ -933,8 +949,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 insn.target_kernels, insn.source_kernels)
 
         for (target_name, qbx_forced_limit), outputs in self_outputs.items():
-            target_discr = bound_expr.places.get_discretization(
-                    target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
             _, output_for_each_kernel = lpot_applier(queue,
@@ -947,7 +961,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
-                if isinstance(target_discr, Discretization):
+
+                from pytential.collection import NotADiscretizationError
+                try:
+                    target_discr = bound_expr.places.get_discretization(
+                            target_name.geometry, target_name.discr_stage)
+                except NotADiscretizationError:
+                    pass
+                else:
                     template_ary = actx.thaw(target_discr.nodes()[0])
                     result = unflatten(template_ary, result, actx, strict=False)
 
@@ -963,7 +984,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     insn.target_kernels, insn.source_kernels)
 
         for (target_name, qbx_forced_limit), outputs in other_outputs.items():
-            target_discr = bound_expr.places.get_discretization(
+            target_discr = bound_expr.places.get_target_or_discretization(
                     target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
@@ -984,6 +1005,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # center-related info is independent of targets
 
             # First ncenters targets are the centers
+            # FIXME: actx.np.copy is not a thing
             tgt_to_qbx_center = actx.np.copy(actx.thaw(
                     geo_data.user_target_to_center()[geo_data.ncenters:]
                     ))
@@ -998,6 +1020,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     queue=queue)
 
             qbx_tgt_count = int(actx.to_numpy(qbx_tgt_count).item())
+
             if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
                 raise RuntimeError(
                         "Did not find a matching QBX center for some targets")
@@ -1041,7 +1064,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
 
 def get_flat_strengths_from_densities(
-        actx, places, evaluate, densities, dofdesc=None):
+            actx: PyOpenCLArrayContext,
+            places: GeometryCollection,
+            evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
+            densities: Sequence[ArithmeticExpression],
+            dofdesc: DOFDescriptor | None = None):
     from pytential import bind, sym
     waa = bind(
             places,
@@ -1056,7 +1083,7 @@ def get_flat_strengths_from_densities(
 
         # FIXME Maybe check shape?
 
-    return [flatten(waa * density_dofarray, actx)
+    return [cast("Array", flatten(waa * density_dofarray, actx))
             for density_dofarray in density_dofarrays]
 
 # }}}
@@ -1065,7 +1092,7 @@ def get_flat_strengths_from_densities(
 __all__ = [
         "QBXLayerPotentialSource",
         "QBXTargetAssociationFailedError",
-        "QBXExpansionFactory",
+        "QBXDefaultExpansionFactory",
         "ExpansionFactoryBase",
         "LocalExpansionBase",
         ]

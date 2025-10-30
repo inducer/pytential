@@ -69,6 +69,10 @@ GeometryLike = TargetBase | PotentialSource | Discretization
 AutoWhereLike = DOFDescriptorLike | tuple[DOFDescriptorLike, DOFDescriptorLike]
 
 
+class NotADiscretizationError(TypeError):
+    pass
+
+
 def _is_valid_identifier(name: str) -> bool:
     import keyword
     return name.isidentifier() and not keyword.iskeyword(name)
@@ -120,6 +124,7 @@ class GeometryCollection:
         target geometry.
 
     .. automethod:: get_geometry
+    .. automethod:: get_target_or_discretization
     .. automethod:: get_discretization
     .. automethod:: get_connection
 
@@ -339,37 +344,67 @@ class GeometryCollection:
         from pytential.symbolic.dof_connection import connection_from_dds
         return connection_from_dds(self, from_dd, to_dd)
 
-    def get_discretization(
+    def _get_discretization_or_geometry(
             self, geometry: GeometryId,
             discr_stage: DiscretizationStage | None = None
             ) -> GeometryLike:
-        """Get the geometry or discretization in the collection.
-
+        """
         If a specific QBX stage discretization is requested, refinement is
         performed on demand and cached for subsequent calls.
-
-        :arg geometry: the identifier of the geometry in the collection.
-        :arg discr_stage: if the geometry is a
-            :class:`~pytential.source.LayerPotentialSourceBase`, this denotes
-            the QBX stage of the returned discretization. Can be one of
-            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1` (default),
-            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE2` or
-            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
-
-        :returns: a geometry object in the collection or a
-            :class:`~meshmode.discretization.Discretization` corresponding to
-            *discr_stage*.
         """
         if discr_stage is None:
             discr_stage = sym.QBX_SOURCE_STAGE1
-        discr = self.get_geometry(geometry)
+        result = self.get_geometry(geometry)
 
-        if isinstance(discr, QBXLayerPotentialSource):
+        if isinstance(result, QBXLayerPotentialSource):
             return self._get_qbx_discretization(geometry, discr_stage)
-        elif isinstance(discr, LayerPotentialSourceBase):
-            return discr.density_discr
+        elif isinstance(result, LayerPotentialSourceBase):
+            return result.density_discr
         else:
-            return discr
+            return result
+
+    def get_source_or_discretization(
+            self, geometry: GeometryId,
+            discr_stage: DiscretizationStage | None = None
+            ) -> Discretization | PointPotentialSource:
+        """
+        If a specific QBX stage discretization is requested, refinement is
+        performed on demand and cached for subsequent calls.
+        """
+        result = self._get_discretization_or_geometry(geometry, discr_stage)
+
+        if not isinstance(result, (Discretization, PointPotentialSource)):
+            raise TypeError(f"'{geometry}' denotes neither target "
+                            "nor discretization")
+        return result
+
+    def get_target_or_discretization(
+            self, geometry: GeometryId,
+            discr_stage: DiscretizationStage | None = None
+            ) -> Discretization | TargetBase | PointPotentialSource:
+        """
+        If a specific QBX stage discretization is requested, refinement is
+        performed on demand and cached for subsequent calls.
+        """
+        result = self._get_discretization_or_geometry(geometry, discr_stage)
+
+        if not isinstance(result, (Discretization, TargetBase, PointPotentialSource)):
+            raise TypeError(f"'{geometry}' denotes neither target "
+                            "nor discretization")
+        return result
+
+    def get_discretization(
+            self, geometry: GeometryId,
+            discr_stage: DiscretizationStage | None = None
+            ) -> Discretization:
+        """
+        If a specific QBX stage discretization is requested, refinement is
+        performed on demand and cached for subsequent calls.
+        """
+        result = self.get_target_or_discretization(geometry, discr_stage)
+        if not isinstance(result, Discretization):
+            raise NotADiscretizationError(str(geometry))
+        return result
 
     def get_geometry(self, geometry: GeometryId) -> GeometryLike:
         """

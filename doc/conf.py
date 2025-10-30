@@ -56,6 +56,7 @@ sphinxconfig_missing_reference_aliases = {
     "np.integer": "obj:numpy.integer",
     "np.floating": "obj:numpy.floating",
     "np.inexact": "obj:numpy.inexact",
+    "np.dtype": "class:numpy.dtype",
     "np.random.Generator": "class:numpy.random.Generator",
     # pytools
     "ObjectArrayND": "obj:pytools.obj_array.ObjectArrayND",
@@ -66,6 +67,7 @@ sphinxconfig_missing_reference_aliases = {
     "obj_array.ObjectArray2D": "obj:pytools.obj_array.ObjectArray2D",
     # pyopencl
     "WaitList": "obj:pyopencl.WaitList",
+    "cl_array.Array": "obj:pyopencl.array.Array",
     # pymbolic
     "ArithmeticExpression": "obj:pymbolic.ArithmeticExpression",
     "Expression": "obj:pymbolic.typing.Expression",
@@ -96,6 +98,7 @@ sphinxconfig_missing_reference_aliases = {
     "HelmholtzKernel": "class:sumpy.kernel.HelmholtzKernel",
     "P2P": "class:sumpy.p2p.P2P",
     "P2PBase": "class:sumpy.p2p.P2PBase",
+    "FMMLevelToOrder": "class:sumpy.fmm.FMMLevelToOrder",
     # pytential
     "DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "DOFGranularity": "data:pytential.symbolic.dof_desc.DOFGranularity",

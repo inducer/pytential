@@ -68,8 +68,8 @@ def test_geometry(actx_factory):
     discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    import pytential.symbolic.primitives as prim
-    area_sym = prim.integral(2, 1, 1)
+    import pytential.symbolic.primitives as pp
+    area_sym = pp.integral(2, 1, 1)
 
     area = bind(discr, area_sym)(actx)
 
