@@ -64,7 +64,7 @@ from pymbolic.mapper.stringifier import (
 )
 from pymbolic.typing import Expression
 
-import pytential.symbolic.primitives as prim
+import pytential.symbolic.primitives as pp
 
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ if TYPE_CHECKING:
     )
 
 
-def rec_int_g_arguments(mapper: IdentityMapper | EvaluationRewriter, expr: prim.IntG):
+def rec_int_g_arguments(mapper: IdentityMapper | EvaluationRewriter, expr: pp.IntG):
     densities = [mapper.rec_arith(d) for d in expr.densities]
     kernel_arguments = {
             name: componentwise(mapper.rec_arith, arg)
@@ -101,7 +101,7 @@ def rec_int_g_arguments(mapper: IdentityMapper | EvaluationRewriter, expr: prim.
 
 class IdentityMapper(IdentityMapperBase[[]]):
     def _map_nodal_red(self,
-                expr: prim.NodeSum | prim.NodeMax | prim.NodeMin
+                expr: pp.NodeSum | pp.NodeMax | pp.NodeMin
             ) -> ArithmeticExpression:
         operand = self.rec_arith(expr.operand)
         if operand is expr.operand:
@@ -109,12 +109,12 @@ class IdentityMapper(IdentityMapperBase[[]]):
 
         return type(expr)(operand)
 
-    map_node_sum: Callable[[Self, prim.NodeSum], ArithmeticExpression] = _map_nodal_red
-    map_node_max: Callable[[Self, prim.NodeMax], ArithmeticExpression] = _map_nodal_red
-    map_node_min: Callable[[Self, prim.NodeMin], ArithmeticExpression] = _map_nodal_red
+    map_node_sum: Callable[[Self, pp.NodeSum], ArithmeticExpression] = _map_nodal_red
+    map_node_max: Callable[[Self, pp.NodeMax], ArithmeticExpression] = _map_nodal_red
+    map_node_min: Callable[[Self, pp.NodeMin], ArithmeticExpression] = _map_nodal_red
 
     def _map_elwise_red(self,
-                expr: prim.ElementwiseSum | prim.ElementwiseMin | prim.ElementwiseMax
+                expr: pp.ElementwiseSum | pp.ElementwiseMin | pp.ElementwiseMax
             ) -> ArithmeticExpression:
         operand = self.rec_arith(expr.operand)
         if operand is expr.operand:
@@ -123,14 +123,14 @@ class IdentityMapper(IdentityMapperBase[[]]):
         return type(expr)(operand, expr.dofdesc)
 
     map_elementwise_sum: \
-         Callable[[Self, prim.ElementwiseSum], ArithmeticExpression] = _map_elwise_red
+         Callable[[Self, pp.ElementwiseSum], ArithmeticExpression] = _map_elwise_red
     map_elementwise_min: \
-         Callable[[Self, prim.ElementwiseMin], ArithmeticExpression] = _map_elwise_red
+         Callable[[Self, pp.ElementwiseMin], ArithmeticExpression] = _map_elwise_red
     map_elementwise_max: \
-         Callable[[Self, prim.ElementwiseMax], ArithmeticExpression] = _map_elwise_red
+         Callable[[Self, pp.ElementwiseMax], ArithmeticExpression] = _map_elwise_red
 
     def map_num_reference_derivative(self,
-                expr: prim.NumReferenceDerivative
+                expr: pp.NumReferenceDerivative
             ) -> ArithmeticExpression:
         operand = self.rec_arith(expr.operand)
         if operand is expr.operand:
@@ -141,32 +141,32 @@ class IdentityMapper(IdentityMapperBase[[]]):
     # {{{ childless -- no need to rebuild
 
     def _map_childless(self,
-                expr: prim.SpatialConstant
-                    | prim.Ones
-                    | prim.QWeight
-                    | prim.NodeCoordinateComponent
-                    | prim.IsShapeClass
-                    | prim.ErrorExpression,
+                expr: pp.SpatialConstant
+                    | pp.Ones
+                    | pp.QWeight
+                    | pp.NodeCoordinateComponent
+                    | pp.IsShapeClass
+                    | pp.ErrorExpression,
            ) -> ArithmeticExpression:
         return expr
 
     map_spatial_constant: \
-        Callable[[Self, prim.SpatialConstant], ArithmeticExpression] = _map_childless
+        Callable[[Self, pp.SpatialConstant], ArithmeticExpression] = _map_childless
     map_ones: \
-        Callable[[Self, prim.Ones], ArithmeticExpression] = _map_childless
+        Callable[[Self, pp.Ones], ArithmeticExpression] = _map_childless
     map_q_weight: \
-        Callable[[Self, prim.QWeight], ArithmeticExpression] = _map_childless
+        Callable[[Self, pp.QWeight], ArithmeticExpression] = _map_childless
     map_node_coordinate_component: \
-        Callable[[Self, prim.NodeCoordinateComponent],
+        Callable[[Self, pp.NodeCoordinateComponent],
         ArithmeticExpression] = _map_childless
     map_is_shape_class: \
-        Callable[[Self, prim.IsShapeClass], ArithmeticExpression] = _map_childless
+        Callable[[Self, pp.IsShapeClass], ArithmeticExpression] = _map_childless
     map_error_expression: \
-        Callable[[Self, prim.ErrorExpression], ArithmeticExpression] = _map_childless
+        Callable[[Self, pp.ErrorExpression], ArithmeticExpression] = _map_childless
 
     # }}}
 
-    def map_inverse(self, expr: prim.IterativeInverse):
+    def map_inverse(self, expr: pp.IterativeInverse):
         return type(expr)(
                 # don't recurse into expression--it is a separate world that
                 # will be processed once it's evaluated.
@@ -177,14 +177,14 @@ class IdentityMapper(IdentityMapperBase[[]]):
                     for name, name_expr in expr.extra_vars.items()},
                 expr.dofdesc)
 
-    def map_int_g(self, expr: prim.IntG) -> ArithmeticExpression:
+    def map_int_g(self, expr: pp.IntG) -> ArithmeticExpression:
         densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
         if not changed:
             return expr
 
         return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
-    def map_interpolation(self, expr: prim.Interpolation):
+    def map_interpolation(self, expr: pp.Interpolation):
         operand = self.rec_arith(expr.operand)
         if operand is expr.operand:
             return expr
@@ -210,41 +210,44 @@ class CachedIdentityMapper(CachedMapper[Expression, []], IdentityMapper):
 
 class CombineMapper(CombineMapperBase[ResultT, []]):
     def _map_with_operand(self, expr:
-                prim.NodeSum
-                | prim.NodeMin
-                | prim.NodeMax
-                | prim.NumReferenceDerivative
-                | prim.ElementwiseSum
-                | prim.ElementwiseMin
-                | prim.ElementwiseMax
-                | prim.Interpolation
+                pp.NodeSum
+                | pp.NodeMin
+                | pp.NodeMax
+                | pp.NumReferenceDerivative
+                | pp.ElementwiseSum
+                | pp.ElementwiseMin
+                | pp.ElementwiseMax
+                | pp.Interpolation
             ):
         return self.rec(expr.operand)
 
-    map_node_sum: Callable[[Self, prim.NodeSum], ResultT] = _map_with_operand
-    map_node_max: Callable[[Self, prim.NodeMax], ResultT] = _map_with_operand
-    map_node_min: Callable[[Self, prim.NodeMax], ResultT] = _map_with_operand
+    map_node_sum: Callable[[Self, pp.NodeSum], ResultT] = _map_with_operand
+    map_node_max: Callable[[Self, pp.NodeMax], ResultT] = _map_with_operand
+    map_node_min: Callable[[Self, pp.NodeMax], ResultT] = _map_with_operand
     map_num_reference_derivative: \
-        Callable[[Self, prim.NumReferenceDerivative], ResultT] = _map_with_operand
+        Callable[[Self, pp.NumReferenceDerivative], ResultT] = _map_with_operand
     map_elementwise_sum: \
-        Callable[[Self, prim.ElementwiseSum], ResultT] = _map_with_operand
+        Callable[[Self, pp.ElementwiseSum], ResultT] = _map_with_operand
     map_elementwise_min: \
-        Callable[[Self, prim.ElementwiseMin], ResultT] = _map_with_operand
+        Callable[[Self, pp.ElementwiseMin], ResultT] = _map_with_operand
     map_elementwise_max: \
-        Callable[[Self, prim.ElementwiseMax], ResultT] = _map_with_operand
-    map_interpolation: Callable[[Self, prim.Interpolation], ResultT] = _map_with_operand
+        Callable[[Self, pp.ElementwiseMax], ResultT] = _map_with_operand
+    map_interpolation: Callable[[Self, pp.Interpolation], ResultT] = _map_with_operand
 
-    def map_spatial_constant(self, expr: prim.SpatialConstant, /) -> ResultT:
+    def map_interleave(self, expr: pp.Interleave):
+        return self.combine([self.rec(expr.operand_1), self.rec(expr.operand_2)])
+
+    def map_spatial_constant(self, expr: pp.SpatialConstant, /) -> ResultT:
         raise NotImplementedError()
 
-    def map_int_g(self, expr: prim.IntG) -> ResultT:
+    def map_int_g(self, expr: pp.IntG) -> ResultT:
         from pytential.symbolic.primitives import hashable_kernel_args
         return self.combine(
                 [self.rec(density) for density in expr.densities]
                 + [self.rec(arg_expr)
                     for _, arg_expr in hashable_kernel_args(expr.kernel_arguments)])
 
-    def map_inverse(self, expr: prim.IterativeInverse) -> ResultT:
+    def map_inverse(self, expr: pp.IterativeInverse) -> ResultT:
         return self.combine([
             self.rec(expr.rhs),
             *(self.rec(name_expr) for name_expr in expr.extra_vars.values())
@@ -257,33 +260,33 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
 
 class Collector(CollectorBase[CollectedT, []], CombineMapper[Set[CollectedT]]):
     def _map_leaf(self,
-                expr: prim.Ones
-                    | prim.ErrorExpression
-                    | prim.IsShapeClass
-                    | prim.NodeCoordinateComponent
-                    | prim.QWeight
-                    | prim.SpatialConstant
+                expr: pp.Ones
+                    | pp.ErrorExpression
+                    | pp.IsShapeClass
+                    | pp.NodeCoordinateComponent
+                    | pp.QWeight
+                    | pp.SpatialConstant
             ) -> Set[CollectedT]:
         return set()
 
     map_ones: \
-        Callable[[Self, prim.Ones], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.Ones], Set[CollectedT]] = _map_leaf
     map_is_shape_class: \
-        Callable[[Self, prim.IsShapeClass], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.IsShapeClass], Set[CollectedT]] = _map_leaf
     map_error_expression: \
-        Callable[[Self, prim.ErrorExpression], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.ErrorExpression], Set[CollectedT]] = _map_leaf
     map_node_coordinate_component: \
-        Callable[[Self, prim.NodeCoordinateComponent], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.NodeCoordinateComponent], Set[CollectedT]] = _map_leaf
     map_q_weight: \
-        Callable[[Self, prim.QWeight], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.QWeight], Set[CollectedT]] = _map_leaf
     map_spatial_constant: \
-        Callable[[Self, prim.SpatialConstant], Set[CollectedT]] = _map_leaf
+        Callable[[Self, pp.SpatialConstant], Set[CollectedT]] = _map_leaf
 
 
-class OperatorCollector(Collector[prim.IntG]):
+class OperatorCollector(Collector[pp.IntG]):
     @override
-    def map_int_g(self, expr: prim.IntG):
-        return {expr} | Collector[prim.IntG].map_int_g(self, expr)
+    def map_int_g(self, expr: pp.IntG):
+        return {expr} | Collector[pp.IntG].map_int_g(self, expr)
 
 
 class DependencyMapper(DependencyMapperBase[[]], Collector[Dependency]):
@@ -335,17 +338,17 @@ class EvaluationRewriter(EvaluationRewriterBase):
     map_node_max = map_node_sum
     map_node_min = map_node_sum
 
-    def map_node_coordinate_component(self, expr: prim.NodeCoordinateComponent):
+    def map_node_coordinate_component(self, expr: pp.NodeCoordinateComponent):
         return expr
 
-    def map_num_reference_derivative(self, expr: prim.NumReferenceDerivative):
+    def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         operand = self.rec(expr.operand)
         if operand is expr.operand:
             return expr
 
         return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
         if not changed:
             return expr
@@ -358,7 +361,7 @@ class EvaluationRewriter(EvaluationRewriterBase):
         if child is expr.child:
             return expr
 
-        return prim.cse(
+        return pp.cse(
                 child,
                 expr.prefix,
                 expr.scope)
@@ -388,11 +391,11 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                 default_target: DOFDescriptorLike,
                 default_source: DOFDescriptorLike
             ):
-        self.default_source: DOFDescriptor = prim.as_dofdesc(default_source)
-        self.default_target: DOFDescriptor = prim.as_dofdesc(default_target)
+        self.default_source: DOFDescriptor = pp.as_dofdesc(default_source)
+        self.default_target: DOFDescriptor = pp.as_dofdesc(default_target)
 
     @override
-    def map_common_subexpression_uncached(self, expr: prim.CommonSubexpression):
+    def map_common_subexpression_uncached(self, expr: p.CommonSubexpression):
         return IdentityMapper.map_common_subexpression(self, expr)
 
     def _default_dofdesc(self, dofdesc: DOFDescriptor):
@@ -402,31 +405,31 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
             #   only `QBXLayerPotentialSource` has stages.
             #   * if some stage is present, assume it's a source
             if (dofdesc.discr_stage is None
-                    and dofdesc.granularity == prim.GRANULARITY_NODE):
+                    and dofdesc.granularity == pp.GRANULARITY_NODE):
                 dofdesc = dofdesc.copy(geometry=self.default_target)
             else:
                 dofdesc = dofdesc.copy(geometry=self.default_source)
-        elif dofdesc.geometry is prim.DEFAULT_SOURCE:
+        elif dofdesc.geometry is pp.DEFAULT_SOURCE:
             dofdesc = dofdesc.copy(geometry=self.default_source)
-        elif dofdesc.geometry is prim.DEFAULT_TARGET:
+        elif dofdesc.geometry is pp.DEFAULT_TARGET:
             dofdesc = dofdesc.copy(geometry=self.default_target)
 
         return dofdesc
 
     @override
-    def map_ones(self, expr: prim.Ones | prim.QWeight):
+    def map_ones(self, expr: pp.Ones | pp.QWeight):
         return type(expr)(dofdesc=self._default_dofdesc(expr.dofdesc))
 
     map_q_weight = map_ones
 
     @override
-    def map_node_coordinate_component(self, expr: prim.NodeCoordinateComponent):
+    def map_node_coordinate_component(self, expr: pp.NodeCoordinateComponent):
         return type(expr)(
                 expr.ambient_axis,
                 self._default_dofdesc(expr.dofdesc))
 
     @override
-    def map_num_reference_derivative(self, expr: prim.NumReferenceDerivative):
+    def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         return type(expr)(
                 expr.ref_axes,
                 self.rec_arith(expr.operand),
@@ -434,7 +437,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
 
     @override
     def map_elementwise_sum(self,
-                expr: prim.ElementwiseSum | prim.ElementwiseMin | prim.ElementwiseMax
+                expr: pp.ElementwiseSum | pp.ElementwiseMin | pp.ElementwiseMax
             ):
         return type(expr)(
                 self.rec_arith(expr.operand),
@@ -444,7 +447,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     map_elementwise_max = map_elementwise_sum
 
     @override
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         source = expr.source
         if source.geometry is None:
             source = source.copy(geometry=self.default_source)
@@ -464,7 +467,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                     })
 
     @override
-    def map_inverse(self, expr: prim.IterativeInverse):
+    def map_inverse(self, expr: pp.IterativeInverse):
         # NOTE: this doesn't use `_default_dofdesc` because it should be always
         # evaluated at the targets (ignores `discr_stage`)
         dofdesc = expr.dofdesc
@@ -482,8 +485,7 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                 dofdesc)
 
     @override
-    @override
-    def map_interpolation(self, expr: prim.Interpolation):
+    def map_interpolation(self, expr: pp.Interpolation):
         from_dd = expr.from_dd
         if from_dd.geometry is None:
             from_dd = from_dd.copy(geometry=self.default_source)
@@ -492,14 +494,14 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
         if to_dd.geometry is None:
             to_dd = to_dd.copy(geometry=self.default_source)
 
-        return type(expr)(from_dd, to_dd, self.operand_rec(expr.operand))
+        return type(expr)(from_dd, to_dd, self.rec_arith(expr.operand))
 
     @override
-    def map_is_shape_class(self, expr: prim.IsShapeClass):
+    def map_is_shape_class(self, expr: pp.IsShapeClass):
         return type(expr)(expr.shape, self._default_dofdesc(expr.dofdesc))
 
     @override
-    def map_error_expression(self, expr: prim.ErrorExpression):
+    def map_error_expression(self, expr: pp.ErrorExpression):
         return expr
 
     def operand_rec(self, expr, /):
@@ -544,9 +546,9 @@ class DiscretizationStageTagger(IdentityMapper):
     """
 
     def __init__(self, discr_stage):
-        if not (discr_stage == prim.QBX_SOURCE_STAGE1
-                or discr_stage == prim.QBX_SOURCE_STAGE2
-                or discr_stage == prim.QBX_SOURCE_QUAD_STAGE2):
+        if not (discr_stage == pp.QBX_SOURCE_STAGE1
+                or discr_stage == pp.QBX_SOURCE_STAGE2
+                or discr_stage == pp.QBX_SOURCE_QUAD_STAGE2):
             raise ValueError(f'unknown discr stage tag: "{discr_stage}"')
 
         self.discr_stage = discr_stage
@@ -593,7 +595,7 @@ class _IsSptiallyVaryingMapper(CombineMapper[bool]):
         return True
 
     @override
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         return True
 
 
@@ -645,7 +647,7 @@ class DerivativeTaker(Mapper[ArithmeticExpression, []]):
         from pytools import product
         return product(const) * self.rec(nonconst[0])
 
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         from sumpy.kernel import AxisTargetDerivative
 
         target_kernel = AxisTargetDerivative(self.ambient_axis, expr.target_kernel)
@@ -690,7 +692,7 @@ class UnregularizedPreprocessor(IdentityMapper):
     places: GeometryCollection
 
     @override
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         if expr.qbx_forced_limit in (-1, 1):
             raise ValueError(
                     "Unregularized evaluation does not support one-sided limits")
@@ -737,14 +739,14 @@ class InterpolationPreprocessor(IdentityMapper):
             :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage`.
         """
         self.places = places
-        self.from_discr_stage = (prim.QBX_SOURCE_STAGE2
+        self.from_discr_stage = (pp.QBX_SOURCE_STAGE2
                 if from_discr_stage is None else from_discr_stage)
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     @override
-    def map_num_reference_derivative(self, expr: prim.NumReferenceDerivative):
+    def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         to_dd = expr.dofdesc
-        if to_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
+        if to_dd.discr_stage != pp.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
@@ -753,10 +755,10 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
-        return prim.interpolate(self.rec(self.tagger(expr)), from_dd, to_dd)
+        return pp.interpolate(self.rec_arith(self.tagger(expr)), from_dd, to_dd)
 
     @override
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         if expr.target.discr_stage is None:
             expr = replace(expr, target=expr.target.to_stage1())
 
@@ -771,13 +773,13 @@ class InterpolationPreprocessor(IdentityMapper):
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
         densities = tuple(
-            prim.interpolate(self.rec_arith(density), from_dd, to_dd)
+            pp.interpolate(self.rec_arith(density), from_dd, to_dd)
             for density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
         kernel_arguments = {
                 name: componentwise(
-                    lambda aexpr: prim.interpolate(
+                    lambda aexpr: pp.interpolate(
                         self.rec_arith(
                             self.tagger.rec_arith(aexpr)), from_dd, to_dd),
                     arg_expr)
@@ -800,7 +802,7 @@ class QBXPreprocessor(IdentityMapper):
     places: GeometryCollection
 
     @override
-    def map_int_g(self, expr: prim.IntG):
+    def map_int_g(self, expr: pp.IntG):
         if expr.source.geometry != self.geometry:
             return expr
 
@@ -855,15 +857,15 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ StringifyMapper
 
 def stringify_where(where: DOFDescriptorLike):
-    return str(prim.as_dofdesc(where))
+    return str(pp.as_dofdesc(where))
 
 
 class StringifyMapper(BaseStringifyMapper):
 
-    def map_ones(self, expr: prim.Ones, enclosing_prec: int):
+    def map_ones(self, expr: pp.Ones, enclosing_prec: int):
         return "Ones[%s]" % stringify_where(expr.dofdesc)
 
-    def map_inverse(self, expr: prim.IterativeInverse, enclosing_prec: int):
+    def map_inverse(self, expr: pp.IterativeInverse, enclosing_prec: int):
         return "Solve(%s = %s {%s})" % (
                 self.rec(expr.expression, PREC_NONE),
                 self.rec(expr.rhs, PREC_NONE),
@@ -877,38 +879,38 @@ class StringifyMapper(BaseStringifyMapper):
                 for name_expr in expr.extra_vars.values()),
                 set())
 
-    def map_elementwise_sum(self, expr: prim.ElementwiseSum, enclosing_prec: int):
+    def map_elementwise_sum(self, expr: pp.ElementwiseSum, enclosing_prec: int):
         return "ElwiseSum[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
-    def map_elementwise_min(self, expr: prim.ElementwiseMin, enclosing_prec: int):
+    def map_elementwise_min(self, expr: pp.ElementwiseMin, enclosing_prec: int):
         return "ElwiseMin[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
-    def map_elementwise_max(self, expr: prim.ElementwiseMax, enclosing_prec: int):
+    def map_elementwise_max(self, expr: pp.ElementwiseMax, enclosing_prec: int):
         return "ElwiseMax[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
-    def map_node_max(self, expr: prim.NodeMax, enclosing_prec: int):
+    def map_node_max(self, expr: pp.NodeMax, enclosing_prec: int):
         return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
 
-    def map_node_min(self, expr: prim.NodeMin, enclosing_prec: int):
+    def map_node_min(self, expr: pp.NodeMin, enclosing_prec: int):
         return "NodeMin(%s)" % self.rec(expr.operand, PREC_NONE)
 
-    def map_node_sum(self, expr: prim.NodeSum, enclosing_prec: int):
+    def map_node_sum(self, expr: pp.NodeSum, enclosing_prec: int):
         return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_node_coordinate_component(self,
-                expr: prim.NodeCoordinateComponent,
+                expr: pp.NodeCoordinateComponent,
                 enclosing_prec: int):
         return "x%d[%s]" % (expr.ambient_axis,
                 stringify_where(expr.dofdesc))
 
     def map_num_reference_derivative(self,
-                expr: prim.NumReferenceDerivative,
+                expr: pp.NumReferenceDerivative,
                 enclosing_prec: int):
         diff_op = " ".join(
                 "d/dr%d" % axis
@@ -927,7 +929,7 @@ class StringifyMapper(BaseStringifyMapper):
         else:
             return result
 
-    def map_q_weight(self, expr: prim.QWeight, enclosing_prec: int):
+    def map_q_weight(self, expr: pp.QWeight, enclosing_prec: int):
         return "w_quad[%s]" % stringify_where(expr.dofdesc)
 
     def _stringify_kernel_args(self, kernel_arguments):
@@ -938,7 +940,7 @@ class StringifyMapper(BaseStringifyMapper):
                     "{}: {}".format(name, self.rec(arg_expr, PREC_NONE))
                     for name, arg_expr in kernel_arguments.items())
 
-    def map_int_g(self, expr: prim.IntG, enclosing_prec: int):
+    def map_int_g(self, expr: pp.IntG, enclosing_prec: int):
         source_kernels_str = " + ".join([
             "{} * {}".format(self.rec(density, PREC_PRODUCT), source_kernel)
             for source_kernel, density in zip(
@@ -957,13 +959,13 @@ class StringifyMapper(BaseStringifyMapper):
                     expr.kernel_arguments),
                 kernel_str)
 
-    def map_interpolation(self, expr: prim.Interpolation, enclosing_prec: int):
+    def map_interpolation(self, expr: pp.Interpolation, enclosing_prec: int):
         return "Interp[{}->{}]({})".format(
                 stringify_where(expr.from_dd),
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
 
-    def map_is_shape_class(self, expr: prim.IsShapeClass, enclosing_prec: int):
+    def map_is_shape_class(self, expr: pp.IsShapeClass, enclosing_prec: int):
         return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),
                                         expr.shape.__name__)
 
