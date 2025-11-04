@@ -658,9 +658,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
         center_slice = actx.thaw(tree.sorted_target_ids[tree.qbx_user_center_slice])
         centers = [actx.thaw(axis)[center_slice] for axis in tree.sources]
         expansion_radii_by_center = bind(places,
-                sym.expansion_radii(ambient_dim,
-                    granularity=sym.GRANULARITY_CENTER,
-                    dofdesc=dofdesc)
+                sym.interleave(
+                        sym.expansion_radii(ambient_dim, dofdesc=dofdesc),
+                        sym.expansion_radii(ambient_dim, dofdesc=dofdesc),
+                        dofdesc
+                    )
+
                 )(actx)
         expansion_radii_by_center_with_tolerance = flatten(
                 expansion_radii_by_center * (1 + target_association_tolerance),

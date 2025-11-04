@@ -1279,7 +1279,12 @@ def _quad_resolution(
     to_dd = from_dd.copy(granularity=granularity)
 
     stretch = _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=from_dd)
-    return interpolate(stretch, from_dd, to_dd)
+    if granularity == GRANULARITY_CENTER:
+        intermediate_dd = from_dd.copy(granularity=GRANULARITY_NODE)
+        nodal = cse(interpolate(stretch, from_dd, intermediate_dd))
+        return interleave(nodal, nodal, intermediate_dd)
+    else:
+        return interpolate(stretch, from_dd, to_dd)
 
 
 def _source_danger_zone_radii(
@@ -1347,16 +1352,11 @@ def interleaved_expansion_centers(
             ambient_dim: int,
             dim: int | None = None,
             dofdesc: DOFDescriptorLike = None
-        ) -> tuple[ObjectArray1D[ArithmeticExpression],
-                   ObjectArray1D[ArithmeticExpression]]:
-    centers = (
-            expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
-            expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
-            )
-
-    source = as_dofdesc(dofdesc)
-    target = source.copy(granularity=GRANULARITY_CENTER)
-    return interpolate(centers, source, target)
+        ) -> ObjectArray1D[ArithmeticExpression]:
+    dofdesc = as_dofdesc(dofdesc)
+    c_neg = expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc)
+    c_pos = expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
+    return obj_array.vectorize_n_args(interleave, c_neg, c_pos, dofdesc)
 
 
 def h_max(
@@ -1473,7 +1473,33 @@ def interpolate(operand: ArithmeticExpression,
     if from_dd == to_dd:
         return operand
 
+    if to_dd.granularity == GRANULARITY_CENTER:
+        raise ValueError("use _interleave to attain GRANULARITY_CENTER")
+
     return Interpolation(from_dd, to_dd, operand)
+
+
+# purposefully undocumented, only for use in interleaved_centers.
+@expr_dataclass()
+class Interleave(ExpressionNode):
+    from_dd: DOFDescriptor
+    operand_1: ArithmeticExpression
+    operand_2: ArithmeticExpression
+
+    @property
+    def to_dd(self):
+        return self.from_dd.copy(granularity=GRANULARITY_CENTER)
+
+
+def interleave(
+            operand_1: ArithmeticExpression,
+            operand_2: ArithmeticExpression,
+            from_dd: DOFDescriptorLike = None) -> ArithmeticExpression:
+    dof_desc = as_dofdesc(from_dd)
+    if dof_desc.granularity != GRANULARITY_NODE:
+        raise ValueError("can only interleave from node granularity")
+
+    return Interleave(dof_desc, operand_1, operand_2)
 
 
 @expr_dataclass()

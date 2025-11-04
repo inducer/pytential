@@ -478,11 +478,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         from pytential import bind, sym
 
         actx = self._setup_actx
+        dd = self.source_dd.to_stage1()
         radii = bind(self.places,
-                    sym.expansion_radii(
-                        self.ambient_dim,
-                        granularity=sym.GRANULARITY_CENTER,
-                        dofdesc=self.source_dd.to_stage1()))(actx)
+                    sym.interleave(
+                            sym.expansion_radii(self.ambient_dim, dofdesc=dd),
+                            sym.expansion_radii(self.ambient_dim, dofdesc=dd),
+                            dd,
+                        ))(actx)
 
         return actx.freeze(flatten(radii, actx))
 
