@@ -1766,9 +1766,11 @@ class Derivative(DerivativeBase):
 
     @staticmethod
     @override
-    def resolve(expr: ArithmeticExpression) -> ArithmeticExpression:
+    def resolve(expr: OperandTc) -> OperandTc:
         from pytential.symbolic.mappers import DerivativeBinder
-        return DerivativeBinder()(expr)
+        # type-ignore because pymbolic can handle multivectors, but it doesn't
+        # advertise it.
+        return DerivativeBinder()(expr)  # pyright: ignore[reportReturnType, reportArgumentType]
 
 
 def dd_axis(axis: int, ambient_dim: int, operand: OperandTc) -> OperandTc:
@@ -1819,7 +1821,7 @@ def grad(ambient_dim: int,
     return from_numpy(grad_mv(ambient_dim, operand).as_vector())
 
 
-def laplace(ambient_dim: int, operand: OperandTc) -> OperandTc:
+def laplace(ambient_dim: int, operand: ArithmeticExpression) -> ArithmeticExpression:
     d = Derivative()
     nabla = d.dnabla(ambient_dim)
 
@@ -2250,7 +2252,7 @@ def S(
 
 def tangential_derivative(
             ambient_dim: int,
-            operand: Operand,
+            operand: ArithmeticExpression,
             dim: int | None = None,
             dofdesc: DOFDescriptorLike = None,
         ) -> MultiVector[ArithmeticExpression]:
@@ -2278,10 +2280,10 @@ def normal_derivative(
 
 def normal_second_derivative(
             ambient_dim: int,
-            operand: OperandTc,
+            operand: ArithmeticExpression,
             dim: int | None = None,
             dofdesc: DOFDescriptorLike = None,
-        ) -> OperandTc:
+        ) -> ArithmeticExpression:
     d = Derivative()
     n = normal(ambient_dim, dim, dofdesc)
     nabla = d.dnabla(ambient_dim)
@@ -2323,7 +2325,7 @@ def Sp(
 
 def Spp(
         kernel: Kernel,
-        density: OperandTc,
+        density: ArithmeticExpression,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike | None = None,
         target: DOFDescriptorLike | None = None,
@@ -2331,7 +2333,7 @@ def Spp(
         ambient_dim: int | None = None,
         dim: int | None = None,
         **kwargs: Operand,
-    ) -> OperandTc:
+    ) -> ArithmeticExpression:
     if qbx_forced_limit is _unspecified:
         warn("Not specifying 'qbx_forced_limit' on call to 'Spp' is deprecated. "
              "Choosing default '+1'.", stacklevel=2)

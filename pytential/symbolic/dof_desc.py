@@ -137,7 +137,7 @@ class DOFDescriptor:
     .. automethod:: to_quad_stage2
     """
 
-    geometry: GeometryId
+    geometry: GeometryId | None
     """An identifier for the geometry on which the DOFs exist. This can be a
     simple string or any other hashable identifier for the geometric object.
     The geometric objects are generally subclasses of

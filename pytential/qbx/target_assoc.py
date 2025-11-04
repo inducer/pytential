@@ -25,13 +25,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+from typing import TYPE_CHECKING
+
 import numpy as np
 from cgen import Enum
 
 from arraycontext import Array, PyOpenCLArrayContext, flatten
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import DeviceDataRecord, InlineBinarySearch
-from pytools import memoize_in, memoize_method
+from pytools import log_process, memoize_in, memoize_method
 
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE,
@@ -42,18 +45,17 @@ from pytential.qbx.utils import (
 )
 
 
-unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
-
-import logging
-from typing import TYPE_CHECKING
-
-from pytools import log_process
-
-
 if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
+
+    from boxtree import Tree
     from pyopencl import WaitList
 
     from pytential.collection import GeometryCollection
+    from pytential.symbolic.dof_desc import DOFDescriptor
+
+
+unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
 
 logger = logging.getLogger(__name__)
@@ -630,10 +632,17 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return actx.to_numpy(actx.np.all(found_target_close_to_element == 1))
 
     @log_process(logger)
-    def find_centers(self, places, dofdesc,
-            tree, peer_lists, target_status, target_flags, target_assoc,
-            target_association_tolerance,
-            debug, wait_for=None):
+    def find_centers(self,
+                places: GeometryCollection,
+                dofdesc: DOFDescriptor,
+                tree: Tree,
+                peer_lists,
+                target_status,
+                target_flags,
+                target_assoc,
+                target_association_tolerance,
+                debug: bool,
+                wait_for: WaitList = None):
         from pytential import bind, sym
         ambient_dim = places.ambient_dim
         actx = self.array_context
@@ -684,7 +693,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        def make_target_field(fill_val, dtype=tree.coord_dtype):
+        def make_target_field(fill_val, dtype: DTypeLike = tree.coord_dtype):
             arr = actx.np.zeros(tree.nqbxtargets, dtype)
             arr.fill(fill_val)
             wait_for.extend(arr.events)
