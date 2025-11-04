@@ -467,6 +467,9 @@ OperandTc = TypeVar("OperandTc",
 Side: TypeAlias = Literal[-1, 1]
 QBXForcedLimit: TypeAlias = Literal[-2, -1, +1, +2, "avg"] | None
 
+# This is what the (low-level) execution backend needs.
+LowLevelQBXForcedLimit: TypeAlias = Literal[-2, -1, +1, +2, 0]
+
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
 ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
 

@@ -200,12 +200,12 @@ class PotentialOutput:
     target_name: DOFDescriptor
     """A descriptor for the geometry used by the target kernel."""
 
+    # This removes "avg" compared to QBXForcedLimit
     qbx_forced_limit: Literal[-2, -1, +1, +2] | None
     """The type of the limiting process used by the QBX expansion (``+1`` if the
     output is required to originate from a QBX center on the "+" side of the
     boundary. ``-1`` for the other side, etc.).
     """
-    # This removes "avg" and None compared to QBXForcedLimit
 
 
 @dataclass(frozen=True, eq=False)
