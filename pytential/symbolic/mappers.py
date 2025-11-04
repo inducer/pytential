@@ -982,7 +982,7 @@ class StringifyMapper(BaseStringifyMapper):
         return "Interp[{}->{}]({})".format(
                 stringify_where(expr.from_dd),
                 stringify_where(expr.to_dd),
-                self.rec(expr.operand, PREC_PRODUCT))
+                self.rec(expr.operand, PREC_NONE))
 
     def map_interleave(self, expr: pp.Interleave, enclosing_prec: int):
         return "Interleave[{}]({}, {})".format(
@@ -990,6 +990,9 @@ class StringifyMapper(BaseStringifyMapper):
                 self.rec(expr.operand_1, PREC_NONE),
                 self.rec(expr.operand_2, PREC_NONE),
             )
+
+    def map_error_expression(self, expr: pp.ErrorExpression, enclosing_prec: int):
+        return f"Error({expr.message})"
 
     def map_is_shape_class(self, expr: pp.IsShapeClass, enclosing_prec: int):
         return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),
