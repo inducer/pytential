@@ -27,6 +27,7 @@ THE SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, cast, overload
 
 import numpy as np
@@ -35,6 +36,7 @@ from typing_extensions import override
 import pymbolic.primitives as p
 from arraycontext import (
     ArrayContext,
+    ArrayOrContainer,
     ArrayOrContainerOrScalar,
     PyOpenCLArrayContext,
     ScalarLike,
@@ -61,7 +63,7 @@ from pytential.symbolic.dof_desc import (
     DOFDescriptor,
     DOFDescriptorLike,
 )
-from pytential.symbolic.primitives import OperandTc
+from pytential.symbolic.primitives import Operand, OperandTc
 
 
 if TYPE_CHECKING:
@@ -69,6 +71,7 @@ if TYPE_CHECKING:
 
     import pymbolic.primitives as p
     import pyopencl as cl
+    from meshmode.discretization import Discretization
     from pymbolic import ArithmeticExpression
     from pymbolic.geometric_algebra import MultiVector
     from pytools.obj_array import ObjectArrayND
@@ -490,6 +493,7 @@ class CostModelMapper(EvaluationMapperBase):
 
 # {{{ scipy-like mat-vec op
 
+@dataclass(frozen=True)
 class MatVecOp:
     """A :class:`scipy.sparse.linalg.LinearOperator` work-alike.
     Exposes a :mod:`pytential` operator as a generic matrix operation,
@@ -500,17 +504,14 @@ class MatVecOp:
     .. automethod:: matvec
     """
 
-    def __init__(self,
-            bound_expr, actx: PyOpenCLArrayContext,
-            arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args):
-        self.bound_expr = bound_expr
-        self.array_context = actx
-        self.arg_name = arg_name
-        self.dtype = dtype
-        self.total_dofs = total_dofs
-        self.discrs = discrs
-        self.starts_and_ends = starts_and_ends
-        self.extra_args = extra_args
+    bound_expr: BoundExpression[Operand]
+    array_context: PyOpenCLArrayContext
+    arg_name: str
+    dtype: np.dtype[Any]
+    total_dofs: int
+    discrs: Sequence[Discretization]
+    starts_and_ends: Sequence[tuple[int, int]]
+    extra_args: Mapping[str, object]
 
     @property
     def shape(self):
@@ -535,7 +536,7 @@ class MatVecOp:
 
     def unflatten(self, ary):
         # Convert a flat version of *ary* into a structured version.
-        components = []
+        components: list[ArrayOrContainer] = []
         for discr, (start, end) in zip(self.discrs, self.starts_and_ends, strict=True):
             component = ary[start:end]
 
@@ -577,7 +578,7 @@ class MatVecOp:
         else:
             raise ValueError(f"unsupported input type: {type(x).__name__}")
 
-        args = self.extra_args.copy()
+        args = dict(self.extra_args)
         args[self.arg_name] = self.unflatten(x) if flat else x
         result = self.bound_expr(self.array_context, **args)
 
