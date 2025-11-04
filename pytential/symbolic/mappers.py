@@ -191,6 +191,14 @@ class IdentityMapper(IdentityMapperBase[[]]):
 
         return type(expr)(expr.from_dd, expr.to_dd, operand)
 
+    def map_interleave(self, expr: pp.Interleave):
+        operand_1 = self.rec_arith(expr.operand_1)
+        operand_2 = self.rec_arith(expr.operand_2)
+        if (operand_1 is expr.operand_1) and (operand_2 is expr.operand_2):
+            return expr
+
+        return type(expr)(expr.from_dd, operand_1, operand_2)
+
 
 class CachedIdentityMapper(CachedMapper[Expression, []], IdentityMapper):
     def __call__(self, expr):
@@ -495,6 +503,17 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
             to_dd = to_dd.copy(geometry=self.default_source)
 
         return type(expr)(from_dd, to_dd, self.rec_arith(expr.operand))
+
+    @override
+    def map_interleave(self, expr: pp.Interleave):
+        from_dd = expr.from_dd
+        if from_dd.geometry is None:
+            from_dd = from_dd.copy(geometry=self.default_source)
+
+        return type(expr)(
+                from_dd,
+                self.rec_arith(expr.operand_1),
+                self.rec_arith(expr.operand_2))
 
     @override
     def map_is_shape_class(self, expr: pp.IsShapeClass):
@@ -964,6 +983,13 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.from_dd),
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
+
+    def map_interleave(self, expr: pp.Interleave, enclosing_prec: int):
+        return "Interleave[{}]({}, {})".format(
+                stringify_where(expr.from_dd),
+                self.rec(expr.operand_1, PREC_NONE),
+                self.rec(expr.operand_2, PREC_NONE),
+            )
 
     def map_is_shape_class(self, expr: pp.IsShapeClass, enclosing_prec: int):
         return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),

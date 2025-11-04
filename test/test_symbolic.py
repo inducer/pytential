@@ -245,6 +245,10 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
             geometry=where.geometry,
             discr_stage=source_discr_stage,
             granularity=sym.GRANULARITY_NODE)
+    intermediate_dd = sym.DOFDescriptor(
+            geometry=where.geometry,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            granularity=sym.GRANULARITY_NODE)
     to_dd = sym.DOFDescriptor(
             geometry=where.geometry,
             discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
@@ -266,7 +270,11 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
     places = GeometryCollection(qbx, auto_where=where)
 
     sigma_sym = sym.var("sigma")
-    op_sym = sym.sin(sym.interpolate(sigma_sym, from_dd, to_dd))
+    if target_granularity == sym.GRANULARITY_CENTER:
+        op_sym = sym.cse(sym.interpolate(sigma_sym, from_dd, intermediate_dd))
+        op_sym = sym.sin(sym.interleave(op_sym, op_sym, intermediate_dd))
+    else:
+        op_sym = sym.sin(sym.interpolate(sigma_sym, from_dd, to_dd))
     bound_op = bind(places, op_sym, auto_where=where)
 
     def discr_and_nodes(stage):

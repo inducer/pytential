@@ -27,6 +27,7 @@ THE SOFTWARE.
 """
 
 import logging
+from typing import cast
 
 import numpy as np
 
@@ -324,12 +325,14 @@ class RefinerWrangler(TreeWranglerBase):
 
         from pytential import bind, sym
         center_danger_zone_radii = flatten(
-            bind(
+            cast("DOFArray", bind(
                 stage1_density_discr,
-                sym.interpolate(
+                sym.interleave(
+                    # These are CSE'd anyway
                     sym.expansion_radii(stage1_density_discr.ambient_dim),
-                    from_dd=None, to_dd=sym.GRANULARITY_CENTER)
-                )(self.array_context),
+                    sym.expansion_radii(stage1_density_discr.ambient_dim),
+                    )
+                )(self.array_context)),
             self.array_context)
 
         evt = knl(

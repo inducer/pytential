@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np  # noqa: F401
 from typing_extensions import override
@@ -65,99 +65,63 @@ Connections
 
 # {{{ granularity connections
 
-class CenterGranularityConnection(DiscretizationConnection):
-    """A :class:`~meshmode.discretization.connection.DiscretizationConnection`
-    used to transport from node data
-    (:class:`~pytential.symbolic.primitives.GRANULARITY_NODE`) to expansion
-    centers (:class:`~pytential.symbolic.primitives.GRANULARITY_CENTER`).
+def interleave_dof_arrays(
+            discr: Discretization,
+            ary1: DOFArray,
+            ary2: DOFArray
+        ) -> DOFArray:
+    if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
+        raise TypeError("non-array passed to connection")
 
-    .. attribute:: discr
-    .. automethod:: __call__
-    """
+    if ary1.array_context is not ary2.array_context:
+        raise ValueError("array context of the two arguments must match")
 
-    def __init__(self, discr: Discretization) -> None:
-        super().__init__(discr, discr, is_surjective=False)
+    if ary1.array_context is None:
+        raise ValueError("cannot transport frozen arrays")
 
-    def _interleave_dof_arrays(self, ary1: DOFArray, ary2: DOFArray) -> DOFArray:
-        if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
-            raise TypeError("non-array passed to connection")
+    actx = ary1.array_context
 
-        if ary1.array_context is not ary2.array_context:
-            raise ValueError("array context of the two arguments must match")
+    @memoize_in(actx, (interleave_dof_arrays, "interleave"))
+    def prg():
+        from arraycontext import make_loopy_program
+        t_unit = make_loopy_program(
+                "{[iel, idof]: 0 <= iel < nelements and 0 <= idof < nunit_dofs}",
+                """
+                result[iel, 2*idof] = ary1[iel, idof]
+                result[iel, 2*idof + 1] = ary2[iel, idof]
+                """, [
+                    lp.GlobalArg("ary1", shape="(nelements, nunit_dofs)"),
+                    lp.GlobalArg("ary2", shape="(nelements, nunit_dofs)"),
+                    lp.GlobalArg("result", shape="(nelements, 2*nunit_dofs)"),
+                    ...
+                    ],
+                name="interleave")
 
-        if ary1.array_context is None:
-            raise ValueError("cannot transport frozen arrays")
+        from meshmode.transform_metadata import (
+            ConcurrentDOFInameTag,
+            ConcurrentElementInameTag,
+        )
+        return lp.tag_inames(t_unit, {
+            "iel": ConcurrentElementInameTag(),
+            "idof": ConcurrentDOFInameTag()})
 
-        actx = ary1.array_context
+    results: list[Array] = []
+    for grp, subary1, subary2 in zip(discr.groups, ary1, ary2, strict=True):
+        if subary1.dtype != subary2.dtype:
+            raise ValueError("dtype mismatch in inputs: "
+                f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")
 
-        @memoize_in(actx, (CenterGranularityConnection, "interleave"))
-        def prg():
-            from arraycontext import make_loopy_program
-            t_unit = make_loopy_program(
-                    "{[iel, idof]: 0 <= iel < nelements and 0 <= idof < nunit_dofs}",
-                    """
-                    result[iel, 2*idof] = ary1[iel, idof]
-                    result[iel, 2*idof + 1] = ary2[iel, idof]
-                    """, [
-                        lp.GlobalArg("ary1", shape="(nelements, nunit_dofs)"),
-                        lp.GlobalArg("ary2", shape="(nelements, nunit_dofs)"),
-                        lp.GlobalArg("result", shape="(nelements, 2*nunit_dofs)"),
-                        ...
-                        ],
-                    name="interleave")
+        assert subary1.shape[0] == grp.nelements
+        assert subary1.shape == subary2.shape
 
-            from meshmode.transform_metadata import (
-                ConcurrentDOFInameTag,
-                ConcurrentElementInameTag,
-            )
-            return lp.tag_inames(t_unit, {
-                "iel": ConcurrentElementInameTag(),
-                "idof": ConcurrentDOFInameTag()})
+        result = actx.call_loopy(
+                prg(),
+                ary1=subary1, ary2=subary2,
+                nelements=subary1.shape[0],
+                nunit_dofs=subary1.shape[1])["result"]
+        results.append(result)
 
-        discr = self.from_discr
-        results: list[Array] = []
-        for grp, subary1, subary2 in zip(discr.groups, ary1, ary2, strict=True):
-            if subary1.dtype != subary2.dtype:
-                raise ValueError("dtype mismatch in inputs: "
-                    f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")
-
-            assert subary1.shape[0] == grp.nelements
-            assert subary1.shape == subary2.shape
-
-            result = actx.call_loopy(
-                    prg(),
-                    ary1=subary1, ary2=subary2,
-                    nelements=subary1.shape[0],
-                    nunit_dofs=subary1.shape[1])["result"]
-            results.append(result)
-
-        return DOFArray(actx, tuple(results))
-
-    @override
-    def __call__(self, arys: ArrayOrContainerOrScalarT) -> ArrayOrContainerOrScalarT:
-        r"""
-        :param arys: a pair of :class:`~arraycontext.ArrayContainer`-like
-            classes. Can also be a single element, in which case it is
-            interleaved with itself. This function vectorizes over all the
-            :class:`~meshmode.dof_array.DOFArray` leaves of the container.
-
-        :returns: an interleaved :class:`~arraycontext.ArrayContainer`.
-            If *arys* was a pair of arrays :math:`(x, y)`, they are
-            interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
-        """
-        if isinstance(arys, list | tuple):
-            ary1, ary2 = cast("Sequence[ArrayOrContainerOrScalarT]", arys)
-        else:
-            ary1, ary2 = arys, arys
-
-        if type(ary1) is not type(ary2):
-            raise TypeError("cannot interleave arrays of different types: "
-                    f"'{type(ary1).__name__}' and '{type(ary2).__name__}'")
-
-        from meshmode.dof_array import rec_multimap_dof_array_container
-        return rec_multimap_dof_array_container(
-                self._interleave_dof_arrays,
-                ary1, ary2)
+    return DOFArray(actx, tuple(results))
 
 # }}}
 
@@ -295,7 +259,7 @@ def connection_from_dds(places: GeometryCollection,
         if to_dd.granularity is dof_desc.GRANULARITY_NODE:
             pass
         elif to_dd.granularity is dof_desc.GRANULARITY_CENTER:
-            connections.append(CenterGranularityConnection(to_discr))
+            raise ValueError("use interleave() to attain GRANULARITY_CENTER")
         elif to_dd.granularity is dof_desc.GRANULARITY_ELEMENT:
             raise ValueError("Creating a connection to element granularity "
                     "is not allowed. Use Elementwise{Max,Min,Sum}.")

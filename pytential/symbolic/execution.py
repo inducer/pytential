@@ -296,6 +296,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
         else:
             raise TypeError(f"cannot interpolate '{type(operand).__name__}'")
 
+    def map_interleave(self, expr: pp.Interleave):
+        return interleave_dof_arrays(
+                        self.places.get_discretization(
+                                    expr.from_dd.geometry, expr.from_dd.discr_stage),
+                        cast("DOFArray", self.rec(expr.operand_1)),
+                        cast("DOFArray", self.rec(expr.operand_2)),
+                    )
+
     def map_common_subexpression(self, expr):
         if expr.scope == sym.cse_scope.EXPRESSION:
             cache = self.bound_expr._get_cache(EvaluationMapperCSECacheKey)
