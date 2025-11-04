@@ -64,7 +64,12 @@ if TYPE_CHECKING:
     from pytential.symbolic.compiler import ComputePotential, PotentialOutput
     from pytential.symbolic.dof_desc import DOFDescriptor, GeometryId
     from pytential.symbolic.execution import BoundExpression
-    from pytential.symbolic.primitives import IntG, Operand, QBXForcedLimit
+    from pytential.symbolic.primitives import (
+        IntG,
+        LowLevelQBXForcedLimit,
+        Operand,
+        QBXForcedLimit,
+    )
     from pytential.target import TargetOrDiscretization
 
 
@@ -647,7 +652,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         target_name_and_side_to_number: dict[GeometryId, int] = {}
         # list of tuples (discr, qbx_side)
         target_discrs_and_qbx_sides: list[
-                tuple[GeometryLike, Literal[-2, -1, +1, +2, "avg", 0]]
+                tuple[GeometryLike, LowLevelQBXForcedLimit]
             ] = []
 
         for o in insn.outputs:
@@ -906,11 +911,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from collections import defaultdict
         self_outputs: defaultdict[
-                tuple[DOFDescriptor, Literal[-1, -2, 0, 1, 2]],
+                tuple[DOFDescriptor, LowLevelQBXForcedLimit],
                 list[tuple[int, PotentialOutput]]
             ] = defaultdict(list)
         other_outputs: defaultdict[
-                tuple[DOFDescriptor, Literal[-1, -2, 0, 1, 2]],
+                tuple[DOFDescriptor, LowLevelQBXForcedLimit],
                 list[tuple[int, PotentialOutput]]
             ] = defaultdict(list)
 
