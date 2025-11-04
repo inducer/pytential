@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import override
 
+from pymbolic.geometric_algebra import componentwise
 from pytools import obj_array
 
 from pytential.symbolic.mappers import IdentityMapper, LocationTagger, OperatorCollector
@@ -226,11 +227,11 @@ class _LocationReplacer(LocationTagger):
     def map_int_g(self, expr: IntG) -> IntG:
         return type(expr)(
                 expr.target_kernel, expr.source_kernels,
-                densities=self.operand_rec(expr.densities),
+                densities=tuple(self.rec_arith(d) for d in expr.densities),
                 qbx_forced_limit=expr.qbx_forced_limit,
                 source=self.default_source, target=self.default_target,
                 kernel_arguments={
-                    name: self.operand_rec(arg_expr)
+                    name: componentwise(self.rec_arith, arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
                     }
                 )

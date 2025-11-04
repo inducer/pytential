@@ -252,7 +252,9 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
         from pytential.symbolic.primitives import hashable_kernel_args
         return self.combine(
                 [self.rec(density) for density in expr.densities]
-                + [self.rec(arg_expr)
+                # FIXME: The type-ignore is justified. This is fishy, but
+                # not urgently so.
+                + [self.rec(arg_expr)  # pyright: ignore[reportArgumentType]
                     for _, arg_expr in hashable_kernel_args(expr.kernel_arguments)])
 
     def map_inverse(self, expr: pp.IterativeInverse) -> ResultT:
@@ -523,9 +525,6 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     def map_error_expression(self, expr: pp.ErrorExpression):
         return expr
 
-    def operand_rec(self, expr, /):
-        return self.rec(expr)
-
 
 class ToTargetTagger(LocationTagger):
     """Descends into the expression tree, marking expressions based on two
@@ -774,7 +773,8 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
-        return pp.interpolate(self.rec_arith(self.tagger(expr)), from_dd, to_dd)
+        return pp.interpolate(
+                    self.rec_arith(self.tagger.rec_arith(expr)), from_dd, to_dd)
 
     @override
     def map_int_g(self, expr: pp.IntG):
@@ -994,6 +994,12 @@ class StringifyMapper(BaseStringifyMapper):
     def map_is_shape_class(self, expr: pp.IsShapeClass, enclosing_prec: int):
         return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),
                                         expr.shape.__name__)
+
+    @override
+    def __call__(self, expr: pp.Operand | Expression, enclosing_prec: int = 0) -> str:
+        # Multivectors and object arrays are allowed, but we don't choose to
+        # have that knowledge available in types in pymbolic.
+        return self.rec(expr, enclosing_prec)  # pyright: ignore[reportArgumentType]
 
 
 class PrettyStringifyMapper(
