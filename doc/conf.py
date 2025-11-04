@@ -75,7 +75,6 @@ sphinxconfig_missing_reference_aliases = {
     "Variable": "class:pymbolic.primitives.Variable",
     "prim.Subscript": "class:pymbolic.primitives.Subscript",
     "prim.Variable": "class:pymbolic.primitives.Variable",
-    "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
     # arraycontext
     "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
@@ -100,6 +99,7 @@ sphinxconfig_missing_reference_aliases = {
     "P2PBase": "class:sumpy.p2p.P2PBase",
     "FMMLevelToOrder": "class:sumpy.fmm.FMMLevelToOrder",
     # pytential
+    "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
     "DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "DOFGranularity": "data:pytential.symbolic.dof_desc.DOFGranularity",
     "DiscretizationStage": "data:pytential.symbolic.dof_desc.DiscretizationStage",
