@@ -75,6 +75,8 @@ sphinxconfig_missing_reference_aliases = {
     "Variable": "class:pymbolic.primitives.Variable",
     "prim.Subscript": "class:pymbolic.primitives.Subscript",
     "prim.Variable": "class:pymbolic.primitives.Variable",
+    "ArithmeticExpressionContainerTc":
+        "obj:pymbolic.typing.ArithmeticExpressionContainerTc",
     # arraycontext
     "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
