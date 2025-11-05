@@ -29,7 +29,7 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
@@ -46,7 +46,7 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 
 # {{{ test_matrix_cluster_index
 
-def test_matrix_cluster_index(actx_factory):
+def test_matrix_cluster_index(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     # {{{ setup

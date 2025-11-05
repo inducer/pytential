@@ -29,7 +29,7 @@ from dataclasses import dataclass
 import extra_int_eq_data as eid
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.dof_array import DOFArray
@@ -173,7 +173,11 @@ class YukawaBeltramiSolution(LaplaceBeltramiSolution):
         YukawaBeltramiOperator(3, precond="right"), YukawaBeltramiSolution(),
         marks=pytest.mark.slowtest),
     ])
-def test_beltrami_convergence(actx_factory, operator, solution, visualize=False):
+def test_beltrami_convergence(
+            actx_factory: ArrayContextFactory,
+            operator,
+            solution,
+            visualize=False):
     if operator.ambient_dim == 3:
         pytest.importorskip("scipy")
 

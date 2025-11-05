@@ -31,7 +31,7 @@ import logging
 import numpy as np
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from boxtree.constant_one import ConstantOneExpansionWrangler
 from boxtree.fmm import TreeIndependentDataForWrangler
 from meshmode import _acf  # noqa: F401
@@ -59,7 +59,7 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 
 # {{{ Compare the time and result of OpenCL implementation and Python implementation
 
-def test_compare_cl_and_py_cost_model(actx_factory):
+def test_compare_cl_and_py_cost_model(actx_factory: ArrayContextFactory):
     nelements = 3600
     target_order = 16
     fmm_order = 5
@@ -376,7 +376,11 @@ def test_timing_data_gathering(ctx_factory):
     (2, False, True),
     (3, False, True),
     (3, True, True)))
-def test_cost_model(actx_factory, dim, use_target_specific_qbx, per_box):
+def test_cost_model(
+            actx_factory: ArrayContextFactory,
+            dim,
+            use_target_specific_qbx,
+            per_box):
     """Test that cost model gathering can execute successfully."""
     actx = actx_factory()
 
@@ -422,7 +426,7 @@ def test_cost_model(actx_factory, dim, use_target_specific_qbx, per_box):
 
 # {{{ test cost model metadata gathering
 
-def test_cost_model_metadata_gathering(actx_factory):
+def test_cost_model_metadata_gathering(actx_factory: ArrayContextFactory):
     """Test that the cost model correctly gathers metadata."""
     actx = actx_factory()
 
@@ -690,7 +694,7 @@ class OpCountingTranslationCostModel:
         (3, False, True),
         (3, True, False),
         (3, True, True)))
-def test_cost_model_correctness(actx_factory, dim, off_surface,
+def test_cost_model_correctness(actx_factory: ArrayContextFactory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""
     actx = actx_factory()
@@ -797,7 +801,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
 
 # {{{ test order varying by level
 
-def test_cost_model_order_varying_by_level(actx_factory):
+def test_cost_model_order_varying_by_level(actx_factory: ArrayContextFactory):
     """For FMM order varying by level, this checks to ensure that the costs are
     different. The varying-level case should have larger cost.
     """

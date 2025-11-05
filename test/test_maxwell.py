@@ -29,7 +29,7 @@ from functools import partial
 import numpy as np
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.processing import find_bounding_box
@@ -39,12 +39,10 @@ from sumpy.visualization import make_field_plotter_from_bbox
 
 from pytential import bind, norm, sym
 from pytential.target import PointsTarget
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
-
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -220,7 +218,7 @@ class EHField:
     # tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(actx_factory, case,
+def test_pec_mfie_extinction(actx_factory: ArrayContextFactory, case,
         use_plane_wave=False, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior

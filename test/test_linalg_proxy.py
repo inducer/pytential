@@ -31,7 +31,12 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+    unflatten,
+)
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
@@ -194,7 +199,11 @@ PROXY_TEST_CASES = [
 
 @pytest.mark.parametrize("tree_kind", ["adaptive", None])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
-def test_partition_points(actx_factory, tree_kind, case, visualize=False):
+def test_partition_points(
+            actx_factory: ArrayContextFactory,
+            tree_kind,
+            case,
+            visualize=False):
     """Tests that the points are correctly partitioned."""
 
     if case.ambient_dim == 3 and tree_kind is None:
@@ -238,7 +247,7 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     ])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("proxy_radius_factor", [1.0, 1.1])
-def test_proxy_generator(actx_factory, case,
+def test_proxy_generator(actx_factory: ArrayContextFactory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
     """Tests that the proxies generated are all at the correct radius from the
@@ -306,7 +315,7 @@ def test_proxy_generator(actx_factory, case,
     ])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("proxy_radius_factor", [1, 1.1])
-def test_neighbor_points(actx_factory, case,
+def test_neighbor_points(actx_factory: ArrayContextFactory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the

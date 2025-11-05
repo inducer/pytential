@@ -30,7 +30,7 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
@@ -74,7 +74,7 @@ def test_gmres():
 
 # {{{ test_interpolatory_error_reporting
 
-def test_interpolatory_error_reporting(actx_factory):
+def test_interpolatory_error_reporting(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     h = 0.2
@@ -112,7 +112,7 @@ def test_interpolatory_error_reporting(actx_factory):
 
 # {{{ test_geometry_collection_caching
 
-def test_geometry_collection_caching(actx_factory):
+def test_geometry_collection_caching(actx_factory: ArrayContextFactory):
     # NOTE: checks that the on-demand caching works properly in
     # the `GeometryCollection`. This is done by constructing a few separated
     # spheres, putting a few `QBXLayerPotentialSource`s on them and requesting
@@ -249,7 +249,7 @@ def _add_geometry_to_collection(actx, places, geometry, dofdesc=None):
     assert _check_cache_state(new_places, extra_cse_prefixes, ())
 
 
-def test_add_geometry_to_collection(actx_factory):
+def test_add_geometry_to_collection(actx_factory: ArrayContextFactory):
     """
     Test case of `add_geometry_to_collection`. Verifies that
     * cse_scope.DISCRETIZATION caches stick around

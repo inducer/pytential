@@ -30,7 +30,11 @@ import extra_int_eq_data as eid
 import numpy as np
 import pytest
 
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+)
 from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization import Discretization
@@ -38,12 +42,10 @@ from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFac
 from pytools import obj_array
 
 from pytential import GeometryCollection, bind, sym
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
-
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -275,7 +277,10 @@ def run_exterior_stokes(actx_factory, *,
     2,
     pytest.param(3, marks=pytest.mark.slowtest)
     ])
-def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
+def test_exterior_stokes(
+            actx_factory: ArrayContextFactory,
+            ambient_dim,
+            visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -426,7 +431,10 @@ class StokesletIdentity:
     partial(eid.StarfishTestCase, resolutions=[16, 32, 64, 96, 128]),
     partial(eid.SpheroidTestCase, resolutions=[0, 1, 2]),
     ])
-def test_stokeslet_identity(actx_factory, cls, visualize=False):
+def test_stokeslet_identity(
+            actx_factory: ArrayContextFactory,
+            cls,
+            visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -485,7 +493,10 @@ class StressletIdentity:
     partial(eid.StarfishTestCase, resolutions=[16, 32, 64, 96, 128]),
     partial(eid.SpheroidTestCase, resolutions=[0, 1, 2]),
     ])
-def test_stresslet_identity(actx_factory, cls, visualize=False):
+def test_stresslet_identity(
+            actx_factory: ArrayContextFactory,
+            cls,
+            visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
