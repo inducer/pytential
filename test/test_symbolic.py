@@ -557,11 +557,17 @@ def test_mapper_dof_descriptor_replacer(op_name, k):
     from pytential.symbolic.mappers import ToTargetTagger
     source_dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
     target_dd = sym.as_dofdesc(sym.DEFAULT_TARGET)
-    tagged_expr = ToTargetTagger(source_dd, target_dd)(expr)
+    tagged_expr = ToTargetTagger(
+                        default_source=source_dd,
+                        default_target=target_dd
+                    )(expr)
 
     source_new_dd = sym.as_dofdesc("source")
     target_new_dd = sym.as_dofdesc("target")
-    replaced_expr = DOFDescriptorReplacer(source_new_dd, target_new_dd)(tagged_expr)
+    replaced_expr = DOFDescriptorReplacer(
+                        default_source=source_new_dd,
+                        default_target=target_new_dd
+                    )(tagged_expr)
 
     from testlib import DOFDescriptorCollector
     collector = DOFDescriptorCollector()

@@ -398,8 +398,9 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     """Used internally by :class:`ToTargetTagger`."""
 
     def __init__(self,
+                 *,  # These were flipped in some places, so let's make them kw-only.
+                default_source: DOFDescriptorLike,
                 default_target: DOFDescriptorLike,
-                default_source: DOFDescriptorLike
             ):
         self.default_source: DOFDescriptor = pp.as_dofdesc(default_source)
         self.default_target: DOFDescriptor = pp.as_dofdesc(default_target)
@@ -457,7 +458,14 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
     map_elementwise_max = map_elementwise_sum
 
     @override
-    def map_int_g(self, expr: pp.IntG):
+    def map_int_g(self,
+                expr: pp.IntG,
+                rec:
+                    Callable[[ArithmeticExpression], ArithmeticExpression]
+                    | None = None):
+        if rec is None:
+            rec = self.rec_arith
+
         source = expr.source
         if source.geometry is None:
             source = source.copy(geometry=self.default_source)
@@ -469,10 +477,10 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
         return type(expr)(
                 expr.target_kernel,
                 expr.source_kernels,
-                tuple(self.rec_arith(d) for d in expr.densities),
+                tuple(rec(d) for d in expr.densities),
                 expr.qbx_forced_limit, source, target,
                 kernel_arguments={
-                    name: componentwise(self.rec_arith, arg_expr)
+                    name: componentwise(rec, arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
                     })
 
@@ -540,11 +548,16 @@ class ToTargetTagger(LocationTagger):
     it is marked as operating on a source.
     """
 
-    def __init__(self, default_source, default_target):
-        LocationTagger.__init__(self, default_target,
-                                default_source=default_source)
-        self.rec = LocationTagger(default_source,
-                                          default_source=default_source)
+    @override
+    def map_int_g(self,
+                expr: pp.IntG,
+                rec:
+                    Callable[[ArithmeticExpression], ArithmeticExpression]
+                    | None = None):
+        ltag = LocationTagger(
+                              default_source=self.default_source,
+                              default_target=self.default_source)
+        return super().map_int_g(expr, rec=ltag.rec_arith)
 
 # }}}
 
