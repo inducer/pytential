@@ -34,7 +34,7 @@ from pytential.symbolic.mappers import IdentityMapper, LocationTagger, OperatorC
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from pymbolic.primitives import Product, Sum
     from pymbolic.typing import ArithmeticExpression, Scalar
@@ -83,7 +83,9 @@ def prepare_proxy_expr(
         # ensure all IntGs remove all the kernel derivatives
         expr = KernelTransformationRemover()(expr)
         # ensure all IntGs have their source and targets set
-        expr = DOFDescriptorReplacer(auto_where[0], auto_where[1])(expr)
+        expr = DOFDescriptorReplacer(
+                                     default_source=auto_where[0],
+                                     default_target=auto_where[1]).rec_arith(expr)
 
         return expr
 
@@ -224,7 +226,11 @@ class _LocationReplacer(LocationTagger):
         return self.default_target
 
     @override
-    def map_int_g(self, expr: IntG) -> IntG:
+    def map_int_g(self,
+                expr: IntG,
+                rec:
+                    Callable[[ArithmeticExpression], ArithmeticExpression]
+                    | None = None):
         return type(expr)(
                 expr.target_kernel, expr.source_kernels,
                 densities=tuple(self.rec_arith(d) for d in expr.densities),
@@ -251,15 +257,16 @@ class DOFDescriptorReplacer(_LocationReplacer):
 
     rec: _LocationReplacer
 
-    def __init__(self, source: DOFDescriptorLike, target: DOFDescriptorLike) -> None:
-        """
-        :param source: a descriptor for all expressions to be evaluated on
-            the source geometry.
-        :param target: a descriptor for all expressions to be evaluate on
-            the target geometry.
-        """
-        super().__init__(target, default_source=source)
-        self.rec = _LocationReplacer(source, default_source=source)
+    @override
+    def map_int_g(self,
+                expr: IntG,
+                rec:
+                    Callable[[ArithmeticExpression], ArithmeticExpression]
+                    | None = None):
+        ltag = _LocationReplacer(
+                              default_source=self.default_source,
+                              default_target=self.default_source)
+        return super().map_int_g(expr, rec=ltag.rec_arith)
 
 # }}}
 

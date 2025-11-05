@@ -664,7 +664,12 @@ def _prepare_expr(places: GeometryCollection,
     # type that I was too impatient to figure out in detail.
     expr = componentwise(flatten, expr)  # pyright: ignore[reportAssignmentType]
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
-    expr = ToTargetTagger(auto_source, auto_target)(expr)
+    expr = componentwise(  # pyright: ignore[reportAssignmentType]
+            ToTargetTagger(
+                    default_source=auto_source,
+                    default_target=auto_target
+                ).rec_arith,
+            expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in places.places.items():
