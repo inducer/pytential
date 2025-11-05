@@ -32,7 +32,7 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import pytest_generate_tests_for_array_contexts
+from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
@@ -107,7 +107,7 @@ def _plot_skeleton_with_proxies(name, sources, pxy, srcindex, sklindex):
     replace(SKELETONIZE_TEST_CASES[0], op_type="single", knl_class_or_helmholtz_k=5),
     replace(SKELETONIZE_TEST_CASES[0], op_type="double", knl_class_or_helmholtz_k=5),
     ])
-def test_skeletonize_symbolic(actx_factory, case, visualize=False):
+def test_skeletonize_symbolic(actx_factory: ArrayContextFactory, case, visualize=False):
     """Tests that the symbolic manipulations work for different kernels / IntGs.
     This tests that `prepare_expr` and `prepare_proxy_expr` can "clean" the
     given integral equations and that the result can be evaluated and skeletonized.
@@ -371,7 +371,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     # SKELETONIZE_TEST_CASES[0], SKELETONIZE_TEST_CASES[1],
     SKELETONIZE_TEST_CASES[2],
     ])
-def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
+def test_skeletonize_by_proxy(actx_factory: ArrayContextFactory, case, visualize=False):
     r"""Test single-level skeletonization accuracy. Checks that the error
     satisfies :math:`e < c \epsilon_{id}` for a fixed ID tolerance and an
     empirically determined (not too huge) :math:`c`.

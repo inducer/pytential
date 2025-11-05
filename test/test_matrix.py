@@ -34,18 +34,22 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+    unflatten,
+)
 from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
 from pytools import obj_array
 
 from pytential import GeometryCollection, bind, sym
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
@@ -74,7 +78,12 @@ def max_cluster_error(mat, clusters, mindex, p=None):
     partial(ellipse, 3),
     NArmedStarfish(5, 0.25)])
 @pytest.mark.parametrize("op_type", ["scalar_mixed", "vector"])
-def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
+def test_build_matrix(
+            actx_factory: ArrayContextFactory,
+            k,
+            curve_fn,
+            op_type,
+            visualize=False):
     """Checks that the matrix built with `symbolic.execution.build_matrix`
     gives the same (to tolerance) answer as a direct evaluation.
     """
@@ -189,7 +198,11 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
 
 @pytest.mark.parametrize("side", [+1, -1])
 @pytest.mark.parametrize("op_type", ["single", "double"])
-def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False):
+def test_build_matrix_conditioning(
+            actx_factory: ArrayContextFactory,
+            side,
+            op_type,
+            visualize=False):
     """Checks that :math:`I + K`, where :math:`K` is compact gives a
     well-conditioned operator when it should. For example, the exterior Laplace
     problem has a nullspace, so we check that and remove it.
@@ -297,8 +310,14 @@ def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False)
 @pytest.mark.parametrize("cluster_builder_type", ["qbx", "p2p"])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("op_type", ["scalar", "scalar_mixed"])
-def test_cluster_builder(actx_factory, ambient_dim,
-        cluster_builder_type, index_sparsity_factor, op_type, visualize=False):
+def test_cluster_builder(
+            actx_factory: ArrayContextFactory,
+            ambient_dim,
+
+                cluster_builder_type,
+                index_sparsity_factor,
+                op_type,
+                visualize=False):
     """Test that cluster builders and full matrix builders actually match."""
 
     actx = actx_factory()
@@ -414,8 +433,12 @@ def test_cluster_builder(actx_factory, ambient_dim,
     (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE2),
     # (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE1),
     ])
-def test_build_matrix_fixed_stage(actx_factory,
-        source_discr_stage, target_discr_stage, visualize=False):
+def test_build_matrix_fixed_stage(
+            actx_factory: ArrayContextFactory,
+
+                source_discr_stage,
+                target_discr_stage,
+                visualize=False):
     """Checks that the block builders match for difference stages."""
 
     actx = actx_factory()

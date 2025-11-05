@@ -37,7 +37,11 @@ from extra_curve_data import horseshoe
 from extra_int_eq_data import QuadSpheroidTestCase
 
 import meshmode.mesh.generation as mgen
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+)
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
@@ -281,7 +285,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
     ("20-to-1-ellipse", partial(mgen.ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_source_refinement_2d(actx_factory,
+def test_source_refinement_2d(actx_factory: ArrayContextFactory,
         curve_name, curve_f, nelements, visualize=False):
     helmholtz_k = 10
     order = 8
@@ -298,7 +302,7 @@ def test_source_refinement_2d(actx_factory,
     ("torus", partial(mgen.generate_torus, 3, 1, n_minor=10, n_major=7), 6),
     ("spheroid-quad", lambda order: QuadSpheroidTestCase().get_mesh(2, order), 4),
     ])
-def test_source_refinement_3d(actx_factory,
+def test_source_refinement_3d(actx_factory: ArrayContextFactory,
         surface_name, surface_f, order, visualize=False):
     mesh = surface_f(order=order)
     run_source_refinement_test(actx_factory, mesh, order,
@@ -310,8 +314,12 @@ def test_source_refinement_3d(actx_factory,
     ("20-to-1 ellipse", partial(mgen.ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_target_association(actx_factory, curve_name, curve_f, nelements,
-        visualize=False):
+def test_target_association(
+            actx_factory: ArrayContextFactory,
+            curve_name,
+            curve_f,
+            nelements,
+            visualize=False):
     actx = actx_factory()
 
     # {{{ generate lpot source
@@ -507,7 +515,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     # }}}
 
 
-def test_target_association_failure(actx_factory):
+def test_target_association_failure(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     # {{{ generate circle

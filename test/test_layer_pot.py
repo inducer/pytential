@@ -30,7 +30,11 @@ import numpy as np
 import pytest
 
 import meshmode.mesh.generation as mgen
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+)
 from meshmode import _acf  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from sumpy.visualization import FieldPlotter
@@ -50,7 +54,7 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 
 # {{{ geometry test
 
-def test_geometry(actx_factory):
+def test_geometry(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     nelements = 30
@@ -83,7 +87,7 @@ def test_geometry(actx_factory):
 # {{{ test off-surface eval
 
 @pytest.mark.parametrize("use_fmm", [True, False])
-def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
+def test_off_surface_eval(actx_factory: ArrayContextFactory, use_fmm, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
@@ -148,7 +152,7 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
 
 # {{{ test off-surface eval vs direct
 
-def test_off_surface_eval_vs_direct(actx_factory, do_plot=False):
+def test_off_surface_eval_vs_direct(actx_factory: ArrayContextFactory, do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
@@ -232,7 +236,9 @@ def test_off_surface_eval_vs_direct(actx_factory, do_plot=False):
 
 # {{{
 
-def test_single_plus_double_with_single_fmm(actx_factory, do_plot=False):
+def test_single_plus_double_with_single_fmm(
+            actx_factory: ArrayContextFactory,
+            do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
@@ -332,7 +338,7 @@ def test_single_plus_double_with_single_fmm(actx_factory, do_plot=False):
 
 # {{{ unregularized tests
 
-def test_unregularized_with_ones_kernel(actx_factory):
+def test_unregularized_with_ones_kernel(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     nelements = 10
@@ -379,7 +385,7 @@ def test_unregularized_with_ones_kernel(actx_factory):
     assert np.allclose(actx.to_numpy(result_nonself), 2 * np.pi)
 
 
-def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
+def test_unregularized_off_surface_fmm_vs_direct(actx_factory: ArrayContextFactory):
     actx = actx_factory()
 
     nelements = 300
@@ -448,7 +454,10 @@ def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
 # {{{ test 3D jump relations
 
 @pytest.mark.parametrize("relation", ["sp", "nxcurls", "div_s"])
-def test_3d_jump_relations(actx_factory, relation, visualize=False):
+def test_3d_jump_relations(
+            actx_factory: ArrayContextFactory,
+            relation,
+            visualize=False):
     pytest.importorskip("pyfmmlib")
     actx = actx_factory()
 

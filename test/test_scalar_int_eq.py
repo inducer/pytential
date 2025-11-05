@@ -30,7 +30,11 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+)
 from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization.visualization import make_visualizer
@@ -475,7 +479,7 @@ cases += [
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # noqa: E501
 
 @pytest.mark.parametrize("case", cases)
-def test_integral_equation(actx_factory, case, visualize=False):
+def test_integral_equation(actx_factory: ArrayContextFactory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()

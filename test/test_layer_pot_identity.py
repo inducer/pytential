@@ -30,7 +30,12 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 
-from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
+from arraycontext import (
+    ArrayContextFactory,
+    flatten,
+    pytest_generate_tests_for_array_contexts,
+    unflatten,
+)
 
 # from sumpy.visualization import FieldPlotter
 from meshmode import _acf  # noqa: F401
@@ -204,7 +209,7 @@ class DynamicTestCase:
 @pytest.mark.parametrize("case", [
         DynamicTestCase(SphereTestCase(), GreenExpr(), 0),
 ])
-def test_identity_convergence_slow(actx_factory, case):
+def test_identity_convergence_slow(actx_factory: ArrayContextFactory, case):
     test_identity_convergence(actx_factory, case)
 
 
@@ -227,7 +232,7 @@ def test_identity_convergence_slow(actx_factory, case):
         DynamicTestCase(SphereTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
 ])
-def test_identity_convergence(actx_factory, case, visualize=False):
+def test_identity_convergence(actx_factory: ArrayContextFactory, case, visualize=False):
     if case.fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
     case.check()
