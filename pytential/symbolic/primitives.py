@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Mapping
 from dataclasses import field
 from functools import partial
 from typing import (
@@ -39,6 +40,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
+from constantdict import constantdict
 from typing_extensions import override
 
 from pymbolic import Expression, ExpressionNode as ExpressionNodeBase, Variable
@@ -473,7 +475,7 @@ LowLevelQBXForcedLimit: TypeAlias = Literal[-2, -1, +1, +2, 0]
 # NOTE: this will likely live in pymbolic at some point, but for now we take it!
 ArithmeticExpressionT = TypeVar("ArithmeticExpressionT", bound=ArithmeticExpression)
 
-KernelArgumentMapping = dict[str, Operand]
+KernelArgumentMapping = Mapping[str, Operand]
 KernelArgumentLike = (
     dict[str, Operand]
     | tuple[tuple[str, Operand], ...])
@@ -1981,7 +1983,6 @@ class IntG(ExpressionNode):
             warn(f"'densities' is not tuple ({type(self.densities)}). "
                  "Passing a different type is deprecated and will stop working in "
                  "2025.", DeprecationWarning, stacklevel=2)
-
             object.__setattr__(self, "densities", tuple(self.densities))
 
         if not isinstance(self.source, DOFDescriptor):
@@ -2000,13 +2001,13 @@ class IntG(ExpressionNode):
 
             object.__setattr__(self, "target", as_dofdesc(self.target))
 
-        if not isinstance(self.kernel_arguments, dict):
+        if not isinstance(self.kernel_arguments, constantdict):
             warn(f"'kernel_arguments' is not a dict ({type(self.kernel_arguments)}). "
                  "Passing a different type is deprecated and will stop being "
                  "supported in 2025.", DeprecationWarning, stacklevel=2)
 
             kernel_arguments = self.kernel_arguments if self.kernel_arguments else {}
-            object.__setattr__(self, "kernel_arguments", dict(kernel_arguments))
+            object.__setattr__(self, "kernel_arguments", constantdict(kernel_arguments))
 
         from pytools import single_valued
 

@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from functools import reduce
 from typing import TYPE_CHECKING, cast
 
+from constantdict import constantdict
 from typing_extensions import Self, override
 
 import pymbolic.primitives as p
@@ -80,11 +81,11 @@ if TYPE_CHECKING:
 
 
 def rec_int_g_arguments(mapper: IdentityMapper | EvaluationRewriter, expr: pp.IntG):
-    densities = [mapper.rec_arith(d) for d in expr.densities]
-    kernel_arguments = {
+    densities = tuple(mapper.rec_arith(d) for d in expr.densities)
+    kernel_arguments = constantdict({
             name: componentwise(mapper.rec_arith, arg)
             for name, arg in expr.kernel_arguments.items()
-            }
+            })
 
     changed = not (
             all(d is orig for d, orig in zip(densities, expr.densities, strict=True))
