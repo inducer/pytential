@@ -40,13 +40,10 @@ from meshmode.discretization.poly_element import (
 )
 
 from pytential import bind, sym
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -574,6 +571,34 @@ def test_derivative_with_spatial_constant():
         sym.d_dx(ambient_dim,
                 (3+sym.Variable("kappa"))
                 * sym.D(knl, density, qbx_forced_limit="avg"))
+
+# }}}
+
+
+# {{{ test_int_g_vectorize
+
+@pytest.mark.parametrize("name", ["S", "D", "Sp", "Dp", "Spp"])
+def test_int_g_vectorize(name: str) -> None:
+    from sumpy.kernel import LaplaceKernel
+    ambient_dim = 3
+    kernel = LaplaceKernel(ambient_dim)
+
+    density = sym.var("sigma")
+    getattr(sym, name)(kernel, density, qbx_forced_limit=-1)
+
+    from pytools import obj_array
+    density = obj_array.new_1d([sym.var(f"sigma{i}") for i in range(ambient_dim)])
+
+    if name not in {"Spp"}:
+        result = getattr(sym, name)(kernel, density, qbx_forced_limit=-1)
+        assert isinstance(result, np.ndarray)
+
+    from pymbolic.geometric_algebra import MultiVector
+    density = MultiVector(density)
+
+    if name not in {"D", "Dp", "Spp"}:
+        result = getattr(sym, name)(kernel, density, qbx_forced_limit=-1)
+        assert isinstance(result, MultiVector)
 
 # }}}
 
