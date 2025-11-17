@@ -100,6 +100,8 @@ class QBXDefaultExpansionFactory(DefaultExpansionFactoryBase):
             ) -> LocalExpansionFactory:
         local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
                 self, kernel)
+        assert isinstance(local_expn_class, type)
+
         from sumpy.expansion.m2l import NonFFTM2LTranslationClassFactory
         factory = NonFFTM2LTranslationClassFactory()
         m2l_translation = factory.get_m2l_translation_class(kernel,

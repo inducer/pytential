@@ -214,7 +214,7 @@ class M2QBXL(E2EBase):
 
                             """.format(i=i) for i in range(ncoeff_src)] + [
 
-                            ] + self.get_translation_loopy_insns() + ["""
+                            *self.get_translation_loopy_insns(), """
 
                         end
                         """] + ["""
@@ -331,7 +331,9 @@ class L2QBXL(E2EBase):
                                 expansions[src_ibox - target_base_ibox, {i}] \
                                 {{dep=read_src_ibox}}
                         """.format(i=i) for i in range(ncoeff_src)] + [
-                        ] + self.get_translation_loopy_insns() + ["""
+                        *self.get_translation_loopy_insns(),
+                        ] + [
+                        """
                         qbx_expansions[icenter, {i}] = \
                             qbx_expansions[icenter, {i}] + coeff{i} \
                             {{id_prefix=write_expn}}
