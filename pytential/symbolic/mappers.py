@@ -480,10 +480,10 @@ class LocationTagger(CSECachingMapperMixin[Expression, []],
                 expr.source_kernels,
                 tuple(rec(d) for d in expr.densities),
                 expr.qbx_forced_limit, source, target,
-                kernel_arguments={
+                kernel_arguments=constantdict({
                     name: componentwise(rec, arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    })
+                    }))
 
     @override
     def map_inverse(self, expr: pp.IterativeInverse):
@@ -810,13 +810,13 @@ class InterpolationPreprocessor(IdentityMapper):
             for density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
-        kernel_arguments = {
+        kernel_arguments = constantdict({
                 name: componentwise(
                     lambda aexpr: pp.interpolate(
                         self.rec_arith(
                             self.tagger.rec_arith(aexpr)), from_dd, to_dd),
                     arg_expr)
-                for name, arg_expr in expr.kernel_arguments.items()}
+                for name, arg_expr in expr.kernel_arguments.items()})
 
         return replace(
                 expr,
@@ -852,10 +852,10 @@ class QBXPreprocessor(IdentityMapper):
         expr = replace(
                 expr,
                 densities=self.rec(expr.densities),
-                kernel_arguments={
+                kernel_arguments=constantdict({
                     name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    })
+                    }))
 
         if not is_self:
             # non-self evaluation

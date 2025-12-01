@@ -2221,6 +2221,8 @@ def int_g_vec(
     if kwargs:
         kernel_arguments = {**kernel_arguments, **kwargs}
 
+    kernel_arguments = constantdict(kernel_arguments)
+
     def make_op(operand_i: ArithmeticExpression) -> IntG:
         return IntG(
             target_kernel=target_kernel,
