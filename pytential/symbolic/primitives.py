@@ -2003,7 +2003,9 @@ class IntG(ExpressionNode):
             object.__setattr__(self, "target", as_dofdesc(self.target))
 
         if not isinstance(self.kernel_arguments, constantdict):
-            warn(f"'kernel_arguments' is not a dict ({type(self.kernel_arguments)}). "
+            warn(
+                 "'kernel_arguments' is not a constantdict "
+                 f"({type(self.kernel_arguments)}). "
                  "Passing a different type is deprecated and will stop being "
                  "supported in 2025.", DeprecationWarning, stacklevel=2)
 
