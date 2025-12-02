@@ -14,7 +14,7 @@ dependencies:
 - scipy
 - conda-forge::numpy
 - conda-forge::sympy
-- pocl
+- pocl>=6
 - islpy
 - pyopencl
 - python=3
