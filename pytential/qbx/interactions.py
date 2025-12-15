@@ -26,19 +26,21 @@ THE SOFTWARE.
 import numpy as np
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from pytools import memoize_method
+from pytools import memoize_method, obj_array
 from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 from sumpy.p2e import P2EBase
 
+from pytential.array_context import PyOpenCLArrayContext, make_loopy_program
 from pytential.version import PYTENTIAL_KERNEL_VERSION
 
 
 # {{{ form qbx expansions from points
 
 class P2QBXLFromCSR(P2EBase):
-    default_name = "p2qbxl_from_csr"
+    @property
+    def default_name(self):
+        return "p2qbxl_from_csr"
 
     def get_cache_key(self):
         return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
@@ -70,7 +72,7 @@ class P2QBXLFromCSR(P2EBase):
                     ...
                 ])
 
-        loopy_knl = lp.make_kernel(
+        loopy_knl = make_loopy_program(
                 [
                     "{[itgt_center]: 0<=itgt_center<ntgt_centers}",
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
@@ -78,7 +80,7 @@ class P2QBXLFromCSR(P2EBase):
                     "{[idim]: 0<=idim<dim}",
                     "{[icoeff]: 0<=icoeff<ncoeffs}",
                     "{[istrength]: 0<=istrength<nstrengths}",
-                    ],
+                ],
                 ["""
                 for itgt_center
                     <> tgt_icenter = global_qbx_centers[itgt_center]
@@ -122,14 +124,13 @@ class P2QBXLFromCSR(P2EBase):
                 end
                 """],
                 arguments,
-                name=self.name, assumptions="ntgt_centers>=1",
+                name=self.name,
+                assumptions="ntgt_centers>=1",
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters={
                     "dim": self.dim,
                     "nstrengths": self.strength_count,
-                    "ncoeffs": ncoeffs},
-                default_offset=lp.auto,
-                lang_version=MOST_RECENT_LANGUAGE_VERSION)
+                    "ncoeffs": ncoeffs})
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = lp.tag_inames(loopy_knl, "istrength*:unr")
@@ -151,15 +152,22 @@ class P2QBXLFromCSR(P2EBase):
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         sources = kwargs.pop("sources")
         qbx_centers = kwargs.pop("qbx_centers")
 
         from sumpy.tools import is_obj_array_like
-        return self.get_cached_kernel_executor(
+        knl = self.get_cached_kernel(
                 is_sources_obj_array=is_obj_array_like(sources),
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
-                )(queue, sources=sources, qbx_centers=qbx_centers, **kwargs)
+                )
+
+        result = actx.call_loopy(
+            knl,
+            sources=sources,
+            qbx_centers=qbx_centers, **kwargs)
+
+        return result["qbx_expansions"]
 
 # }}}
 
@@ -171,7 +179,9 @@ class M2QBXL(E2EBase):
     list.
     """
 
-    default_name = "m2qbxl_from_csr"
+    @property
+    def default_name(self):
+        return "m2qbxl_from_csr"
 
     def get_cache_key(self):
         return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
@@ -181,12 +191,11 @@ class M2QBXL(E2EBase):
         ncoeff_tgt = len(self.tgt_expansion)
 
         from sumpy.tools import gather_loopy_arguments
-        loopy_knl = lp.make_kernel(
-                [
-                    "{[icenter]: 0<=icenter<ncenters}",
-                    "{[isrc_box]: isrc_start<=isrc_box<isrc_stop}",
-                    "{[idim]: 0<=idim<dim}",
-                    ],
+        loopy_knl = make_loopy_program([
+                "{[icenter]: 0<=icenter<ncenters}",
+                "{[isrc_box]: isrc_start<=isrc_box<isrc_stop}",
+                "{[idim]: 0<=idim<dim}",
+                ],
                 ["""
                 for icenter
                     <> icontaining_tgt_box = \
@@ -244,15 +253,15 @@ class M2QBXL(E2EBase):
                     *gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                     ...
                 ],
-                name=self.name, assumptions="ncenters>=1",
+                name=self.name,
+                assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters={"dim": self.dim},
-                lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
-            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
+                )
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl
 
@@ -268,7 +277,7 @@ class M2QBXL(E2EBase):
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         centers = kwargs.pop("centers")
         # "1" may be passed for rscale, which won't have its type
         # meaningfully inferred. Make the type of rscale explicit.
@@ -276,11 +285,17 @@ class M2QBXL(E2EBase):
 
         from sumpy.tools import is_obj_array_like
         qbx_centers = kwargs.pop("qbx_centers")
-        return self.get_cached_kernel_executor(
+        knl = self.get_cached_kernel(
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
-                )(queue, centers=centers,
-                        qbx_centers=qbx_centers,
-                        src_rscale=src_rscale, **kwargs)
+                )
+
+        result = actx.call_loopy(
+            knl,
+            centers=centers,
+            qbx_centers=qbx_centers,
+            src_rscale=src_rscale, **kwargs)
+
+        return result["qbx_expansions"]
 
 # }}}
 
@@ -288,7 +303,9 @@ class M2QBXL(E2EBase):
 # {{{ translation from a center's box
 
 class L2QBXL(E2EBase):
-    default_name = "l2qbxl"
+    @property
+    def default_name(self):
+        return "l2qbxl"
 
     def get_cache_key(self):
         return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
@@ -298,11 +315,10 @@ class L2QBXL(E2EBase):
         ncoeff_tgt = len(self.tgt_expansion)
 
         from sumpy.tools import gather_loopy_arguments
-        loopy_knl = lp.make_kernel(
-                [
-                    "{[icenter]: 0<=icenter<ncenters}",
-                    "{[idim]: 0<=idim<dim}",
-                    ],
+        loopy_knl = make_loopy_program([
+                "{[icenter]: 0<=icenter<ncenters}",
+                "{[idim]: 0<=idim<dim}",
+                ],
                 ["""
                 for icenter
                     <> isrc_box = qbx_center_to_target_box[icenter]
@@ -360,12 +376,11 @@ class L2QBXL(E2EBase):
                 assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters={"dim": self.dim, "nchildren": 2**self.dim},
-                lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
-            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
+                )
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl
 
@@ -381,7 +396,7 @@ class L2QBXL(E2EBase):
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         centers = kwargs.pop("centers")
         # "1" may be passed for rscale, which won't have its type
         # meaningfully inferred. Make the type of rscale explicit.
@@ -389,11 +404,17 @@ class L2QBXL(E2EBase):
 
         from sumpy.tools import is_obj_array_like
         qbx_centers = kwargs.pop("qbx_centers")
-        return self.get_cached_kernel_executor(
+        knl = self.get_cached_kernel(
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
-                )(queue, centers=centers,
-                        qbx_centers=qbx_centers,
-                        src_rscale=src_rscale, **kwargs)
+                )
+
+        result = actx.call_loopy(
+            knl,
+            centers=centers,
+            qbx_centers=qbx_centers,
+            src_rscale=src_rscale, **kwargs)
+
+        return result["qbx_expansions"]
 
 # }}}
 
@@ -401,7 +422,9 @@ class L2QBXL(E2EBase):
 # {{{ evaluation of qbx expansions
 
 class QBXL2P(E2PBase):
-    default_name = "qbx_potential_from_local"
+    @property
+    def default_name(self):
+        return "qbx_potential_from_local"
 
     def get_cache_key(self):
         return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
@@ -410,7 +433,7 @@ class QBXL2P(E2PBase):
         ncoeffs = len(self.expansion)
         loopy_args = [arg.loopy_arg for arg in self.expansion.get_args()]
 
-        loopy_knl = lp.make_kernel(
+        loopy_knl = make_loopy_program(
                 [
                     "{[iglobal_center]: 0<=iglobal_center<nglobal_qbx_centers}",
                     "{[icenter_tgt]: \
@@ -480,8 +503,7 @@ class QBXL2P(E2PBase):
                 fixed_parameters={
                     "dim": self.dim,
                     "ncoeffs": ncoeffs,
-                    "nresults": len(self.kernels)},
-                lang_version=MOST_RECENT_LANGUAGE_VERSION)
+                    "nresults": len(self.kernels)})
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr,iknl:unr")
         loopy_knl = self.add_loopy_eval_callable(loopy_knl)
@@ -502,15 +524,20 @@ class QBXL2P(E2PBase):
         knl = lp.add_inames_to_insn(knl, "iglobal_center", "id:kernel_scaling")
         return knl
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         targets = kwargs.pop("targets")
         qbx_centers = kwargs.pop("qbx_centers")
 
         from sumpy.tools import is_obj_array_like
-        return self.get_cached_kernel_executor(
+        knl = self.get_cached_kernel(
                 is_targets_obj_array=is_obj_array_like(targets),
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
-                )(queue, targets=targets, qbx_centers=qbx_centers, **kwargs)
+                )
+
+        result = actx.call_loopy(
+            knl, targets=targets, qbx_centers=qbx_centers, **kwargs)
+
+        return obj_array.new_1d([result[f"result_s{i}"] for i in range(self.nresults)])
 
 # }}}
 

@@ -36,10 +36,9 @@ from arraycontext import (
     flatten,
     unflatten,
 )
-from boxtree.timing import TimingResult
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
-from sumpy.fmm import UnableToCollectTimingData
+from sumpy.kernel import Kernel
 
 
 if TYPE_CHECKING:
@@ -121,9 +120,8 @@ class PotentialSource(ABC):
                 value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
-            return P2P(actx.context,
-                    target_kernels, exclude_self=False, value_dtypes=value_dtype,
-                    source_kernels=source_kernels)
+            return P2P(target_kernels, exclude_self=False, value_dtypes=value_dtype,
+                       source_kernels=source_kernels)
 
         return p2p(target_kernels, source_kernels)
 
@@ -163,7 +161,11 @@ def evaluate_kernel_arguments(
 
 class PointPotentialSource(PotentialSource):
     """
-    .. attribute:: ndofs
+    .. autoproperty:: real_dtype
+    .. autoproperty:: complex_dtype
+
+    .. autoproperty:: ndofs
+    .. autoproperty:: ambient_dim
 
     .. automethod:: nodes
     .. automethod:: cost_model_compute_potential_insn
@@ -223,6 +225,7 @@ class PointPotentialSource(PotentialSource):
     @override
     def op_group_features(self, expr: IntG) -> tuple[Hashable, ...]:
         from pytential.utils import sort_arrays_together
+
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
         # target kernel, we group all IntGs with same source kernels and densities.
@@ -244,7 +247,7 @@ class PointPotentialSource(PotentialSource):
             evaluate: EvaluationMapperBase,
             calibration_params: dict[str, float],
             per_box: bool,
-        ) -> tuple[list[tuple[str, DOFArray]], TimingResult]:
+        ) -> list[tuple[str, DOFArray]]:
         raise NotImplementedError
 
     def exec_compute_potential_insn(
@@ -253,17 +256,8 @@ class PointPotentialSource(PotentialSource):
             insn: ComputePotential,
             bound_expr: BoundExpression[Any],
             evaluate: EvaluationMapperBase,
-            return_timing_data: bool,
-        ) -> tuple[list[tuple[str, ArrayOrContainerOrScalar]], TimingResult]:
-        if return_timing_data:
-            from warnings import warn
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData,
-                   stacklevel=2)
-
+        ) -> list[tuple[str, ArrayOrContainerOrScalar]]:
         p2p = None
-
         kernel_args = evaluate_kernel_arguments(
                 actx, evaluate, insn.kernel_arguments, flat=False)
         strengths = [cast("Array", evaluate(density)) for density in insn.densities]
@@ -281,7 +275,7 @@ class PointPotentialSource(PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            _, output_for_each_kernel = p2p(actx.queue,
+            output_for_each_kernel = p2p(actx,
                     targets=flatten(target_or_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=self._nodes,
                     strength=strengths, **kernel_args)
@@ -293,8 +287,7 @@ class PointPotentialSource(PotentialSource):
 
             results.append((o.name, result))
 
-        timing_data: TimingResult = TimingResult()
-        return results, timing_data
+        return results
 
 # }}}
 
@@ -328,6 +321,11 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
     Inherits from :class:`PotentialSource`.
 
     .. attribute:: density_discr
+
+    .. attribute:: ambient_dim
+    .. attribute:: dim
+    .. attribute:: real_dtype
+    .. attribute:: complex_dtype
     """
 
     def __init__(self, density_discr: Discretization):

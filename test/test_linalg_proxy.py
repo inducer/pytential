@@ -37,11 +37,10 @@ from arraycontext import (
     pytest_generate_tests_for_array_contexts,
     unflatten,
 )
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
 
 from pytential import GeometryCollection, bind, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
@@ -380,6 +379,9 @@ def test_neighbor_points(actx_factory: ArrayContextFactory, case,
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

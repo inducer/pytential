@@ -126,14 +126,14 @@ objects occur as part of a symbolic operator representation:
     This can be converted to an object array by calling:
     :meth:`pymbolic.geometric_algebra.MultiVector.as_vector`.
 
-:class:`pyopencl.array.Array` and :class:`meshmode.dof_array.DOFArray` instances
-hold per-node degrees of freedom (and only those). Such instances do *not* occur
-on the symbolic side of :mod:`pytential` at all. They're only visible either as
-bound inputs (see :func:`pytential.bind`) or outputs of evaluation. Which one is
-used depends on the meaning of the data being represented. If the data is
-associated with a :class:`~meshmode.discretization.Discretization`, then
-:class:`~meshmode.dof_array.DOFArray` is used and otherwise
-:class:`~pyopencl.array.Array` is used.
+:class:`meshmode.dof_array.DOFArray` instances hold per-node degrees of freedom
+(and only those). Such instances do *not* occur on the symbolic side of
+:mod:`pytential` at all. They're only visible either as bound inputs (see
+:func:`pytential.bind`) or outputs of evaluation. Which one is used depends on
+the meaning of the data being represented. If the data is associated with a
+:class:`~meshmode.discretization.Discretization`, then
+:class:`~meshmode.dof_array.DOFArray` is used and otherwise a base array
+type for the underlying :class:`~arraycontext.ArrayContext` is used.
 
 .. autoclass:: ExpressionNode
     :show-inheritance:

@@ -25,26 +25,20 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import extra_int_eq_data as eid
 import pytest
 
 from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.dof_array import DOFArray
 
 from pytential import bind, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.symbolic.pde.beltrami import (
     LaplaceBeltramiOperator,
     YukawaBeltramiOperator,
 )
-
-
-logger = logging.getLogger(__name__)
-
-from typing import TYPE_CHECKING
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -52,6 +46,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -307,6 +302,9 @@ def test_beltrami_convergence(
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
