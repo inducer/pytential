@@ -252,7 +252,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
             self.array_context.thaw(discr.nodes()[0]))
 
     def map_node_coordinate_component(self, expr: pp.NodeCoordinateComponent):
-        discr = self.places.get_discretization(
+        discr = self.places.get_target_or_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
         x = discr.nodes()[expr.ambient_axis]
