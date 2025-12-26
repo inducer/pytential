@@ -35,6 +35,7 @@ intersphinx_mapping = {
 }
 
 nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
     # Sphinx started complaining about these in 8.2.1(-ish)
     # -AK, 2025-02-24
     ["py:class", r"TypeAliasForwardRef"],
@@ -70,13 +71,13 @@ sphinxconfig_missing_reference_aliases = {
     "cl_array.Array": "obj:pyopencl.array.Array",
     # pymbolic
     "ArithmeticExpression": "obj:pymbolic.ArithmeticExpression",
+    "ArithmeticExpressionContainerTc":
+        "obj:pymbolic.typing.ArithmeticExpressionContainerTc",
     "Expression": "obj:pymbolic.typing.Expression",
     "MultiVector": "obj:pymbolic.geometric_algebra.MultiVector",
     "Variable": "class:pymbolic.primitives.Variable",
     "prim.Subscript": "class:pymbolic.primitives.Subscript",
     "prim.Variable": "class:pymbolic.primitives.Variable",
-    "ArithmeticExpressionContainerTc":
-        "obj:pymbolic.typing.ArithmeticExpressionContainerTc",
     # arraycontext
     "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
@@ -91,6 +92,7 @@ sphinxconfig_missing_reference_aliases = {
     # boxtree
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     "TimingResult": "class:boxtree.timing.TimingResult",
+    "Tree": "obj:boxtree.tree.Tree",
     "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
@@ -114,11 +116,10 @@ sphinxconfig_missing_reference_aliases = {
     "Side": "obj:pytential.symbolic.primitives.Side",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
     "VectorExpression": "obj:pytential.symbolic.pde.scalar.VectorExpression",
-    "pytential.symbolic.dof_desc.DOFDescriptorLike":
-        "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
-    "pytential.symbolic.primitives.ExpressionNode":
-        "class:pytential.symbolic.primitives.ExpressionNode",
+    "pytential.symbolic.dof_desc.DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",  # noqa: E501
+    "pytential.symbolic.primitives.ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",  # noqa: E501
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
+    "sym.DOFDescriptorLike": "obj:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",
 }
