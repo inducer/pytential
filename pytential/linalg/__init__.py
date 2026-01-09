@@ -33,7 +33,9 @@ from pytential.linalg.utils import (
 
 
 __all__ = (
-    "IndexList", "TargetAndSourceClusterList",
-    "make_index_list", "make_index_cluster_cartesian_product",
+    "IndexList",
+    "TargetAndSourceClusterList",
     "interp_decomp",
+    "make_index_cluster_cartesian_product",
+    "make_index_list",
 )
