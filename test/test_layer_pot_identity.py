@@ -24,11 +24,15 @@ THE SOFTWARE.
 """
 
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, ClassVar
 
 import extra_int_eq_data as ied
 import numpy as np
 import numpy.linalg as la
 import pytest
+from typing_extensions import override
 
 from arraycontext import (
     ArrayContextFactory,
@@ -38,12 +42,15 @@ from arraycontext import (
 )
 
 # from sumpy.visualization import FieldPlotter
-from sumpy.kernel import HelmholtzKernel, LaplaceKernel
+from sumpy.kernel import HelmholtzKernel, Kernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, norm, sym
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
+
+if TYPE_CHECKING:
+    from pytential.qbx import FMMBackend
 
 logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
@@ -54,21 +61,33 @@ d1 = sym.Derivative()
 d2 = sym.Derivative()
 
 
+@dataclass
 class SphereTestCase(ied.SphereTestCase):
-    resolutions = [0, 1]
+    resolutions: list[int] = field(default_factory=lambda: [0, 1])
 
 
+@dataclass
 class QuadSphereTestCase(ied.QuadSpheroidTestCase):
-    name = "sphere-quad"
-    aspect_ratio = 1
-    resolutions = [0, 1]
+    name: str = "sphere-quad"
+    aspect_ratio: float = 1
+    resolutions: list[int] = field(default_factory=lambda: [0, 1])
 
 
-class GreenExpr:
-    zero_op_name = "green"
-    order_drop = 0
+class IdentityExpr(ABC):
+    zero_op_name: ClassVar[str]
+    order_drop: ClassVar[int]
 
-    def get_zero_op(self, kernel, **knl_kwargs):
+    @abstractmethod
+    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
+        pass
+
+
+class GreenExpr(IdentityExpr):
+    zero_op_name: ClassVar[str] = "green"
+    order_drop: ClassVar[int] = 0
+
+    @override
+    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
         u_sym = sym.var("u")
         dn_u_sym = sym.var("dn_u")
 
@@ -78,11 +97,12 @@ class GreenExpr:
             - 0.5*u_sym)
 
 
-class GradGreenExpr:
-    zero_op_name = "grad_green"
-    order_drop = 1
+class GradGreenExpr(IdentityExpr):
+    zero_op_name: ClassVar[str] = "grad_green"
+    order_drop: ClassVar[int] = 1
 
-    def get_zero_op(self, kernel, **knl_kwargs):
+    @override
+    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
         d = kernel.dim
         u_sym = sym.var("u")
         grad_u_sym = sym.make_sym_mv("grad_u", d)
@@ -97,11 +117,12 @@ class GradGreenExpr:
                 ).as_vector()
 
 
-class ZeroCalderonExpr:
-    zero_op_name = "calderon"
-    order_drop = 1
+class ZeroCalderonExpr(IdentityExpr):
+    zero_op_name: ClassVar[str] = "calderon"
+    order_drop: ClassVar[int] = 1
 
-    def get_zero_op(self, kernel, **knl_kwargs):
+    @override
+    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
         assert isinstance(kernel, LaplaceKernel)
         assert not knl_kwargs
 
@@ -119,56 +140,76 @@ class ZeroCalderonExpr:
 
 
 class StaticTestCase:
-    def check(self):
+    def check(self) -> None:
         pass
 
 
+@dataclass
 class StarfishGreenTest(StaticTestCase):
-    expr = GreenExpr()
-    geometry = ied.StarfishTestCase()
-    k = 0
-    qbx_order = 5
-    fmm_order = 15
+    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
+    geometry: ied.IntegralEquationTestCase = field(
+        default_factory=lambda: ied.StarfishTestCase())
 
-    resolutions = [30, 50]
+    k: float = 0
+    qbx_order: int = 5
+    fmm_order: int = 15
 
-    _expansion_stick_out_factor = 0.5
+    resolutions: list[int] = field(default_factory=lambda: [30, 50])
 
-    fmm_backend = "fmmlib"
+    _expansion_stick_out_factor: float = 0.5
+
+    fmm_backend: FMMBackend = "fmmlib"
 
 
+@dataclass
 class WobblyCircleGreenTest(StaticTestCase):
-    expr = GreenExpr()
-    geometry = ied.WobbleCircleTestCase()
-    k = 0
-    qbx_order = 3
-    fmm_order = 10
+    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
+    geometry: ied.IntegralEquationTestCase = field(
+        default_factory=lambda: ied.WobbleCircleTestCase())
 
-    _expansion_stick_out_factor = 0.5
+    k: float = 0
+    qbx_order: int = 3
+    fmm_order: int = 10
 
-    fmm_backend = "sumpy"
+    _expansion_stick_out_factor: float = 0.5
+
+    fmm_backend: FMMBackend = "sumpy"
 
 
+@dataclass
 class SphereGreenTest(StaticTestCase):
-    expr = GreenExpr()
-    geometry = SphereTestCase()
-    k = 0
-    qbx_order = 3
-    fmm_order = 10
+    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
+    geometry: ied.IntegralEquationTestCase = field(
+        default_factory=lambda: ied.SphereTestCase())
 
-    resolutions = [0, 1]
+    k: float = 0
+    qbx_order: int = 3
+    fmm_order: int = 10
 
-    _expansion_stick_out_factor = 0.5
+    resolutions: list[int] = field(default_factory=lambda: [0, 1])
 
-    fmm_backend = "fmmlib"
+    _expansion_stick_out_factor: float = 0.5
+
+    fmm_backend: FMMBackend = "fmmlib"
 
 
 class DynamicTestCase:
-    fmm_backend = "sumpy"
+    expr: IdentityExpr
+    geometry: ied.IntegralEquationTestCase
 
-    def __init__(self, geometry, expr, k, fmm_backend="sumpy", fmm_order=None):
-        self.geometry = geometry
+    k: float
+    qbx_order: int
+    fmm_order: int
+    fmm_backend: FMMBackend = "sumpy"
+
+    def __init__(self,
+                 geometry: ied.IntegralEquationTestCase,
+                 expr: IdentityExpr,
+                 k: float,
+                 fmm_backend: FMMBackend = "sumpy",
+                 fmm_order: int | None = None) -> None:
         self.expr = expr
+        self.geometry = geometry
         self.k = k
         self.qbx_order = 5 if geometry.ambient_dim == 2 else 3
         self.fmm_backend = fmm_backend
@@ -186,10 +227,11 @@ class DynamicTestCase:
             self.fmm_order = fmm_order
 
     @property
-    def resolutions(self):
+    def resolutions(self) -> list[int]:
+        assert self.geometry.resolutions is not None
         return self.geometry.resolutions
 
-    def check(self):
+    def check(self) -> None:
         if (self.geometry.name == "sphere"
                 and self.k != 0
                 and self.fmm_backend == "sumpy"):
@@ -208,7 +250,8 @@ class DynamicTestCase:
 @pytest.mark.parametrize("case", [
         DynamicTestCase(SphereTestCase(), GreenExpr(), 0),
 ])
-def test_identity_convergence_slow(actx_factory: ArrayContextFactory, case):
+def test_identity_convergence_slow(actx_factory: ArrayContextFactory,
+                                   case: DynamicTestCase):
     test_identity_convergence(actx_factory, case)
 
 
@@ -231,9 +274,12 @@ def test_identity_convergence_slow(actx_factory: ArrayContextFactory, case):
         DynamicTestCase(SphereTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
 ])
-def test_identity_convergence(actx_factory: ArrayContextFactory, case, visualize=False):
+def test_identity_convergence(actx_factory: ArrayContextFactory,
+                              case: DynamicTestCase,
+                              visualize: bool = False) -> None:
     if case.fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
+
     case.check()
     actx = actx_factory()
     target_order = 8
@@ -243,8 +289,6 @@ def test_identity_convergence(actx_factory: ArrayContextFactory, case, visualize
 
     for resolution in case.resolutions:
         mesh = case.geometry.get_mesh(resolution, target_order)
-        if mesh is None:
-            break
 
         d = mesh.ambient_dim
         k = case.k
