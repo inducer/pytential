@@ -83,21 +83,22 @@ extend-select = [
     "NPY",  # numpy
     "Q",    # flake8-quotes
     "RUF",  # ruff
+    "TC",   # flake8-type-checking
     "UP",   # pyupgrade
     "W",    # pycodestyle
-    "TC",
 ]
 extend-ignore = [
-    "C90",  # McCabe complexity
-    "E226", # missing whitespace around arithmetic operator
-    "E402", # module level import not at the top of file
-    "N802", # function name should be lowercase
-    "N803", # argument name should be lowercase
-    "N806", # variable name should be lowercase
-    "RUF012", # ClassVar for mutable class attributes
-    "RUF022", # __all__ is not sorted
-    "UP031", # use f-strings instead of %
-    "UP032", # use f-strings instead of .format
+    "C90",      # McCabe complexity
+    "E226",     # missing whitespace around arithmetic operator
+    "E402",     # module level import not at the top of file
+    "N802",     # function name should be lowercase
+    "N803",     # argument name should be lowercase
+    "N806",     # variable name should be lowercase
+    "RUF012",   # ClassVar for mutable class attributes
+    "RUF022",   # __all__ is not sorted
+    "RUF067",   # non-empty-init-module
+    "UP031",    # use f-strings instead of %
+    "UP032",    # use f-strings instead of .format
 ]
 exclude = [
     "experiments/*.py",
