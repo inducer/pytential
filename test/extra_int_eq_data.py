@@ -25,32 +25,48 @@ THE SOFTWARE.
 """
 
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
+from typing_extensions import override
 
+from meshmode.discretization import Discretization, ElementGroupFactory
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
-from meshmode.mesh import MeshElementGroup, SimplexElementGroup
+from meshmode.mesh import Mesh, MeshElementGroup, SimplexElementGroup
 from pytools import memoize_method
 
 from pytential import sym
+from pytential.qbx import FMMBackend, QBXLayerPotentialSource
+from pytential.source import PointPotentialSource
+from pytential.target import PointsTarget
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from meshmode.discretization import ElementGroupFactory
+    from arraycontext import ArrayContext
+    from boxtree.tree_build import ExtentNorm
     from sumpy.kernel import Kernel
 
+    from pytential.array_context import PyOpenCLArrayContext
+    from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
 
 logger = logging.getLogger(__name__)
+
+Array1D: TypeAlias = np.ndarray[tuple[int], np.dtype[np.floating]]
+Array2D: TypeAlias = np.ndarray[tuple[int, int], np.dtype[np.floating]]
 
 
 # {{{ make_circular_point_group
 
-def make_circular_point_group(ambient_dim, npoints, radius,
-        center=None, func=lambda x: x):
+def make_circular_point_group(
+        ambient_dim: int,
+        npoints: int,
+        radius: np.floating[Any],
+        center: Array1D | None = None,
+        func: Callable[[Array1D], Array1D] = lambda x: x) -> Array2D:
     if center is None:
         center = np.array([0., 0.])
     t = func(np.linspace(0, 1, npoints, endpoint=False)) * (2 * np.pi)
@@ -61,8 +77,13 @@ def make_circular_point_group(ambient_dim, npoints, radius,
 
 
 def make_source_and_target_points(
-        actx, side, inner_radius, outer_radius, ambient_dim,
-        nsources=10, ntargets=20):
+        actx: PyOpenCLArrayContext,
+        side: Literal[1] | Literal[-1] | Literal["scat"],
+        inner_radius: np.floating[Any],
+        outer_radius: np.floating[Any],
+        ambient_dim: int,
+        nsources: int = 10,
+        ntargets: int = 20) -> tuple[PointPotentialSource, PointsTarget]:
     if side == -1:
         test_src_geo_radius = outer_radius
         test_tgt_geo_radius = inner_radius
@@ -75,14 +96,12 @@ def make_source_and_target_points(
     else:
         raise ValueError(f"unknown side: {side}")
 
-    from pytential.source import PointPotentialSource
     point_sources = make_circular_point_group(
             ambient_dim, nsources, test_src_geo_radius,
             func=lambda x: x**1.5)
     point_source = PointPotentialSource(
             actx.freeze(actx.from_numpy(point_sources)))
 
-    from pytential.target import PointsTarget
     test_targets = make_circular_point_group(
             ambient_dim, ntargets, test_tgt_geo_radius)
     point_target = PointsTarget(
@@ -96,12 +115,12 @@ def make_source_and_target_points(
 # {{{ IntegralEquationTestCase
 
 @dataclass
-class IntegralEquationTestCase:
-    name: str | None = None
-    ambient_dim: int | None = None
+class IntegralEquationTestCase(ABC):
+    name: str = "case"
+    ambient_dim: int = -1
 
     # operator
-    knl_class_or_helmholtz_k: type[Kernel] | float = 0
+    knl_class_or_helmholtz_k: type[Kernel] | int | float = 0
     knl_kwargs: dict[str, Any] = field(default_factory=dict)
     bc_type: str = "dirichlet"
     side: int = -1
@@ -109,13 +128,13 @@ class IntegralEquationTestCase:
     # qbx
     qbx_order: int | None = None
     source_ovsmp: int = 4
-    target_order: int | None = None
+    target_order: int = 4
     use_refinement: bool = True
     group_cls: type[MeshElementGroup] = SimplexElementGroup
     group_factory_cls: type[ElementGroupFactory] = InterpolatoryQuadratureGroupFactory
 
     # fmm
-    fmm_backend: str | None = "sumpy"
+    fmm_backend: FMMBackend | None = "sumpy"
     fmm_order: int | None = None
     fmm_tol: float | None = None
     disable_fft: bool = False
@@ -130,14 +149,14 @@ class IntegralEquationTestCase:
     check_tangential_deriv: bool = True
     check_gradient: bool = False
 
-    box_extent_norm: str | None = None
+    box_extent_norm: ExtentNorm | None = None
     from_sep_smaller_crit: str | None = None
 
     # {{{ symbolic
 
     @property
     @memoize_method
-    def knl_class(self):
+    def knl_class(self) -> type[Kernel]:
         if isinstance(self.knl_class_or_helmholtz_k, type):
             return self.knl_class_or_helmholtz_k
 
@@ -150,7 +169,7 @@ class IntegralEquationTestCase:
 
     @property
     @memoize_method
-    def knl_concrete_kwargs(self):
+    def knl_concrete_kwargs(self) -> dict[str, Any]:
         if isinstance(self.knl_class_or_helmholtz_k, type):
             return self.knl_kwargs
 
@@ -162,16 +181,16 @@ class IntegralEquationTestCase:
 
     @property
     @memoize_method
-    def knl_sym_kwargs(self):
+    def knl_sym_kwargs(self) -> dict[str, Any]:
         return {k: sym.var(k) for k in self.knl_concrete_kwargs}
 
-    def get_operator(self, ambient_dim):
+    def get_operator(self, ambient_dim: int) -> L2WeightedPDEOperator:
         sign = +1 if self.side in [+1, "scat"] else -1
         knl = self.knl_class(ambient_dim)
 
         if self.bc_type == "dirichlet":
             from pytential.symbolic.pde.scalar import DirichletOperator
-            op = DirichletOperator(knl, sign,
+            op: L2WeightedPDEOperator = DirichletOperator(knl, sign,
                     use_l2_weighting=True,
                     kernel_arguments=self.knl_sym_kwargs)
         elif self.bc_type == "neumann":
@@ -192,24 +211,37 @@ class IntegralEquationTestCase:
 
     # {{{ geometry
 
-    def get_mesh(self, resolution, mesh_order):
-        raise NotImplementedError
+    @abstractmethod
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+        pass
 
-    def get_discretization(self, actx, resolution, mesh_order):
+    def get_discretization(self,
+                           actx: ArrayContext,
+                           resolution: int | float,
+                           mesh_order: int) -> Discretization:
         mesh = self.get_mesh(resolution, mesh_order)
         return self._get_discretization(actx, mesh)
 
-    def _get_discretization(self, actx, mesh):
-        from meshmode.discretization import Discretization
+    def _get_discretization(self, actx: ArrayContext, mesh: Mesh) -> Discretization:
         return Discretization(actx, mesh,
                 self.group_factory_cls(self.target_order))
 
-    def get_layer_potential(self, actx, resolution, mesh_order):
+    def get_layer_potential(self,
+                            actx: ArrayContext,
+                            resolution: int | float,
+                            mesh_order: int) -> QBXLayerPotentialSource:
         pre_density_discr = self.get_discretization(actx, resolution, mesh_order)
 
         from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
+
+        qbx_order = self.qbx_order
+        if qbx_order is None:
+            qbx_order = self.target_order
+
+        fmm_backend = self.fmm_backend
         fmm_kwargs = {}
-        if self.fmm_backend is None:
+        if fmm_backend is None:
+            fmm_backend = "sumpy"
             fmm_kwargs["fmm_order"] = False
         else:
             if self.fmm_tol is not None:
@@ -217,18 +249,17 @@ class IntegralEquationTestCase:
             elif self.fmm_order is not None:
                 fmm_kwargs["fmm_order"] = self.fmm_order
             else:
-                fmm_kwargs["fmm_order"] = self.qbx_order + 5
+                fmm_kwargs["fmm_order"] = qbx_order + 5
 
         if self.disable_fft:
             from pytential.qbx import NonFFTExpansionFactory
             fmm_kwargs["expansion_factory"] = NonFFTExpansionFactory()
 
-        from pytential.qbx import QBXLayerPotentialSource
         return QBXLayerPotentialSource(
                 pre_density_discr,
                 fine_order=self.source_ovsmp * self.target_order,
                 qbx_order=self.qbx_order,
-                fmm_backend=self.fmm_backend, **fmm_kwargs,
+                fmm_backend=fmm_backend, **fmm_kwargs,
 
                 _disable_refinement=not self.use_refinement,
                 _box_extent_norm=self.box_extent_norm,
@@ -238,7 +269,8 @@ class IntegralEquationTestCase:
 
     # }}}
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         from dataclasses import fields
         attrs = {f.name: getattr(self, f.name) for f in fields(self)}
 
@@ -273,16 +305,21 @@ class CurveTestCase(IntegralEquationTestCase):
     fmm_backend: str | None = None
 
     # test case
-    curve_fn: Callable[[np.ndarray], np.ndarray] | None = None
+    curve_fn: Callable[[Array1D], Array2D] | None = None
     inner_radius: float = 0.1
     outer_radius: float = 2
     resolutions: list[int] = field(default_factory=lambda: [40, 50, 60])
 
-    def _curve_fn(self, t):
+    def _curve_fn(self, t: Array1D) -> Array2D:
+        if self.curve_fn is None:
+            raise ValueError(f"no 'curve_fn' provided to {type(self)}")
         return self.curve_fn(t)
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh.generation import make_curve_mesh
+
+        assert isinstance(resolution, int)
         return make_curve_mesh(
                 self._curve_fn,
                 np.linspace(0, 1, resolution + 1),
@@ -295,7 +332,8 @@ class EllipseTestCase(CurveTestCase):
     aspect_ratio: float = 3.0
     radius: float = 1.0
 
-    def _curve_fn(self, t):
+    @override
+    def _curve_fn(self, t: Array1D) -> Array2D:
         from meshmode.mesh.generation import ellipse
         return self.radius * ellipse(self.aspect_ratio, t)
 
@@ -312,7 +350,8 @@ class WobbleCircleTestCase(CurveTestCase):
     name: str = "wobble-circle"
     resolutions: list[int] = field(default_factory=lambda: [2000, 3000, 4000])
 
-    def _curve_fn(self, t):
+    @override
+    def _curve_fn(self, t: Array1D) -> Array2D:
         from meshmode.mesh.generation import WobblyCircle
         return WobblyCircle.random(30, seed=30)(t)
 
@@ -329,7 +368,8 @@ class StarfishTestCase(CurveTestCase):
 
     resolutions: list[int] = field(default_factory=lambda: [30, 50, 70, 90])
 
-    def _curve_fn(self, t):
+    @override
+    def _curve_fn(self, t: Array1D) -> Array2D:
         from meshmode.mesh.generation import NArmedStarfish
         return NArmedStarfish(self.n_arms, self.amplitude)(t)
 
@@ -339,7 +379,7 @@ class StarfishTestCase(CurveTestCase):
 # {{{ 3d surfaces
 
 @dataclass
-class Helmholtz3DTestCase(IntegralEquationTestCase):
+class Helmholtz3DTestCase(IntegralEquationTestCase, ABC):
     ambient_dim: int = 3
 
     # qbx
@@ -364,13 +404,13 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
     fmm_order: int = 13
 
     # test case
-    resolutions: list[int] = field(
-        default_factory=lambda: [2.0, 0.8])
+    resolutions: list[int] = field(default_factory=lambda: [2.0, 0.8])
     inner_radius: float = 0.4
     outer_radius: float = 5.0
     check_gradient: bool = True
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
@@ -409,8 +449,11 @@ class SphereTestCase(IntegralEquationTestCase):
     inner_radius: float = 0.4
     outer_radius: float = 5.0
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh.generation import generate_sphere
+
+        assert isinstance(resolution, int)
         return generate_sphere(self.radius, mesh_order,
                 uniform_refinement_rounds=resolution,
                 group_cls=self.group_cls)
@@ -421,7 +464,8 @@ class SpheroidTestCase(SphereTestCase):
     name: str = "spheroid"
     aspect_ratio: float = 2.0
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         mesh = super().get_mesh(resolution, mesh_order)
 
         from meshmode.mesh.processing import affine_map
@@ -435,9 +479,12 @@ class QuadSpheroidTestCase(SphereTestCase):
     name: str = "quadspheroid"
     aspect_ratio: float = 2.0
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh import TensorProductElementGroup
         from meshmode.mesh.generation import generate_sphere
+
+        assert isinstance(resolution, int)
         mesh = generate_sphere(1.0, mesh_order,
                 uniform_refinement_rounds=resolution,
                 group_cls=TensorProductElementGroup)
@@ -454,10 +501,10 @@ class GMSHSphereTestCase(SphereTestCase):
     name: str = "gmsphere"
 
     radius: float = 1.5
-    resolutions: list[int] = field(
-        default_factory=lambda: [0.4])
+    resolutions: list[int] = field(default_factory=lambda: [0.4])
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
         from meshmode.mesh.io import ScriptSource
         if issubclass(self.group_cls, SimplexElementGroup):
@@ -513,7 +560,10 @@ class TorusTestCase(IntegralEquationTestCase):
     # test case
     resolutions: list[int] = field(default_factory=lambda: [0, 1, 2])
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+        assert isinstance(resolution, int)
+
         from meshmode.mesh.generation import generate_torus
         mesh = generate_torus(self.r_major, self.r_minor, order=mesh_order,
                               group_cls=self.group_cls)
@@ -530,18 +580,18 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
     use_refinement: bool = True
 
     # test case
-    resolutions: list[int] = field(
-        default_factory=lambda: [1.4])
+    resolutions: list[int] = field(default_factory=lambda: [1.4])
     inner_radius: float = 0.4
     outer_radius: float = 12.0
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("merged-cubes.step"), 2, order=mesh_order,
                 other_options=[
                     "-string",
-                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+                    f"Mesh.CharacteristicLengthMax = {resolution};"])
 
         # Flip elements--gmsh generates inside-out geometry.
         from meshmode.mesh.processing import perform_flips
@@ -563,13 +613,14 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
     ny: int = 2
     nz: int = 2
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         base_mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
                 other_options=[
                     "-string",
-                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+                    f"Mesh.CharacteristicLengthMax = {resolution};"])
 
         from meshmode.mesh.processing import perform_flips
         base_mesh = perform_flips(base_mesh, np.ones(base_mesh.nelements, np.bool))
@@ -579,6 +630,8 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
         meshes = [
                 affine_map(
                     base_mesh,
+                    # FIXME: this should take the rng from somewhere to allow
+                    # for reproducible tests
                     A=rand_rotation_matrix(3),
                     b=self.pitch*np.array([
                         (i_x-self.nx//2),
@@ -611,8 +664,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
     fmm_tol: float = 1.0e-4
 
     # test case
-    resolutions: list[int] = field(
-        default_factory=lambda: [0.1])
+    resolutions: list[int] = field(default_factory=lambda: [0.1])
     inner_radius: float = 0.2
     outer_radius: float = 12   # was '-13' in some large-scale run (?)
     check_gradient: bool = False
@@ -626,7 +678,8 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
     box_extent_norm: str = "l2"
     from_sep_smaller_crit: str = "static_l2"
 
-    def get_mesh(self, resolution, mesh_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from pytools import download_from_web_if_not_present
 
         download_from_web_if_not_present(
@@ -643,7 +696,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
         # now centered at origin and extends to -1,1
 
         from meshmode.mesh.processing import perform_flips
-        return perform_flips(mesh, np.ones(mesh.nelements), dtype=np.bool)
+        return perform_flips(mesh, np.ones(mesh.nelements, dtype=np.bool))
 
 
 @dataclass
@@ -661,8 +714,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
     use_refinement: bool = True
 
     # test case
-    resolutions: list[int] = field(
-        default_factory=lambda: [0.2])
+    resolutions: list[int] = field(default_factory=lambda: [0.2])
     inner_radius: float = 0.2
     outer_radius: float = 15
     check_gradient: bool = False
@@ -681,7 +733,8 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
     # scaled_max_curvature_threshold = 1
     expansion_disturbance_tolerance: float = 0.3
 
-    def get_mesh(self, resolution, target_order):
+    @override
+    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
         from pytools import download_from_web_if_not_present
 
         download_from_web_if_not_present(
