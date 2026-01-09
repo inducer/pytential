@@ -23,6 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING, ClassVar
+
+from typing_extensions import override
+
 from arraycontext.pytest import (
     _PytestPyOpenCLArrayContextFactoryWithClass,
     register_pytest_array_context_factory,
@@ -33,6 +37,10 @@ from sumpy.array_context import (  # noqa: F401
 )
 
 
+if TYPE_CHECKING:
+    import loopy as lp
+    from arraycontext import ArrayContext
+
 __doc__ = """
 .. autoclass:: PyOpenCLArrayContext
 """
@@ -41,7 +49,8 @@ __doc__ = """
 # {{{ PyOpenCLArrayContext
 
 class PyOpenCLArrayContext(PyOpenCLArrayContextBase):
-    def transform_loopy_program(self, t_unit):
+    @override
+    def transform_loopy_program(self, t_unit: lp.TranslationUnit) -> lp.TranslationUnit:
         kernel = t_unit.default_entrypoint
         options = kernel.options
 
@@ -68,7 +77,7 @@ class PyOpenCLArrayContext(PyOpenCLArrayContextBase):
 
 # {{{ pytest
 
-def _acf():
+def _acf() -> PyOpenCLArrayContext:  # pyright: ignore[reportUnusedFunction]
     import pyopencl as cl
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
@@ -78,9 +87,10 @@ def _acf():
 
 class PytestPyOpenCLArrayContextFactory(
         _PytestPyOpenCLArrayContextFactoryWithClass):
-    actx_class = PyOpenCLArrayContext
+    actx_class: ClassVar[ArrayContext] = PyOpenCLArrayContext
 
-    def __call__(self):
+    @override
+    def __call__(self) -> ArrayContext:
         # NOTE: prevent any cache explosions during testing!
         from sympy.core.cache import clear_cache
         clear_cache()
