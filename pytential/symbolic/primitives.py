@@ -370,7 +370,7 @@ Pretty-printing expressions
 .. autofunction:: pretty
 """
 
-__all__ = (
+__all__ = (  # noqa: RUF022
     # re-export from pymbolic
     "Variable",
     "cse",

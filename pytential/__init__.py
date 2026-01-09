@@ -141,4 +141,4 @@ def norm(
         raise ValueError(f"unsupported norm order: {p}")
 
 
-__all__ = ["sym", "bind", "GeometryCollection"]
+__all__ = ("GeometryCollection", "bind", "integral", "norm", "sym")

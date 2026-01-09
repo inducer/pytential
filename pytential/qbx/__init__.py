@@ -1067,12 +1067,12 @@ def get_flat_strengths_from_densities(
 # }}}
 
 
-__all__ = [
-        "QBXLayerPotentialSource",
-        "QBXTargetAssociationFailedError",
-        "QBXDefaultExpansionFactory",
-        "ExpansionFactoryBase",
-        "LocalExpansionBase",
-        ]
+__all__ = (
+    "ExpansionFactoryBase",
+    "LocalExpansionBase",
+    "QBXDefaultExpansionFactory",
+    "QBXLayerPotentialSource",
+    "QBXTargetAssociationFailedError",
+)
 
 # vim: fdm=marker

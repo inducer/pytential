@@ -95,7 +95,6 @@ extend-ignore = [
     "N803",     # argument name should be lowercase
     "N806",     # variable name should be lowercase
     "RUF012",   # ClassVar for mutable class attributes
-    "RUF022",   # __all__ is not sorted
     "RUF067",   # non-empty-init-module
     "UP031",    # use f-strings instead of %
     "UP032",    # use f-strings instead of .format
