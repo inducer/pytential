@@ -30,7 +30,7 @@ THE SOFTWARE.
 import logging
 from abc import abstractmethod
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from mako.template import Template
@@ -515,7 +515,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
 
         return calibration_params
 
-    _QBX_STAGE_TO_CALIBRATION_PARAMETER = {
+    _QBX_STAGE_TO_CALIBRATION_PARAMETER: ClassVar[dict[str, str]] = {
         "form_global_qbx_locals": "c_p2qbxl",
         "translate_box_multipoles_to_qbx_local": "c_m2qbxl",
         "translate_box_local_to_qbx_local": "c_l2qbxl",
