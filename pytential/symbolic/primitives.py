@@ -2199,7 +2199,7 @@ def int_g_vec(
 
     Historically :class:`IntG` objects supported only one source kernel and
     allowed multiple densities to get a vector of objects as a convenience
-    function. Now that :class:`IntG` objects supports multiple source kernels
+    function. Now that :class:`IntG` objects support multiple source kernels
     with one density associated to each source kernel, the previous interface
     would lead to ambiguity. This function is intended to preserve the
     "vectorizing" behavior of of the constructor of :class:`IntG`
