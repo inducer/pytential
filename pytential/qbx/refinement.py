@@ -27,7 +27,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -42,10 +42,17 @@ from pytools import ProcessLogger, log_process, memoize_in, memoize_method
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE,
     QBX_TREE_MAKO_DEFS,
+    TreeCodeContainer,
     TreeCodeContainerMixin,
     TreeWranglerBase,
 )
 
+
+if TYPE_CHECKING:
+    from meshmode.discretization import ElementGroupFactory
+
+    from pytential.collection import GeometryCollection
+    from pytential.symbolic.dof_desc import DiscretizationStage
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +231,10 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 # {{{ code container
 
 class RefinerCodeContainer(TreeCodeContainerMixin):
+    array_context: PyOpenCLArrayContext
+    tree_code_container: TreeCodeContainer
 
-    def __init__(self, actx: PyOpenCLArrayContext):
+    def __init__(self, actx: PyOpenCLArrayContext) -> None:
         self.array_context = actx
 
         from pytential.qbx.utils import tree_code_container
@@ -233,8 +242,13 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
 
     @memoize_method
     def expansion_disk_undisturbed_by_sources_checker(
-            self, dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
-            particle_id_dtype, max_levels):
+            self,
+            dimensions: int,
+            coord_dtype: np.dtype[np.floating[Any]],
+            box_id_dtype: np.dtype[np.integer[Any]],
+            peer_list_idx_dtype: np.dtype[np.integer[Any]],
+            particle_id_dtype: np.dtype[np.integer[Any]],
+            max_levels: int) -> int:
         return EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER.generate(
                 self.array_context.context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
@@ -935,15 +949,17 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
 
 # {{{ refine_geometry_collection
 
-def refine_geometry_collection(places,
-        group_factory=None,
-        refine_discr_stage=None,
-        kernel_length_scale=None,
-        force_stage2_uniform_refinement_rounds=None,
-        scaled_max_curvature_threshold=None,
-        expansion_disturbance_tolerance=None,
-        maxiter=None,
-        debug=None, visualize=False):
+def refine_geometry_collection(
+        places: GeometryCollection,
+        group_factory: ElementGroupFactory | None = None,
+        refine_discr_stage: DiscretizationStage | None = None,
+        kernel_length_scale: float | np.floating[Any] | None = None,
+        force_stage2_uniform_refinement_rounds: int | None = None,
+        scaled_max_curvature_threshold: float | None = None,
+        expansion_disturbance_tolerance: float | None = None,
+        maxiter: int | None = None,
+        debug: bool | None = None,
+        visualize: bool = False) -> GeometryCollection:
     """Entry point for refining all the
     :class:`~pytential.qbx.QBXLayerPotentialSource` in the given collection.
     The :class:`~pytential.collection.GeometryCollection` performs
