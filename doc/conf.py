@@ -88,6 +88,7 @@ sphinxconfig_missing_reference_aliases = {
     # meshmode
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
+    "ElementGroupFactory": "class:meshmode.discretization.ElementGroupFactory",
     # boxtree
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     "TimingResult": "class:boxtree.timing.TimingResult",
