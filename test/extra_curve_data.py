@@ -23,22 +23,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Any, TypeAlias
+
 import numpy as np
 import numpy.linalg as la
+from typing_extensions import override
+
+
+Array1D: TypeAlias = np.ndarray[tuple[int], np.dtype[np.floating]]
+Array2D: TypeAlias = np.ndarray[tuple[int, int], np.dtype[np.floating]]
 
 
 class Curve:
-    def plot(self, npoints=50):
+    def plot(self, npoints: int = 50) -> None:
         import matplotlib.pyplot as plt
         x, y = self(np.linspace(0, 1, npoints))
+
         plt.plot(x, y, marker=".", lw=0)
         plt.axis("equal")
         plt.show()
 
-    def __add__(self, other):
+    def __add__(self, other: Curve) -> Curve:
         return CompositeCurve(self, other)
 
-    def __call__(self, ts):
+    def __call__(self, ts: Array1D) -> Array2D:
         raise NotImplementedError
 
 
@@ -47,33 +55,41 @@ class CompositeCurve(Curve):
     Parametrization of two or more curves combined.
     """
 
-    def __init__(self, *objs):
-        curves = []
+    curves: tuple[Curve, ...]
+
+    def __init__(self, *objs: Curve) -> None:
+        curves: list[Curve] = []
         for obj in objs:
             if isinstance(obj, CompositeCurve):
                 curves.extend(obj.curves)
             else:
                 curves.append(obj)
-        self.curves = curves
 
-    def __call__(self, ts):
+        self.curves = tuple(curves)
+
+    @override
+    def __call__(self, ts: Array1D) -> Array2D:
         from itertools import pairwise
 
         ranges = np.linspace(0, 1, len(self.curves) + 1)
         ts_argsort = np.argsort(ts)
         ts_sorted = ts[ts_argsort]
         ts_split_points = np.searchsorted(ts_sorted, ranges)
+
         # Make sure the last entry = len(ts), otherwise if ts finishes with a
         # trail of 1s, then they won't be forwarded to the last curve.
         ts_split_points[-1] = len(ts)
-        result = []
+
+        result: list[Array2D] = []
         subranges = [slice(*pair) for pair in pairwise(ts_split_points)]
         for curve, subrange, (start, end) in zip(
                 self.curves, subranges, pairwise(ranges), strict=True):
             ts_mapped = (ts_sorted[subrange] - start) / (end - start)
             result.append(curve(ts_mapped))
+
         final = np.concatenate(result, axis=-1)
         assert len(final[0]) == len(ts)
+
         return final
 
 
@@ -82,11 +98,14 @@ class Segment(Curve):
     Represents a line segment.
     """
 
-    def __init__(self, start, end):
-        self.start = np.array(start)
-        self.end = np.array(end)
+    def __init__(self,
+                 start: tuple[float, float],
+                 end: tuple[float, float]) -> None:
+        self.start: Array1D = np.array(start)
+        self.end: Array1D = np.array(end)
 
-    def __call__(self, ts):
+    @override
+    def __call__(self, ts: Array1D) -> Array2D:
         return (
             self.start[:, np.newaxis]
             + ts * (self.end - self.start)[:, np.newaxis])
@@ -97,7 +116,16 @@ class Arc(Curve):
     Represents an arc of a circle.
     """
 
-    def __init__(self, start, mid, end):
+    r: np.floating[Any]
+    center: Array1D
+
+    theta_range: Array1D
+    theta_increasing: bool
+
+    def __init__(self,
+                 start: tuple[float, float],
+                 mid: tuple[float, float],
+                 end: tuple[float, float]) -> None:
         """
         :arg start: starting point of the arc
         :arg mid: any point along the arc
@@ -135,15 +163,17 @@ class Arc(Curve):
         self.theta_range = np.array(sorted([theta_start, theta_end]))
         self.theta_increasing = theta_start <= theta_end
 
-    def __call__(self, t):
+    @override
+    def __call__(self, ts: Array1D) -> Array2D:
         if self.theta_increasing:
             thetas = (
                 self.theta_range[0]
-                + t * (self.theta_range[1] - self.theta_range[0]))
+                + ts * (self.theta_range[1] - self.theta_range[0]))
         else:
             thetas = (
                 self.theta_range[1]
-                - t * (self.theta_range[1] - self.theta_range[0]))
+                - ts * (self.theta_range[1] - self.theta_range[0]))
+
         val = (self.r * np.exp(1j * thetas)) + self.center
         return np.array([val.real, val.imag])
 
