@@ -374,7 +374,12 @@ def test_skeletonize_by_proxy(actx_factory: ArrayContextFactory, case, visualize
 
     import scipy.linalg.interpolative as sli
 
-    sli.seed(42)
+    try:
+        # NOTE: this function was removed in scipy 1.17.0
+        sli.seed(42)
+    except AttributeError:
+        pass
+
     rng = np.random.default_rng(42)
 
     actx = actx_factory()
@@ -424,7 +429,11 @@ def test_skeletonize_by_proxy_convergence(
     """
     import scipy.linalg.interpolative as sli
 
-    sli.seed(42)
+    try:
+        # NOTE: this function was removed in scipy 1.17.0
+        sli.seed(42)
+    except AttributeError:
+        pass
     rng = np.random.default_rng(42)
 
     actx = actx_factory()
