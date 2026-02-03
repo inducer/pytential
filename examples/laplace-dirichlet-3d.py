@@ -49,8 +49,8 @@ def main(mesh_name="torus", visualize=False):
                 affine_map(
                     base_mesh,
                     A=np.diag([1, 1, 1]),
-                    b=np.array([0, 0, iz*dz]))
-                for iz in range(nz)]
+                    b=np.array([0, 0, idx_z*dz]))
+                for idx_z in range(nz)]
 
         mesh = merge_disjoint_meshes(meshes, single_group=True)
 
