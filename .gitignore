@@ -21,6 +21,8 @@ examples/*.pdf
 
 *.vtu
 *.vts
+*.png
+*.gif
 
 .cache
 

@@ -76,12 +76,14 @@ def prepare_proxy_expr(
         places: GeometryCollection,
         exprs: Iterable[ArithmeticExpression],
         auto_where: tuple[DOFDescriptorLike, DOFDescriptorLike],
+        remove_transforms: bool = True,
     ) -> obj_array.ObjectArray1D[ArithmeticExpression]:
     def _prepare_expr(expr: ArithmeticExpression) -> ArithmeticExpression:
         # remove all diagonal / non-operator terms in the expression
         expr = IntGTermCollector()(expr)
         # ensure all IntGs remove all the kernel derivatives
-        expr = KernelTransformationRemover()(expr)
+        if remove_transforms:
+            expr = KernelTransformationRemover()(expr)
         # ensure all IntGs have their source and targets set
         expr = DOFDescriptorReplacer(
                                      default_source=auto_where[0],
@@ -231,13 +233,16 @@ class _LocationReplacer(LocationTagger):
                 rec:
                     Callable[[ArithmeticExpression], ArithmeticExpression]
                     | None = None):
+        if rec is None:
+            rec = self.rec_arith
+
         return type(expr)(
                 expr.target_kernel, expr.source_kernels,
-                densities=tuple(self.rec_arith(d) for d in expr.densities),
+                densities=tuple(rec(d) for d in expr.densities),
                 qbx_forced_limit=expr.qbx_forced_limit,
                 source=self.default_source, target=self.default_target,
                 kernel_arguments={
-                    name: componentwise(self.rec_arith, arg_expr)
+                    name: componentwise(rec, arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
                     }
                 )
@@ -254,8 +259,6 @@ class DOFDescriptorReplacer(_LocationReplacer):
 
     .. automethod:: __init__
     """
-
-    rec: _LocationReplacer
 
     @override
     def map_int_g(self,
