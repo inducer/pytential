@@ -53,6 +53,9 @@ Misc
 
 .. autofunction:: make_index_list
 .. autofunction:: make_index_cluster_cartesian_product
+.. autofunction:: make_flat_cluster_diag
+
+.. autofunction:: interp_decomp
 """
 
 InexactT = TypeVar("InexactT", bound=np.inexact)
