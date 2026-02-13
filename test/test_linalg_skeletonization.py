@@ -474,7 +474,7 @@ def test_skeletonize_by_proxy_convergence(
                 actx, case, r, places=places, mat=mat,
                 suffix=f"{suffix}_{i:04d}", rng=rng, visualize=False)
 
-        was_zero = rec_error[i] == 0.0
+        was_zero = abs(rec_error[i]) < 1.0e-15
         eoc.add_data_point(id_eps[i], rec_error[i])
         if was_zero:
             break
