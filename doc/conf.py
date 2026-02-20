@@ -47,6 +47,9 @@ nitpick_ignore_regex = [
     # https://github.com/jorenham/optype/issues/430
     ["py:class", r"optype.*"],
     ["py:class", r"onp.*"],
+    # sphinx >= 9.0 errors
+    ["py:class", r"_not_provided"],
+    ["py:class", r"Callable\[.*"],
 ]
 
 
@@ -81,6 +84,7 @@ sphinxconfig_missing_reference_aliases = {
     "ArrayContainer": "obj:arraycontext.ArrayContainer",
     "ArrayOrContainerOrScalar": "obj:arraycontext.ArrayOrContainerOrScalar",
     "ArrayOrContainerT": "obj:arraycontext.ArrayOrContainerT",
+    "arraycontext.typing.ArrayOrContainerT": "obj:arraycontext.ArrayOrContainerT",
     "PyOpenCLArrayContext": "class:arraycontext.PyOpenCLArrayContext",
     "ScalarLike": "obj:arraycontext.ScalarLike",
     # modepy
@@ -90,6 +94,7 @@ sphinxconfig_missing_reference_aliases = {
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     "ElementGroupFactory": "class:meshmode.discretization.ElementGroupFactory",
     # boxtree
+    "ExtentNorm": "obj:boxtree.tree_build.ExtentNorm",
     "FromSepSmallerCrit": "obj:boxtree.traversal.FromSepSmallerCrit",
     "TimingResult": "class:boxtree.timing.TimingResult",
     "TreeKind": "obj:boxtree.tree_build.TreeKind",
@@ -108,6 +113,7 @@ sphinxconfig_missing_reference_aliases = {
     "DOFGranularity": "data:pytential.symbolic.dof_desc.DOFGranularity",
     "DiscretizationStage": "data:pytential.symbolic.dof_desc.DiscretizationStage",
     "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
+    "FMMBackend": "obj:pytential.qbx.FMMBackend",
     "GeometryId": "data:pytential.symbolic.dof_desc.GeometryId",
     "KernelArgumentLike": "obj:pytential.symbolic.primitives.KernelArgumentLike",
     "KernelArgumentMapping": "obj:pytential.symbolic.primitives.KernelArgumentMapping",
