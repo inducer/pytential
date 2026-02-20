@@ -78,7 +78,7 @@ def make_circular_point_group(
 
 def make_source_and_target_points(
         actx: PyOpenCLArrayContext,
-        side: Literal[1] | Literal[-1] | Literal["scat"],
+        side: Literal[1, -1, "scat"],
         inner_radius: np.floating[Any],
         outer_radius: np.floating[Any],
         ambient_dim: int,

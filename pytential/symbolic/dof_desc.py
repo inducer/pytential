@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from collections.abc import Hashable
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 from typing_extensions import override
 
@@ -166,15 +166,19 @@ class DOFDescriptor:
         if granularity is None:
             granularity = GRANULARITY_NODE
 
-        if not (discr_stage is None
-                or discr_stage == QBX_SOURCE_STAGE1
-                or discr_stage == QBX_SOURCE_STAGE2
-                or discr_stage == QBX_SOURCE_QUAD_STAGE2):
+        if discr_stage not in {
+                None,
+                QBX_SOURCE_STAGE1,
+                QBX_SOURCE_STAGE2,
+                QBX_SOURCE_QUAD_STAGE2,
+            }:
             raise ValueError(f"unknown discr stage tag: '{discr_stage}'")
 
-        if not (granularity == GRANULARITY_NODE
-                or granularity == GRANULARITY_CENTER
-                or granularity == GRANULARITY_ELEMENT):
+        if granularity not in {
+                GRANULARITY_NODE,
+                GRANULARITY_CENTER,
+                GRANULARITY_ELEMENT,
+            }:
             raise ValueError(f"unknown granularity: '{granularity}'")
 
         self.geometry = geometry
@@ -212,13 +216,13 @@ class DOFDescriptor:
         return hash((type(self),
             self.geometry, self.discr_stage, self.granularity))
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         return (type(self) is type(other)
                 and self.geometry == other.geometry
                 and self.discr_stage == other.discr_stage
                 and self.granularity == other.granularity)
 
-    def __ne__(self, other: Any) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
     @override

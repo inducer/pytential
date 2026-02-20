@@ -762,7 +762,7 @@ def test_cost_model_correctness(actx_factory: ArrayContextFactory, dim, off_surf
         total_cost += timing_data[stage]["ops_elapsed"]
 
     per_box_cost, _ = op_S.cost_per_box("constant_one", sigma=sigma)
-    logging.info(per_box_cost)
+    logger.info(per_box_cost)
     per_box_cost, = per_box_cost.values()
 
     total_aggregate_cost = cost_model.aggregate_over_boxes(actx, per_box_cost)

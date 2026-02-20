@@ -280,18 +280,12 @@ class Collector(CollectorBase[CollectedT, []], CombineMapper[Set[CollectedT]]):
             ) -> Set[CollectedT]:
         return set()
 
-    map_ones: \
-        Callable[[Self, pp.Ones], Set[CollectedT]] = _map_leaf
-    map_is_shape_class: \
-        Callable[[Self, pp.IsShapeClass], Set[CollectedT]] = _map_leaf
-    map_error_expression: \
-        Callable[[Self, pp.ErrorExpression], Set[CollectedT]] = _map_leaf
-    map_node_coordinate_component: \
-        Callable[[Self, pp.NodeCoordinateComponent], Set[CollectedT]] = _map_leaf
-    map_q_weight: \
-        Callable[[Self, pp.QWeight], Set[CollectedT]] = _map_leaf
-    map_spatial_constant: \
-        Callable[[Self, pp.SpatialConstant], Set[CollectedT]] = _map_leaf
+    map_ones: Callable[[Self, pp.Ones], Set[CollectedT]] = _map_leaf
+    map_is_shape_class: Callable[[Self, pp.IsShapeClass], Set[CollectedT]] = _map_leaf
+    map_error_expression: Callable[[Self, pp.ErrorExpression], Set[CollectedT]] = _map_leaf  # noqa: E501
+    map_node_coordinate_component: Callable[[Self, pp.NodeCoordinateComponent], Set[CollectedT]] = _map_leaf  # noqa: E501
+    map_q_weight: Callable[[Self, pp.QWeight], Set[CollectedT]] = _map_leaf
+    map_spatial_constant: Callable[[Self, pp.SpatialConstant], Set[CollectedT]] = _map_leaf  # noqa: E501
 
 
 class OperatorCollector(Collector[pp.IntG]):
@@ -578,9 +572,11 @@ class DiscretizationStageTagger(IdentityMapper):
     """
 
     def __init__(self, discr_stage):
-        if not (discr_stage == pp.QBX_SOURCE_STAGE1
-                or discr_stage == pp.QBX_SOURCE_STAGE2
-                or discr_stage == pp.QBX_SOURCE_QUAD_STAGE2):
+        if discr_stage not in {
+                pp.QBX_SOURCE_STAGE1,
+                pp.QBX_SOURCE_STAGE2,
+                pp.QBX_SOURCE_QUAD_STAGE2,
+            }:
             raise ValueError(f'unknown discr stage tag: "{discr_stage}"')
 
         self.discr_stage = discr_stage

@@ -565,7 +565,7 @@ def test_3d_jump_relations(
                 / norm(density_discr, density, np.inf))
         eoc_rec.add_data_point(h_max, err)
 
-        logging.info("error: nel %d h_max %.5e %.5e", nel_factor, h_max, err)
+        logger.info("error: nel %d h_max %.5e %.5e", nel_factor, h_max, err)
 
         # {{{ visualization
 
