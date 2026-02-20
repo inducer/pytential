@@ -744,7 +744,7 @@ class NumReferenceDerivative(DiscretizationProperty):
             ref_axes = ((ref_axes, 1),)
 
         if not isinstance(ref_axes, tuple):
-            raise ValueError(f"'ref_axes' must be a tuple: {type(ref_axes)}")
+            raise TypeError(f"'ref_axes' must be a tuple: {type(ref_axes)}")
 
         if tuple(sorted(ref_axes)) != ref_axes:
             raise ValueError(

@@ -125,7 +125,7 @@ def norm(
         norm_op = _norm_2_op(discr, num_components)
         return norm_op(integrand=x)**(1/2)
 
-    elif p == np.inf or p == "inf":
+    elif p in {np.inf, "inf"}:
         norm_op = _norm_inf_op(discr, num_components)
 
         # FIXME: norm_op (correctly) becomes BoundExpression[Operand], but

@@ -173,7 +173,7 @@ class DOFConnection(DiscretizationConnection):
         from meshmode.discretization.connection import DiscretizationConnection
         for conn in self.connections:
             if not isinstance(conn, DiscretizationConnection):
-                raise ValueError(f"unsupported connection type: {type(conn)}")
+                raise TypeError(f"unsupported connection type: {type(conn)}")
 
         from_discr = self.connections[0].from_discr
         to_discr = self.connections[-1].to_discr

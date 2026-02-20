@@ -853,7 +853,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     from pytential.qbx import QBXLayerPotentialSource
     lpot_source = places.get_geometry(dofdesc.geometry)
     if not isinstance(lpot_source, QBXLayerPotentialSource):
-        raise ValueError(f"'{dofdesc.geometry}' is not a QBXLayerPotentialSource")
+        raise TypeError(f"'{dofdesc.geometry}' is not a QBXLayerPotentialSource")
 
     # {{{
 

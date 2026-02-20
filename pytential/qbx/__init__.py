@@ -87,7 +87,7 @@ __doc__ = """
 """
 
 
-FMMBackend: TypeAlias = Literal["sumpy"] | Literal["fmmlib"]
+FMMBackend: TypeAlias = Literal["sumpy", "fmmlib"]
 
 
 # {{{ QBX layer potential source
@@ -1055,7 +1055,7 @@ def get_flat_strengths_from_densities(
     density_dofarrays = [evaluate(density) for density in densities]
     for i, ary in enumerate(density_dofarrays):
         if not isinstance(ary, DOFArray):
-            raise ValueError(
+            raise TypeError(
                 f"DOFArray expected for density '{densities[i]}', "
                 f"{type(ary)} received instead")
 

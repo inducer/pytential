@@ -221,7 +221,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             representing the cost of adding all direct evaluation sources to
             QBX local expansions of centers in ``target_boxes[i]``.
         """
-        pass
 
     @abstractmethod
     def process_m2qbxl(self, actx: PyOpenCLArrayContext, geo_data, m2qbxl_cost):
@@ -234,7 +233,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             representing the cost of translating multipole expansions of list
             3 boxes at all source levels to all QBX centers in ``target_boxes[i]``.
         """
-        pass
 
     @abstractmethod
     def process_l2qbxl(self, actx: PyOpenCLArrayContext, geo_data, l2qbxl_cost):
@@ -247,7 +245,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             representing the cost of translating box local expansions to all
             QBX local expansions.
         """
-        pass
 
     @abstractmethod
     def process_eval_qbxl(self, actx: PyOpenCLArrayContext, geo_data, qbxl2p_cost):
@@ -259,7 +256,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             representing the cost of evaluating all targets associated with QBX
             centers in ``target_boxes[i]`` from QBX local expansions.
         """
-        pass
 
     @abstractmethod
     def process_eval_target_specific_qbxl(self, actx: PyOpenCLArrayContext,
@@ -278,7 +274,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             centers in ``target_boxes[i]`` from the direct evaluation sources of
             ``target_boxes[i]``.
         """
-        pass
 
     def qbx_cost_factors_for_kernels_from_model(
             self, actx: PyOpenCLArrayContext, nlevels, xlat_cost, context):

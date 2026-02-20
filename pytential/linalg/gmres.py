@@ -218,7 +218,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         rp = r
 
         for _orth_trips in range(2):
-            for j in range(0, orth_count):
+            for j in range(orth_count):
                 d = dot(Ae[j], w)
                 w = w - d * Ae[j]
                 rp = rp - d * e[j]
