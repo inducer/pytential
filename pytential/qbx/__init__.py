@@ -84,6 +84,8 @@ __doc__ = """
 .. autoclass:: QBXDefaultExpansionFactory
 
 .. autoclass:: NonFFTExpansionFactory
+
+.. autodata:: FMMBackend
 """
 
 
