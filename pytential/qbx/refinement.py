@@ -488,9 +488,8 @@ class RefinerWrangler(TreeWranglerBase):
         with ProcessLogger(logger, "refine mesh"):
             refiner.refine(refine_flags)
             from meshmode.discretization.connection import make_refinement_connection
-            conn = make_refinement_connection(actx, refiner, density_discr, factory)
+            return make_refinement_connection(actx, refiner, density_discr, factory)
 
-        return conn
 
 # }}}
 

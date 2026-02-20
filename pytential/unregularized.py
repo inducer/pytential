@@ -138,13 +138,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
-        result = (
+        return (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
                 expr.target_kernel.get_base_kernel(),
                 )
-
-        return result
 
     def preprocess_optemplate(self, name, discretizations, expr):
         """

@@ -43,7 +43,13 @@ from pytential.symbolic.primitives import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Hashable, Iterator, Sequence, Set
+    from collections.abc import (
+        Collection,
+        Hashable,
+        Iterator,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from pymbolic.geometric_algebra import MultiVector
     from pymbolic.mapper.dependency import Dependency
@@ -431,8 +437,8 @@ def _get_next_step(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
         result: CodeResultT,
-        available_names: Set[str],
-        done_stmts: Set[Statement]
+        available_names: AbstractSet[str],
+        done_stmts: AbstractSet[Statement]
         ) -> tuple[Statement, set[str]]:
 
     from pytools import argmax2

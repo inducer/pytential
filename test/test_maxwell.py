@@ -524,9 +524,9 @@ def test_pec_mfie_extinction(actx_factory: ArrayContextFactory, case,
         print(which_eoc)
         print(eoc_rec.pretty_print())
 
-        if len(eoc_rec.history) > 1:
-            if eoc_rec.order_estimate() < case.qbx_order - order_tol:
-                good = False
+        if (len(eoc_rec.history) > 1
+                and eoc_rec.order_estimate() < case.qbx_order - order_tol):
+            good = False
 
     assert good
 

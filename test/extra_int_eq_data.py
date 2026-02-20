@@ -212,12 +212,12 @@ class IntegralEquationTestCase(ABC):
     # {{{ geometry
 
     @abstractmethod
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         pass
 
     def get_discretization(self,
                            actx: ArrayContext,
-                           resolution: int | float,
+                           resolution: float,
                            mesh_order: int) -> Discretization:
         mesh = self.get_mesh(resolution, mesh_order)
         return self._get_discretization(actx, mesh)
@@ -228,7 +228,7 @@ class IntegralEquationTestCase(ABC):
 
     def get_layer_potential(self,
                             actx: ArrayContext,
-                            resolution: int | float,
+                            resolution: float,
                             mesh_order: int) -> QBXLayerPotentialSource:
         pre_density_discr = self.get_discretization(actx, resolution, mesh_order)
 
@@ -316,7 +316,7 @@ class CurveTestCase(IntegralEquationTestCase):
         return self.curve_fn(t)
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh.generation import make_curve_mesh
 
         assert isinstance(resolution, int)
@@ -410,7 +410,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
     check_gradient: bool = True
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
@@ -450,7 +450,7 @@ class SphereTestCase(IntegralEquationTestCase):
     outer_radius: float = 5.0
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh.generation import generate_sphere
 
         assert isinstance(resolution, int)
@@ -465,7 +465,7 @@ class SpheroidTestCase(SphereTestCase):
     aspect_ratio: float = 2.0
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         mesh = super().get_mesh(resolution, mesh_order)
 
         from meshmode.mesh.processing import affine_map
@@ -480,7 +480,7 @@ class QuadSpheroidTestCase(SphereTestCase):
     aspect_ratio: float = 2.0
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh import TensorProductElementGroup
         from meshmode.mesh.generation import generate_sphere
 
@@ -504,7 +504,7 @@ class GMSHSphereTestCase(SphereTestCase):
     resolutions: list[int] = field(default_factory=lambda: [0.4])
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
         from meshmode.mesh.io import ScriptSource
         if issubclass(self.group_cls, SimplexElementGroup):
@@ -561,7 +561,7 @@ class TorusTestCase(IntegralEquationTestCase):
     resolutions: list[int] = field(default_factory=lambda: [0, 1, 2])
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         assert isinstance(resolution, int)
 
         from meshmode.mesh.generation import generate_torus
@@ -585,7 +585,7 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
     outer_radius: float = 12.0
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         mesh = generate_gmsh(
                 FileSource("merged-cubes.step"), 2, order=mesh_order,
@@ -614,7 +614,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
     nz: int = 2
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from meshmode.mesh.io import FileSource, generate_gmsh
         base_mesh = generate_gmsh(
                 FileSource("ellipsoid.step"), 2, order=mesh_order,
@@ -679,7 +679,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
     from_sep_smaller_crit: str = "static_l2"
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from pytools import download_from_web_if_not_present
 
         download_from_web_if_not_present(
@@ -734,7 +734,7 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
     expansion_disturbance_tolerance: float = 0.3
 
     @override
-    def get_mesh(self, resolution: int | float, mesh_order: int) -> Mesh:
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
         from pytools import download_from_web_if_not_present
 
         download_from_web_if_not_present(

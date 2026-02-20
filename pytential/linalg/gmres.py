@@ -398,14 +398,13 @@ def gmres(
         else:
             callback = None
 
-    result = _gmres(op, rhs, restart=restart, tol=tol, x0=x0,
+    return _gmres(op, rhs, restart=restart, tol=tol, x0=x0,
             dot=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
             no_progress_factor=no_progress_factor,
             stall_iterations=stall_iterations, callback=callback,
             require_monotonicity=require_monotonicity)
 
-    return result
 
 # }}}
 
