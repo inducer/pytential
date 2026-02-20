@@ -25,25 +25,64 @@ THE SOFTWARE.
 
 __doc__ = """
 .. autofunction:: gmres
+
 .. autoclass:: GMRESResult
 .. autoexception:: GMRESError
 .. autoclass:: ResidualPrinter
+
+.. autoclass:: InnerProduct
+    :members:
+    :undoc-members:
+    :special-members: __call__
+.. autoclass:: CallableOperator
+    :members:
+    :undoc-members:
+    :special-members: __call__
+.. autoclass:: HasMatVec
+    :members:
+    :undoc-members:
 """
 
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, Protocol
 
 import numpy as np
+
+from arraycontext import ArrayContext, ArrayOrContainerT
+from pytools import T
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from arraycontext import ArrayContainer, ArrayOrContainerT
+
+class InnerProduct(Protocol, Generic[T]):
+    """A :class:`~typing.Protocol` for the inner product used by :func:`gmres`."""
+
+    def __call__(self, a: T, b: T) -> T: ...
 
 
-def structured_vdot(x, y, array_context=None):
+class CallableOperator(Protocol, Generic[T]):
+    """A :class:`~typing.Protocol` for the operator used by :func:`gmres`."""
+
+    @property
+    def shape(self) -> tuple[int, int]: ...
+
+    def __call__(self, x: T) -> T: ...
+
+
+class HasMatVec(Protocol, Generic[T]):
+    """A :class:`~typing.Protocol` for the operator used by :func:`gmres`."""
+
+    @property
+    def shape(self) -> tuple[int, int]: ...
+
+    def matvec(self, x: T) -> T: ...
+
+
+def structured_vdot(x: ArrayOrContainerT, y: ArrayOrContainerT,
+                    array_context: ArrayContext | None = None) -> float:
     """vdot() implementation that is aware of scalars and host or
     PyOpenCL arrays. It also recurses down nested object arrays.
     """
@@ -57,6 +96,9 @@ def structured_vdot(x, y, array_context=None):
             or (isinstance(x, np.ndarray) and x.dtype.char != "O")):
         return np.vdot(x, y)
     else:
+        if array_context is None:
+            raise ValueError("'array_context' is required for non-scalar inputs")
+
         # actx.np.vdot works on PyOpenCL arrays and arbitrarily nested
         # array containers, so this should handle all remaining cases
         r = array_context.to_numpy(array_context.np.vdot(x, y))
@@ -81,40 +123,49 @@ class GMRESError(RuntimeError):
 # {{{ main routine
 
 @dataclass(frozen=True)
-class GMRESResult:
+class GMRESResult(Generic[T]):
     """
-    .. attribute:: solution
-    .. attribute:: residual_norms
-    .. attribute:: iteration_count
-    .. attribute:: success
-
-        A :class:`bool` indicating whether the iteration succeeded.
-
-    .. attribute:: state
-
-        A description of the outcome.
+    .. autoattribute:: solution
+    .. autoattribute:: residual_norms
+    .. autoattribute:: iteration_count
+    .. autoattribute:: success
+    .. autoattribute:: state
     """
 
-    solution: ArrayContainer
+    solution: T
     residual_norms: Sequence[float]
     iteration_count: int
     success: bool
+    """A :class:`bool` indicating whether the iteration succeeded."""
     state: str
+    """A description of the outcome."""
 
 
-def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
-        maxiter=None, hard_failure=None, require_monotonicity=True,
-        no_progress_factor=None, stall_iterations=None,
-        callback=None):
+def _gmres(
+        A: CallableOperator[ArrayOrContainerT] | HasMatVec[ArrayOrContainerT],
+        b: ArrayOrContainerT,
+        restart: int | None = None,
+        tol: float | None = None,
+        x0: ArrayOrContainerT | None = None,
+        dot: InnerProduct[ArrayOrContainerT] | None = None,
+        maxiter: int | None = None,
+        hard_failure: bool | None = None,
+        require_monotonicity: bool = True,
+        no_progress_factor: float | None = None,
+        stall_iterations: int | None = None,
+        callback: Callable[[ArrayOrContainerT], None] | None = None
+    ) -> GMRESResult[ArrayOrContainerT]:
 
     # {{{ input processing
 
     n, _ = A.shape
-
     if not callable(A):
         a_call = A.matvec
     else:
         a_call = A
+
+    if dot is None:
+        raise ValueError("'dot' not provided")
 
     if restart is None:
         restart = min(n, 20)
@@ -130,16 +181,17 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
 
     if stall_iterations is None:
         stall_iterations = 10
+
     if no_progress_factor is None:
         no_progress_factor = 1.25
 
     # }}}
 
-    def norm(x):
+    def norm(x: ArrayOrContainerT) -> float:
         return np.sqrt(abs(dot(x, x)))
 
     if x0 is None:
-        x = 0*b
+        x: ArrayOrContainerT = 0*b
         r = b
         recalc_r = False
     else:
@@ -147,15 +199,16 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         del x0
         recalc_r = True
 
-    Ae = [None]*restart
-    e = [None]*restart
+    Ae: list[ArrayOrContainerT] = [None]*restart
+    e: list[ArrayOrContainerT] = [None]*restart
 
     k = 0
 
     norm_b = norm(b)
     last_resid_norm = None
-    residual_norms = []
+    residual_norms: list[float] = []
 
+    iteration = 0
     for iteration in range(maxiter):
         # restart if required
         if k == restart:
@@ -175,9 +228,11 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
             callback(r)
 
         if norm_r < tol*norm_b or norm_r == 0:
-            return GMRESResult(solution=x,
+            return GMRESResult(
+                    solution=x,
                     residual_norms=residual_norms,
-                    iteration_count=iteration, success=True,
+                    iteration_count=iteration,
+                    success=True,
                     state="success")
         if last_resid_norm is not None:
             if norm_r > 1.25*last_resid_norm:
@@ -186,9 +241,11 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
                     if hard_failure:
                         raise GMRESError(state)
                     else:
-                        return GMRESResult(solution=x,
+                        return GMRESResult(
+                                solution=x,
                                 residual_norms=residual_norms,
-                                iteration_count=iteration, success=False,
+                                iteration_count=iteration,
+                                success=False,
                                 state=state)
                 else:
                     print("*** WARNING: non-monotonic residuals in GMRES")
@@ -203,9 +260,11 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
                 if hard_failure:
                     raise GMRESError(state)
                 else:
-                    return GMRESResult(solution=x,
+                    return GMRESResult(
+                            solution=x,
                             residual_norms=residual_norms,
-                            iteration_count=iteration, success=False,
+                            iteration_count=iteration,
+                            success=False,
                             state=state)
 
         last_resid_norm = norm_r
@@ -248,9 +307,11 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
     if hard_failure:
         raise GMRESError(state)
     else:
-        return GMRESResult(solution=x,
+        return GMRESResult(
+                solution=x,
                 residual_norms=residual_norms,
-                iteration_count=iteration, success=False,
+                iteration_count=iteration,
+                success=False,
                 state=state)
 
 # }}}
@@ -258,18 +319,28 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
 
 # {{{ progress reporting
 
-class ResidualPrinter:
-    def __init__(self, inner_product=structured_vdot):
+class ResidualPrinter(Generic[ArrayOrContainerT]):
+    count: int
+    inner_product: InnerProduct[ArrayOrContainerT]
+
+    def __init__(
+            self,
+            inner_product: InnerProduct[ArrayOrContainerT] | None = None
+        ) -> None:
+        if inner_product is None:
+            inner_product = structured_vdot
+
         self.count = 0
         self.inner_product = inner_product
 
-    def __call__(self, resid):
+    def __call__(self, resid: ArrayOrContainerT | None) -> None:
         import sys
         if resid is not None:
             norm = np.sqrt(self.inner_product(resid, resid))
             sys.stdout.write(f"IT {self.count:8d} {abs(norm):.8e}\n")
         else:
             sys.stdout.write(f"IT {self.count:8d}\n")
+
         self.count += 1
         sys.stdout.flush()
 
@@ -279,20 +350,19 @@ class ResidualPrinter:
 # {{{ entrypoint
 
 def gmres(
-        op: Callable[[ArrayOrContainerT], ArrayOrContainerT],
+        op: CallableOperator[ArrayOrContainerT] | HasMatVec[ArrayOrContainerT],
         rhs: ArrayOrContainerT,
         restart: int | None = None,
         tol: float | None = None,
         x0: ArrayOrContainerT | None = None,
-        inner_product: (
-            Callable[[ArrayOrContainerT, ArrayOrContainerT], float] | None) = None,
+        inner_product: InnerProduct[ArrayOrContainerT] | None = None,
         maxiter: int | None = None,
         hard_failure: bool | None = None,
         no_progress_factor: float | None = None,
         stall_iterations: int | None = None,
         callback: Callable[[ArrayOrContainerT], None] | None = None,
         progress: bool = False,
-        require_monotonicity: bool = True) -> GMRESResult:
+        require_monotonicity: bool = True) -> GMRESResult[ArrayOrContainerT]:
     """Solve a linear system :math:`Ax = b` using GMRES with restarts.
 
     :arg op: a callable to evaluate :math:`A(x)`.
@@ -308,8 +378,6 @@ def gmres(
     :arg stall_iterations: number of iterations with residual decrease
         below *no_progress_factor* indicates stall. Set to ``0`` to disable
         stall detection.
-
-    :return: a :class:`GMRESResult`.
     """
     if inner_product is None:
         from pytential.symbolic.execution import (
