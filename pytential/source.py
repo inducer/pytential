@@ -231,13 +231,11 @@ class PointPotentialSource(PotentialSource):
         # target kernel, we group all IntGs with same source kernels and densities.
         # sorting is done to avoid duplicates as the order of the sum of source
         # kernels does not matter.
-        result = (
+        return (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
                 expr.target_kernel.get_base_kernel(),
                 )
-
-        return result
 
     def cost_model_compute_potential_insn(
             self,

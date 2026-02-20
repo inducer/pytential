@@ -105,8 +105,9 @@ exclude = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"doc/*.py" = ["I002"]
+"doc/*.py" = ["I002", "S102"]
 "examples/*.py" = ["I002"]
+"test/test_*.py" = ["S102"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"

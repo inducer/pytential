@@ -495,12 +495,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @override
     def op_group_features(self, expr: IntG):
         from pytential.utils import sort_arrays_together
-        result = (
+        return (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str)
                 )
-
-        return result
 
     # }}}
 

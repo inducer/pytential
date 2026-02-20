@@ -83,11 +83,9 @@ def prepare_proxy_expr(
         # ensure all IntGs remove all the kernel derivatives
         expr = KernelTransformationRemover()(expr)
         # ensure all IntGs have their source and targets set
-        expr = DOFDescriptorReplacer(
+        return DOFDescriptorReplacer(
                                      default_source=auto_where[0],
                                      default_target=auto_where[1]).rec_arith(expr)
-
-        return expr
 
     return obj_array.new_1d([_prepare_expr(expr) for expr in exprs])
 

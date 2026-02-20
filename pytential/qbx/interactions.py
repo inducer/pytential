@@ -134,9 +134,7 @@ class P2QBXLFromCSR(P2EBase):
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = lp.tag_inames(loopy_knl, "istrength*:unr")
-        loopy_knl = self.add_loopy_form_callable(loopy_knl)
-
-        return loopy_knl
+        return self.add_loopy_form_callable(loopy_knl)
 
     @memoize_method
     def get_optimized_kernel(self, is_sources_obj_array, is_centers_obj_array):
@@ -149,8 +147,7 @@ class P2QBXLFromCSR(P2EBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.split_iname(knl, "itgt_center", 16, outer_tag="g.0")
-        knl = self._allow_redundant_execution_of_knl_scaling(knl)
-        return knl
+        return self._allow_redundant_execution_of_knl_scaling(knl)
 
     def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         sources = kwargs.pop("sources")
@@ -274,8 +271,7 @@ class M2QBXL(E2EBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
-        knl = self._allow_redundant_execution_of_knl_scaling(knl)
-        return knl
+        return self._allow_redundant_execution_of_knl_scaling(knl)
 
     def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         centers = kwargs.pop("centers")
@@ -393,8 +389,7 @@ class L2QBXL(E2EBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
-        knl = self._allow_redundant_execution_of_knl_scaling(knl)
-        return knl
+        return self._allow_redundant_execution_of_knl_scaling(knl)
 
     def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         centers = kwargs.pop("centers")
@@ -506,9 +501,7 @@ class QBXL2P(E2PBase):
                     "nresults": len(self.kernels)})
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr,iknl:unr")
-        loopy_knl = self.add_loopy_eval_callable(loopy_knl)
-
-        return loopy_knl
+        return self.add_loopy_eval_callable(loopy_knl)
 
     @memoize_method
     def get_optimized_kernel(self, is_targets_obj_array, is_centers_obj_array):
@@ -521,8 +514,7 @@ class QBXL2P(E2PBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.tag_inames(knl, {"iglobal_center": "g.0"})
-        knl = lp.add_inames_to_insn(knl, "iglobal_center", "id:kernel_scaling")
-        return knl
+        return lp.add_inames_to_insn(knl, "iglobal_center", "id:kernel_scaling")
 
     def __call__(self, actx: PyOpenCLArrayContext, **kwargs):
         targets = kwargs.pop("targets")

@@ -449,9 +449,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                     **kwargs).T
 
-            if self.dim == 3:
-                if ier.any():
-                    raise RuntimeError("m2qbxl failed")
+            if self.dim == 3 and ier.any():
+                raise RuntimeError("m2qbxl failed")
 
             qbx_exps[geo_data.global_qbx_centers()] += expn2
 

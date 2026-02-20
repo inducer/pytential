@@ -313,11 +313,9 @@ def get_lpot_source(actx, dim):
             )
 
     from pytential.qbx import QBXLayerPotentialSource
-    lpot_source = QBXLayerPotentialSource(
+    return QBXLayerPotentialSource(
             pre_density_discr, OVSMP_FACTOR*target_order,
             **lpot_kwargs)
-
-    return lpot_source
 
 
 def get_density(actx, discr):

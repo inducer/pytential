@@ -239,7 +239,7 @@ class DirichletOperator(L2WeightedPDEOperator):
             self,
             kernel: Kernel,
             loc_sign: Side, *,
-            alpha: int | float | complex | None = None,
+            alpha: complex | None = None,
             use_l2_weighting: bool = False,
             kernel_arguments: dict[str, Operand] | None = None) -> None:
         assert loc_sign in [-1, 1]
@@ -400,7 +400,7 @@ class NeumannOperator(L2WeightedPDEOperator):
     def __init__(self,
             kernel: Kernel,
             loc_sign: Side, *,
-            alpha: int | float | complex | None = None,
+            alpha: complex | None = None,
             use_improved_operator: bool = True,
             use_l2_weighting: bool = False,
             kernel_arguments: dict[str, Any] | None = None):

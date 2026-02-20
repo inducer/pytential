@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Callable, Iterable, Set
+from collections.abc import Callable, Iterable, Set as AbstractSet
 from dataclasses import dataclass, replace
 from functools import reduce
 from typing import TYPE_CHECKING, cast
@@ -269,7 +269,7 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
 
 # {{{ Collector
 
-class Collector(CollectorBase[CollectedT, []], CombineMapper[Set[CollectedT]]):
+class Collector(CollectorBase[CollectedT, []], CombineMapper[AbstractSet[CollectedT]]):
     def _map_leaf(self,
                 expr: pp.Ones
                     | pp.ErrorExpression
@@ -277,15 +277,15 @@ class Collector(CollectorBase[CollectedT, []], CombineMapper[Set[CollectedT]]):
                     | pp.NodeCoordinateComponent
                     | pp.QWeight
                     | pp.SpatialConstant
-            ) -> Set[CollectedT]:
+            ) -> AbstractSet[CollectedT]:
         return set()
 
-    map_ones: Callable[[Self, pp.Ones], Set[CollectedT]] = _map_leaf
-    map_is_shape_class: Callable[[Self, pp.IsShapeClass], Set[CollectedT]] = _map_leaf
-    map_error_expression: Callable[[Self, pp.ErrorExpression], Set[CollectedT]] = _map_leaf  # noqa: E501
-    map_node_coordinate_component: Callable[[Self, pp.NodeCoordinateComponent], Set[CollectedT]] = _map_leaf  # noqa: E501
-    map_q_weight: Callable[[Self, pp.QWeight], Set[CollectedT]] = _map_leaf
-    map_spatial_constant: Callable[[Self, pp.SpatialConstant], Set[CollectedT]] = _map_leaf  # noqa: E501
+    map_ones: Callable[[Self, pp.Ones], AbstractSet[CollectedT]] = _map_leaf
+    map_is_shape_class: Callable[[Self, pp.IsShapeClass], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
+    map_error_expression: Callable[[Self, pp.ErrorExpression], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
+    map_node_coordinate_component: Callable[[Self, pp.NodeCoordinateComponent], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
+    map_q_weight: Callable[[Self, pp.QWeight], AbstractSet[CollectedT]] = _map_leaf
+    map_spatial_constant: Callable[[Self, pp.SpatialConstant], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
 
 
 class OperatorCollector(Collector[pp.IntG]):
