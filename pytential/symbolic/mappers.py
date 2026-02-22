@@ -729,10 +729,10 @@ class UnregularizedPreprocessor(IdentityMapper):
             expr,
             qbx_forced_limit=None,
             densities=self.rec(expr.densities),
-            kernel_arguments={
+            kernel_arguments=constantdict({
                 name: componentwise(self.rec_arith, arg_expr)
                 for name, arg_expr in expr.kernel_arguments.items()
-            }
+            })
         )
 
 # }}}
