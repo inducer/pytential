@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING
 
+from constantdict import constantdict
 from typing_extensions import override
 
 from pymbolic.geometric_algebra import componentwise
@@ -137,7 +138,7 @@ class KernelTransformationRemover(IdentityMapper):
                        target_kernel=target_kernel,
                        source_kernels=source_kernels,
                        densities=self.rec(expr.densities),
-                       kernel_arguments=kernel_arguments)
+                       kernel_arguments=constantdict(kernel_arguments))
 
 # }}}
 
@@ -234,10 +235,10 @@ class _LocationReplacer(LocationTagger):
                 densities=tuple(self.rec_arith(d) for d in expr.densities),
                 qbx_forced_limit=expr.qbx_forced_limit,
                 source=self.default_source, target=self.default_target,
-                kernel_arguments={
+                kernel_arguments=constantdict({
                     name: componentwise(self.rec_arith, arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    }
+                    })
                 )
 
 
