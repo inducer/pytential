@@ -940,7 +940,7 @@ def stringify_where(where: DOFDescriptorLike):
     return str(pp.as_dofdesc(where))
 
 
-class StringifyMapper(BaseStringifyMapper):
+class StringifyMapper(BaseStringifyMapper[[]]):
 
     def map_ones(self, expr: pp.Ones, enclosing_prec: int):
         return "Ones[%s]" % stringify_where(expr.dofdesc)
