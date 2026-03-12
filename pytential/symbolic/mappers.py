@@ -740,6 +740,55 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 # {{{ InterpolationPreprocessor
 
+@dataclass
+class EarlyInterpolationAdder(
+            # This is deliberately inheriting from the pymbolic mapper,
+            # based on the assumption that all the pymbolic-defined operations
+            # will apply elementwise. Pytential nodes will end up in
+            # handle_unsupported_expression below.
+            IdentityMapperBase[[]],
+            CSECachingMapperMixin[Expression, []]):
+    """Used from within :class:`InterpolationPreprocessor`. Rather than
+    interpolate the result of a computation, push interpolation as far
+    'upstream' as possible, to minimize aliasing error.
+    """
+    from_dd: DOFDescriptor
+    to_dd: DOFDescriptor
+
+    @override
+    def map_variable(self, expr: p.Variable):
+        return pp.interpolate(expr, self.from_dd, self.to_dd)
+
+    @override
+    def map_call(self,
+                expr: p.Call,
+            ) -> Expression:
+        parameters = tuple(self.rec(child) for child in expr.parameters)
+        if all(child is orig_child for child, orig_child in
+                        zip(expr.parameters, parameters, strict=True)):
+            return expr
+
+        return type(expr)(expr.function, parameters)
+
+    @override
+    def handle_unsupported_expression(self, expr: p.ExpressionNode) -> Expression:
+        return pp.interpolate(expr, self.from_dd, self.to_dd)
+
+    @override
+    def map_common_subexpression_uncached(self,
+                expr: p.CommonSubexpression, /,
+            ) -> Expression:
+        result = self.rec(expr.child)
+        if result is expr.child:
+            return expr
+
+        return type(expr)(
+                result,
+                expr.prefix,
+                expr.scope,
+                **expr.get_extra_properties())
+
+
 class InterpolationPreprocessor(IdentityMapper):
     """Handle expressions that require upsampling or downsampling by inserting
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
@@ -801,16 +850,18 @@ class InterpolationPreprocessor(IdentityMapper):
 
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
+        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
         densities = tuple(
-            pp.interpolate(self.rec_arith(density), from_dd, to_dd)
+            interp_adder.rec_arith(self.rec_arith(density))
             for density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
+        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
         kernel_arguments = constantdict({
                 name: componentwise(
-                    lambda aexpr: pp.interpolate(
+                    lambda aexpr: interp_adder.rec_arith(
                         self.rec_arith(
-                            self.tagger.rec_arith(aexpr)), from_dd, to_dd),
+                            self.tagger.rec_arith(aexpr))),
                     arg_expr)
                 for name, arg_expr in expr.kernel_arguments.items()})
 
