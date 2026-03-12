@@ -1076,9 +1076,6 @@ class PrettyStringifyMapper(
 # {{{ graphviz
 
 class GraphvizMapper(GraphvizMapperBase):
-    def __init__(self):
-        super().__init__()
-
     def map_pytential_leaf(self, expr):
         self.lines.append(
                 '{} [label="{}", shape=box];'.format(
@@ -1090,7 +1087,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     map_ones = map_pytential_leaf
 
-    def map_map_node_sum(self, expr):
+    def map_map_node_sum(self, expr: pp.NodeSum):
         self.lines.append(
                 '{} [label="{}",shape=circle];'.format(
                     self.get_id(expr), type(expr).__name__))
@@ -1106,7 +1103,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     map_q_weight = map_pytential_leaf
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: pp.IntG):
         descr = "Int[%s->%s]@(%d) (%s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
