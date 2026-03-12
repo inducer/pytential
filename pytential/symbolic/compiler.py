@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 
@@ -33,7 +33,12 @@ import pymbolic.primitives as prim
 from pymbolic import ArithmeticExpression
 from pytools.obj_array import ObjectArray, ObjectArray1D, ShapeT, from_numpy
 
-from pytential.symbolic.mappers import CachedIdentityMapper, DependencyMapper
+from pytential.symbolic.mappers import (
+    CachedIdentityMapper,
+    DependencyMapper,
+    PrettyStringifyMapper,
+    StringifyMapper,
+)
 from pytential.symbolic.primitives import (
     DOFDescriptor,
     IntG,
@@ -44,6 +49,7 @@ from pytential.symbolic.primitives import (
 
 if TYPE_CHECKING:
     from collections.abc import (
+        Callable,
         Collection,
         Hashable,
         Iterator,
@@ -76,7 +82,7 @@ __doc__ = """
 # {{{ statements
 
 @dataclass(frozen=True, eq=False)
-class Statement:
+class Statement(ABC):
     """
     .. autoattribute:: names
     .. autoattribute:: exprs
@@ -93,23 +99,25 @@ class Statement:
     priority: int
     """The priority of the statement."""
 
+    @abstractmethod
     def get_assignees(self) -> set[str]:
         """
         :returns: names of variables that are assigned to in this statement.
         """
-        raise NotImplementedError(
-                f"get_assignees for '{self.__class__.__name__}'")
 
+    @abstractmethod
     def get_dependencies(self, dep_mapper: DependencyMapper) -> set[prim.Variable]:
         """
         :returns: variables that are dependencies of the assignees.
         """
-        raise NotImplementedError(
-                f"get_dependencies for '{self.__class__.__name__}'")
+
+    @abstractmethod
+    def stringify(self, expr_mapper: Callable[[Expression | Operand], str]) -> str:
+        ...
 
     @override
-    def __str__(self) -> str:
-        raise NotImplementedError
+    def __str__(self):
+        return self.stringify(StringifyMapper())
 
 
 @dataclass(frozen=True, eq=False)
@@ -152,14 +160,17 @@ class Assign(Statement):
         return deps
 
     @override
-    def __str__(self) -> str:
+    def stringify(self, expr_mapper: Callable[[Expression | Operand], str]) -> str:
         comment = self.comment
 
         if len(self.names) == 1:
             if comment:
                 comment = f"/* {comment} */ "
 
-            return "{} <- {}{}".format(self.names[0], comment, self.exprs[0])
+            return "{} <- {}{}".format(
+                            self.names[0],
+                            comment,
+                            expr_mapper(self.exprs[0]))
         else:
             do_not_return = self.do_not_return
             if do_not_return is None:
@@ -176,7 +187,7 @@ class Assign(Statement):
                 else:
                     dnr_indicator = ""
 
-                lines.append(f"  {n} <{dnr_indicator}- {e}")
+                lines.append(f"  {n} <{dnr_indicator}- {expr_mapper(e)}")
             lines.append("}")
 
             return "\n".join(lines)
@@ -266,14 +277,12 @@ class ComputePotential(Statement):
         return result
 
     @override
-    def __str__(self) -> str:
+    def stringify(self, expr_mapper: Callable[[Expression | Operand], str]) -> str:
         args = [f"source={self.source}"]
         for i, density in enumerate(self.densities):
             args.append(f"density{i}={density}")
 
-        from pytential.symbolic.mappers import StringifyMapper, stringify_where
-        strify = StringifyMapper()
-
+        from pytential.symbolic.mappers import stringify_where
         lines: list[str] = []
         for o in self.outputs:
             if o.target_name != self.source:
@@ -308,7 +317,7 @@ class ComputePotential(Statement):
             lines.append(line)
 
         for arg_name, arg_expr in self.kernel_arguments.items():
-            arg_expr_lines = strify(arg_expr).split("\n")
+            arg_expr_lines = expr_mapper(arg_expr).split("\n")
             lines.append("  {} = {}".format(arg_name, arg_expr_lines[0]))
             lines.extend("  " + s for s in arg_expr_lines[1:])
 
@@ -417,9 +426,23 @@ class Code(Generic[CodeResultT]):
 
     @override
     def __str__(self) -> str:
+        strify_mapper = PrettyStringifyMapper()
         lines: list[str] = []
         for insn in self.statements:
-            lines.extend(str(insn).split("\n"))
+            lines.extend(insn.stringify(strify_mapper).split("\n"))
+
+        if strify_mapper.cse_name_list:
+            # FIXME: There's potential here for name clashes between the 'code'
+            # and 'discretization CSE' parts. It's just presentation, so if it's
+            # bothersome, near here is the place to fix it.
+            lines = [
+                "DISCRETIZATION-LEVEL COMMON SUBEXPRESSIONS:",
+                *[
+                f"{name} <- {cse_expr_str}"
+                for name, cse_expr_str in strify_mapper.cse_name_list],
+                "-"*75,
+                *lines]
+
         lines.append(f"RESULT: {self.result}")
 
         return "\n".join(lines)
