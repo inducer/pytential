@@ -571,7 +571,9 @@ class DiscretizationStageTagger(IdentityMapper):
         :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage`.
     """
 
-    def __init__(self, discr_stage):
+    discr_stage: DiscretizationStage
+
+    def __init__(self, discr_stage: DiscretizationStage):
         if discr_stage not in {
                 pp.QBX_SOURCE_STAGE1,
                 pp.QBX_SOURCE_STAGE2,
@@ -581,7 +583,8 @@ class DiscretizationStageTagger(IdentityMapper):
 
         self.discr_stage = discr_stage
 
-    def map_node_coordinate_component(self, expr):
+    @override
+    def map_node_coordinate_component(self, expr: pp.NodeCoordinateComponent):
         dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
@@ -590,7 +593,8 @@ class DiscretizationStageTagger(IdentityMapper):
                 expr.ambient_axis,
                 dofdesc.copy(discr_stage=self.discr_stage))
 
-    def map_num_reference_derivative(self, expr):
+    @override
+    def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
