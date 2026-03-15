@@ -145,6 +145,8 @@ extend-ignore-re = [
 
 [tool.typos.default.extend-words]
 "nd" = "nd"
+# short for multi-indices
+mis = "mis"
 
 [tool.basedpyright]
 reportImplicitStringConcatenation = "none"
