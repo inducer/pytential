@@ -39,6 +39,7 @@ from pytools import memoize_method
 
 from pytential import sym
 from pytential.qbx import FMMBackend, QBXLayerPotentialSource
+from pytential.qbx.refinement import QBXRefinementMode
 from pytential.source import PointPotentialSource
 from pytential.target import PointsTarget
 
@@ -261,7 +262,10 @@ class IntegralEquationTestCase(ABC):
                 qbx_order=self.qbx_order,
                 fmm_backend=fmm_backend, **fmm_kwargs,
 
-                _disable_refinement=not self.use_refinement,
+                refinement_mode=(
+                    QBXRefinementMode.REFINE
+                    if self.use_refinement
+                    else QBXRefinementMode.NO_REFINEMENT),
                 _box_extent_norm=self.box_extent_norm,
                 _from_sep_smaller_crit=self.from_sep_smaller_crit,
                 _from_sep_smaller_min_nsources_cumul=30,
