@@ -27,6 +27,7 @@ THE SOFTWARE.
 """
 
 import logging
+from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -77,8 +78,15 @@ three global QBX refinement criteria:
       The element size is bounded by a kernel length scale. This
       applies only to Helmholtz kernels.
 
-Warnings emitted by refinement
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Refinement mode
+^^^^^^^^^^^^^^^
+
+.. autoclass:: QBXRefinementMode
+
+Errors and warnings emitted by refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: QBXRefinementNeededError
 
 .. autoclass:: RefinerNotConvergedWarning
 
@@ -96,6 +104,48 @@ Refiner driver
 
 .. autofunction:: refine_geometry_collection
 """
+
+
+# {{{ QBXRefinementMode
+
+class QBXRefinementMode(Enum):
+    """Controls the refinement behavior of a
+    :class:`~pytential.qbx.QBXLayerPotentialSource`.
+
+    .. attribute:: REFINE
+
+        Perform refinement as needed. This is the default behavior.
+
+    .. attribute:: NO_REFINEMENT
+
+        Skip refinement entirely. An
+        :class:`~meshmode.discretization.connection.IdentityDiscretizationConnection`
+        is returned instead of performing any mesh refinement.
+
+        .. warning::
+
+            Executing global QBX without refinement is unlikely to give
+            accurate results.
+
+    .. attribute:: COMPLAIN
+
+        Do not perform any refinement, but raise a
+        :class:`QBXRefinementNeededError` if stage-1 or stage-2 refinement
+        would be required to satisfy the QBX refinement criteria.
+    """
+
+    REFINE = auto()
+    NO_REFINEMENT = auto()
+    COMPLAIN = auto()
+
+
+class QBXRefinementNeededError(RuntimeError):
+    """Raised when :attr:`QBXRefinementMode.COMPLAIN` is in effect and
+    refinement would be needed to satisfy the QBX refinement criteria.
+    """
+
+# }}}
+
 
 # {{{ kernels
 
@@ -616,7 +666,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         expansion_disturbance_tolerance=None,
         maxiter=None, debug=None, visualize=False):
     from pytential import bind, sym
-    if lpot_source._disable_refinement:
+    if lpot_source.refinement_mode == QBXRefinementMode.NO_REFINEMENT:
         from meshmode.discretization.connection import IdentityDiscretizationConnection
         return density_discr, IdentityDiscretizationConnection(density_discr)
 
@@ -717,6 +767,13 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
+            if lpot_source.refinement_mode == QBXRefinementMode.COMPLAIN:
+                raise QBXRefinementNeededError(
+                    "Stage-1 QBX refinement is needed but refinement mode is "
+                    f"'{QBXRefinementMode.COMPLAIN.name}'. "
+                    "Criteria requiring refinement: "
+                    + ", ".join(iter_violated_criteria))
+
             conn = wrangler.refine(
                     stage1_density_discr, refiner, refine_flags,
                     group_factory, debug)
@@ -737,7 +794,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, debug=None, visualize=False):
-    if lpot_source._disable_refinement:
+    if lpot_source.refinement_mode == QBXRefinementMode.NO_REFINEMENT:
         from meshmode.discretization.connection import IdentityDiscretizationConnection
         return (stage1_density_discr,
                 IdentityDiscretizationConnection(stage1_density_discr))
@@ -788,6 +845,13 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
 
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
+
+            if lpot_source.refinement_mode == QBXRefinementMode.COMPLAIN:
+                raise QBXRefinementNeededError(
+                    "Stage-2 QBX refinement is needed but refinement mode is "
+                    f"'{QBXRefinementMode.COMPLAIN.name}'. "
+                    "Criteria requiring refinement: "
+                    + ", ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
                     stage2_density_discr,

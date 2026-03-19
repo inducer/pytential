@@ -46,6 +46,7 @@ from sumpy.expansion import (
 )
 from sumpy.expansion.local import LocalExpansionBase
 
+from pytential.qbx.refinement import QBXRefinementMode, QBXRefinementNeededError
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedError
 from pytential.source import LayerPotentialSourceBase
 
@@ -86,6 +87,10 @@ __doc__ = """
 .. autoclass:: NonFFTExpansionFactory
 
 .. autodata:: FMMBackend
+
+.. autoclass:: QBXRefinementMode
+
+.. autoclass:: QBXRefinementNeededError
 """
 
 
@@ -147,7 +152,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     target_association_tolerance: float
 
     debug: bool
-    _disable_refinement: bool
+    refinement_mode: QBXRefinementMode
     _expansions_in_tree_have_extent: bool
     _expansion_stick_out_factor: float
     _well_sep_is_n_away: int
@@ -175,7 +180,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug: bool = True,
-            _disable_refinement: bool = False,
+            refinement_mode: QBXRefinementMode | None = None,
+            _disable_refinement: bool | None = None,
             _expansions_in_tree_have_extent: bool = True,
             _expansion_stick_out_factor: float = 0.5,
             _max_leaf_refine_weight: int | None = None,
@@ -208,6 +214,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             the FMM evaluations.
         :arg target_association_tolerance: passed on to
             :func:`pytential.qbx.target_assoc.associate_targets_to_qbx_centers`.
+        :arg refinement_mode: A :class:`~pytential.qbx.refinement.QBXRefinementMode`
+            controlling whether and how refinement is performed.
 
         Experimental arguments without a promise of forward compatibility:
 
@@ -234,6 +242,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         :arg cost_model: Either *None* or an object implementing the
              :class:`~pytential.qbx.cost.AbstractQBXCostModel` interface, used for
              gathering modeled costs if provided (experimental).
+        :arg _disable_refinement: Deprecated. Use *refinement_mode* instead.
         """
 
         # {{{ argument processing
@@ -317,6 +326,21 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.qbx.cost import QBXCostModel
             cost_model = QBXCostModel()
 
+        if _disable_refinement is not None:
+            from warnings import warn
+            warn(
+                "'_disable_refinement' is deprecated. "
+                "Use 'refinement_mode' instead.",
+                DeprecationWarning, stacklevel=2)
+            if refinement_mode is None:
+                refinement_mode = (
+                    QBXRefinementMode.NO_REFINEMENT
+                    if _disable_refinement
+                    else QBXRefinementMode.REFINE)
+
+        if refinement_mode is None:
+            refinement_mode = QBXRefinementMode.REFINE
+
         # }}}
 
         if density_discr.dim != density_discr.ambient_dim - 1:
@@ -335,7 +359,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.target_association_tolerance = target_association_tolerance
 
         self.debug = debug
-        self._disable_refinement = _disable_refinement
+        self.refinement_mode = refinement_mode
         self._expansions_in_tree_have_extent = _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
         self._well_sep_is_n_away = _well_sep_is_n_away
@@ -376,6 +400,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_backend=None,
 
             debug=_not_provided,
+            refinement_mode=_not_provided,
             _disable_refinement=_not_provided,
             ):
         if target_association_tolerance is _not_provided:
@@ -394,6 +419,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             kwargs["fmm_level_to_order"] = self.fmm_level_to_order
 
+        if _disable_refinement is not _not_provided:
+            from warnings import warn
+            warn(
+                "'_disable_refinement' is deprecated. "
+                "Use 'refinement_mode' instead.",
+                DeprecationWarning, stacklevel=2)
+            if refinement_mode is _not_provided:
+                refinement_mode = (
+                    QBXRefinementMode.NO_REFINEMENT
+                    if _disable_refinement
+                    else QBXRefinementMode.REFINE)
+
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
         return type(self)(
@@ -409,11 +446,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 debug=(
                     # False is a valid value here
                     debug if debug is not _not_provided else self.debug),
-                _disable_refinement=(
-                    # False is a valid value here
-                    _disable_refinement
-                    if _disable_refinement is not _not_provided
-                    else self._disable_refinement),
+                refinement_mode=(
+                    refinement_mode
+                    if refinement_mode is not _not_provided
+                    else self.refinement_mode),
                 _expansions_in_tree_have_extent=(
                     # False is a valid value here
                     _expansions_in_tree_have_extent
@@ -569,7 +605,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def _dispatch_compute_potential_insn(self, actx, insn, bound_expr,
             evaluate, func, extra_args=None):
-        if self._disable_refinement:
+        if self.refinement_mode == QBXRefinementMode.NO_REFINEMENT:
             from warnings import warn
             warn(
                     "Executing global QBX without refinement. "
@@ -1072,6 +1108,8 @@ __all__ = (
     "LocalExpansionBase",
     "QBXDefaultExpansionFactory",
     "QBXLayerPotentialSource",
+    "QBXRefinementMode",
+    "QBXRefinementNeededError",
     "QBXTargetAssociationFailedError",
 )
 
