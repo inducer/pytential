@@ -34,7 +34,12 @@ from typing_extensions import override
 
 from meshmode.discretization import Discretization, ElementGroupFactory
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
-from meshmode.mesh import Mesh, MeshElementGroup, SimplexElementGroup
+from meshmode.mesh import (
+    Mesh,
+    MeshElementGroup,
+    SimplexElementGroup,
+    TensorProductElementGroup,
+)
 from pytools import memoize_method
 
 from pytential import sym
@@ -481,7 +486,6 @@ class QuadSpheroidTestCase(SphereTestCase):
 
     @override
     def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
-        from meshmode.mesh import TensorProductElementGroup
         from meshmode.mesh.generation import generate_sphere
 
         assert isinstance(resolution, int)
@@ -497,6 +501,41 @@ class QuadSpheroidTestCase(SphereTestCase):
 
 
 @dataclass
+class UrchinTestCase(SphereTestCase):
+    name: str = "urchin"
+
+    # spherical harmonic Y^m_n used to warp the sphere
+    m: int = 1
+    n: int = 5
+
+    # mesh generation
+    est_rel_interp_tolerance: float = 0.02
+    min_rad: float = 0.2
+
+    @override
+    def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
+        assert isinstance(resolution, int)
+
+        from pytential.mesh_gen import refine_mesh_and_get_urchin_warper
+        refiner, warper = refine_mesh_and_get_urchin_warper(
+                mesh_order, self.m, self.n,
+                self.est_rel_interp_tolerance,
+                min_rad=self.min_rad,
+                uniform_refinement_rounds=resolution,
+                group_cls=self.group_cls)
+        return warper(refiner.get_current_mesh())
+
+
+@dataclass
+class QuadUrchinTestCase(UrchinTestCase):
+    name: str = "quad-urchin"
+
+    # Override default group_cls to use tensor product elements. The parent's
+    # get_mesh already passes self.group_cls to refine_mesh_and_get_urchin_warper.
+    group_cls: type[MeshElementGroup] = TensorProductElementGroup
+
+
+@dataclass
 class GMSHSphereTestCase(SphereTestCase):
     name: str = "gmsphere"
 
@@ -505,7 +544,6 @@ class GMSHSphereTestCase(SphereTestCase):
 
     @override
     def get_mesh(self, resolution: float, mesh_order: int) -> Mesh:
-        from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
         from meshmode.mesh.io import ScriptSource
         if issubclass(self.group_cls, SimplexElementGroup):
             script = ScriptSource(

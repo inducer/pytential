@@ -13,6 +13,11 @@ Array Context
 
 .. automodule:: pytential.array_context
 
+Mesh Generation Tools
+---------------------
+
+.. automodule:: pytential.mesh_gen
+
 Refinement
 ----------
 

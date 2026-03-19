@@ -34,7 +34,7 @@ import numpy as np
 import numpy.linalg as la
 import pytest
 from extra_curve_data import horseshoe
-from extra_int_eq_data import QuadSpheroidTestCase
+from extra_int_eq_data import QuadSpheroidTestCase, QuadUrchinTestCase, UrchinTestCase
 
 import meshmode.mesh.generation as mgen
 from arraycontext import (
@@ -297,6 +297,8 @@ def test_source_refinement_2d(actx_factory: ArrayContextFactory,
     ("sphere", partial(mgen.generate_sphere, 1), 4),
     ("torus", partial(mgen.generate_torus, 3, 1, n_minor=10, n_major=7), 6),
     ("spheroid-quad", lambda order: QuadSpheroidTestCase().get_mesh(2, order), 4),
+    ("urchin", lambda order: UrchinTestCase().get_mesh(0, order), 4),
+    ("quad-urchin", lambda order: QuadUrchinTestCase().get_mesh(0, order), 4),
     ])
 def test_source_refinement_3d(actx_factory: ArrayContextFactory,
         surface_name, surface_f, order, visualize=False):
