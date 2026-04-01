@@ -87,10 +87,6 @@ __doc__ = """
 .. autoclass:: NonFFTExpansionFactory
 
 .. autodata:: FMMBackend
-
-.. autoclass:: QBXRefinementMode
-
-.. autoclass:: QBXRefinementNeededError
 """
 
 
