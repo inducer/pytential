@@ -48,7 +48,7 @@ nitpick_ignore_regex = [
     ["py:class", r"optype.*"],
     ["py:class", r"onp.*"],
     # sphinx >= 9.0 errors
-    ["py:class", r"_not_provided"],
+    ["py:class", r"NOT_PROVIDED"],
     ["py:class", r"Callable\[.*"],
 ]
 

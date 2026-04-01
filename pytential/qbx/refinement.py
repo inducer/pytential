@@ -127,20 +127,25 @@ class QBXRefinementMode(Enum):
             Executing global QBX without refinement is unlikely to give
             accurate results.
 
-    .. attribute:: COMPLAIN
+    .. attribute:: ERROR_ON_REFINEMENT
 
         Do not perform any refinement, but raise a
         :class:`QBXRefinementNeededError` if stage-1 or stage-2 refinement
         would be required to satisfy the QBX refinement criteria.
+
+        .. note::
+
+            Refinement resulting from
+            ``force_stage2_uniform_refinement_rounds`` is still carried out.
     """
 
     REFINE = auto()
     NO_REFINEMENT = auto()
-    COMPLAIN = auto()
+    ERROR_ON_REFINEMENT = auto()
 
 
 class QBXRefinementNeededError(RuntimeError):
-    """Raised when :attr:`QBXRefinementMode.COMPLAIN` is in effect and
+    """Raised when :attr:`QBXRefinementMode.ERROR_ON_REFINEMENT` is in effect and
     refinement would be needed to satisfy the QBX refinement criteria.
     """
 
@@ -767,10 +772,10 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
-            if lpot_source.refinement_mode == QBXRefinementMode.COMPLAIN:
+            if lpot_source.refinement_mode == QBXRefinementMode.ERROR_ON_REFINEMENT:
                 raise QBXRefinementNeededError(
                     "Stage-1 QBX refinement is needed but refinement mode is "
-                    f"'{QBXRefinementMode.COMPLAIN.name}'. "
+                    f"'{QBXRefinementMode.ERROR_ON_REFINEMENT.name}'. "
                     "Criteria requiring refinement: "
                     + ", ".join(iter_violated_criteria))
 
@@ -846,10 +851,10 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
-            if lpot_source.refinement_mode == QBXRefinementMode.COMPLAIN:
+            if lpot_source.refinement_mode == QBXRefinementMode.ERROR_ON_REFINEMENT:
                 raise QBXRefinementNeededError(
                     "Stage-2 QBX refinement is needed but refinement mode is "
-                    f"'{QBXRefinementMode.COMPLAIN.name}'. "
+                    f"'{QBXRefinementMode.ERROR_ON_REFINEMENT.name}'. "
                     "Criteria requiring refinement: "
                     + ", ".join(iter_violated_criteria))
 
