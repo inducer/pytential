@@ -28,7 +28,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 import numpy as np
-from typing_extensions import override
+from typing_extensions import Sentinel, override
 
 from arraycontext import (
     Array,
@@ -123,8 +123,7 @@ class NonFFTExpansionFactory(QBXDefaultExpansionFactory):
     get_local_expansion_class = QBXDefaultExpansionFactory.get_qbx_local_expansion_class
 
 
-class _not_provided:  # noqa: N801
-    pass
+NOT_PROVIDED = Sentinel("NOT_PROVIDED")
 
 
 class QBXLayerPotentialSource(LayerPotentialSourceBase):
@@ -175,7 +174,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_level_to_order: Literal[False] | FMMLevelToOrder | None = None,
             expansion_factory: QBXDefaultExpansionFactory | None = None,
             target_association_tolerance: (
-                float | type[_not_provided] | None) = _not_provided,
+                float | NOT_PROVIDED | None) = NOT_PROVIDED,
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
@@ -255,7 +254,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise ValueError("'qbx_order' must be provided.")
         assert isinstance(qbx_order, int)
 
-        if target_association_tolerance is _not_provided:
+        if target_association_tolerance is NOT_PROVIDED:
             target_association_tolerance = (
                 1.0e+3 * float(np.finfo(density_discr.real_dtype).eps))
         assert isinstance(target_association_tolerance, float)
@@ -384,48 +383,48 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             density_discr=None,
             fine_order=None,
             qbx_order=None,
-            fmm_order=_not_provided,
-            fmm_level_to_order=_not_provided,
+            fmm_order=NOT_PROVIDED,
+            fmm_level_to_order=NOT_PROVIDED,
             expansion_factory=None,
-            target_association_tolerance=_not_provided,
-            _expansions_in_tree_have_extent=_not_provided,
-            _expansion_stick_out_factor=_not_provided,
+            target_association_tolerance=NOT_PROVIDED,
+            _expansions_in_tree_have_extent=NOT_PROVIDED,
+            _expansion_stick_out_factor=NOT_PROVIDED,
             _max_leaf_refine_weight=None,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _tree_kind=None,
-            _use_target_specific_qbx=_not_provided,
+            _use_target_specific_qbx=NOT_PROVIDED,
             geometry_data_inspector=None,
-            cost_model=_not_provided,
+            cost_model=NOT_PROVIDED,
             fmm_backend=None,
 
-            debug=_not_provided,
-            refinement_mode=_not_provided,
-            _disable_refinement=_not_provided,
+            debug=NOT_PROVIDED,
+            refinement_mode=NOT_PROVIDED,
+            _disable_refinement=NOT_PROVIDED,
             ):
-        if target_association_tolerance is _not_provided:
+        if target_association_tolerance is NOT_PROVIDED:
             target_association_tolerance = self.target_association_tolerance
 
         kwargs = {}
 
-        if (fmm_order is not _not_provided
-                and fmm_level_to_order is not _not_provided):
+        if (fmm_order is not NOT_PROVIDED
+                and fmm_level_to_order is not NOT_PROVIDED):
             raise TypeError(
                 "may not specify both 'fmm_order' and 'fmm_level_to_order'")
-        elif fmm_order is not _not_provided:
+        elif fmm_order is not NOT_PROVIDED:
             kwargs["fmm_order"] = fmm_order
-        elif fmm_level_to_order is not _not_provided:
+        elif fmm_level_to_order is not NOT_PROVIDED:
             kwargs["fmm_level_to_order"] = fmm_level_to_order
         else:
             kwargs["fmm_level_to_order"] = self.fmm_level_to_order
 
-        if _disable_refinement is not _not_provided:
+        if _disable_refinement is not NOT_PROVIDED:
             from warnings import warn
             warn(
                 "'_disable_refinement' is deprecated. "
                 "Use 'refinement_mode' instead.",
                 DeprecationWarning, stacklevel=2)
-            if refinement_mode is _not_provided:
+            if refinement_mode is NOT_PROVIDED:
                 refinement_mode = (
                     QBXRefinementMode.NO_REFINEMENT
                     if _disable_refinement
@@ -445,20 +444,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 debug=(
                     # False is a valid value here
-                    debug if debug is not _not_provided else self.debug),
+                    debug if debug is not NOT_PROVIDED else self.debug),
                 refinement_mode=(
                     refinement_mode
-                    if refinement_mode is not _not_provided
+                    if refinement_mode is not NOT_PROVIDED
                     else self.refinement_mode),
                 _expansions_in_tree_have_extent=(
                     # False is a valid value here
                     _expansions_in_tree_have_extent
-                    if _expansions_in_tree_have_extent is not _not_provided
+                    if _expansions_in_tree_have_extent is not NOT_PROVIDED
                     else self._expansions_in_tree_have_extent),
                 _expansion_stick_out_factor=(
                     # 0 is a valid value here
                     _expansion_stick_out_factor
-                    if _expansion_stick_out_factor is not _not_provided
+                    if _expansion_stick_out_factor is not NOT_PROVIDED
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
                 _max_leaf_refine_weight=(
@@ -470,14 +469,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
                 _use_target_specific_qbx=(_use_target_specific_qbx
-                    if _use_target_specific_qbx is not _not_provided
+                    if _use_target_specific_qbx is not NOT_PROVIDED
                     else self._use_target_specific_qbx),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 cost_model=(
                     # None is a valid value here
                     cost_model
-                    if cost_model is not _not_provided
+                    if cost_model is not NOT_PROVIDED
                     else self.cost_model),
                 fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
