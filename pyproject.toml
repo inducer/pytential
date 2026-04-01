@@ -39,6 +39,8 @@ dependencies = [
     "pytools>=2024.1",
     "scipy>=1.2",
     "sumpy>=2022.1",
+    # for sentinel
+    "typing-extensions>=4.14",
 ]
 
 [project.optional-dependencies]
@@ -163,6 +165,7 @@ reportPrivateUsage = "hint"
 pythonVersion = "3.10"
 pythonPlatform = "All"
 
+enableExperimentalFeatures = true
 ignore = [
     "build",
     "doc/_build",
