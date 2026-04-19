@@ -173,6 +173,7 @@ ignore = [
     "experiments",
     "pytential/symbolic/old_diffop_primitives.py",
     "pytential/symbolic/pde/maxwell/generalized_debye.py",
+    ".venv",
 ]
 
 [[tool.basedpyright.executionEnvironments]]
