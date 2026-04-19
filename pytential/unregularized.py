@@ -296,7 +296,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         for o in insn.outputs:
             target_index = target_name_to_index[o.target_name]
-            target_slice = slice(*geo_data.target_info().target_discr_starts[
+            # FIXME: very bogus pyright ignore
+            target_slice = slice(*geo_data.target_info().target_discr_starts[  # pyright: ignore[reportUnusedVariable]
                     target_index:target_index+2])
             target_discr = targets[target_index]
 
