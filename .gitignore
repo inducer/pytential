@@ -23,6 +23,7 @@ examples/*.pdf
 *.vts
 
 .cache
+.venv
 
 tags
 
