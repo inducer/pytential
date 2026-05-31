@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any, Generic, cast, overload
 import numpy as np
 from typing_extensions import override
 
-import pymbolic.primitives as p
 from arraycontext import (
     ArrayContext,
     ArrayOrContainer,
