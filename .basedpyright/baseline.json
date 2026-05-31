@@ -35938,6 +35938,22 @@
                 }
             },
             {
+                "code": "reportOperatorIssue",
+                "range": {
+                    "startColumn": 51,
+                    "endColumn": 71,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 51,
+                    "endColumn": 71,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportUnknownArgumentType",
                 "range": {
                     "startColumn": 41,
