@@ -38,7 +38,6 @@ from arraycontext import (
 )
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
-from sumpy.kernel import Kernel
 
 
 if TYPE_CHECKING:

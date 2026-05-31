@@ -44,9 +44,7 @@ used as evaluation targets.
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, TypeAlias
 
-from arraycontext import Array
 from meshmode.discretization import Discretization
-from pytools import T
 
 
 if TYPE_CHECKING:

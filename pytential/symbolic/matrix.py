@@ -63,10 +63,6 @@ from pymbolic.geometric_algebra.mapper import (
 )
 from pytools import memoize_method
 
-from pytential.collection import GeometryCollection
-from pytential.linalg.utils import TargetAndSourceClusterList
-from pytential.symbolic.primitives import Variable
-
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
