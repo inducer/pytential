@@ -150,7 +150,7 @@ def main():
 
         def dipole3e(x,y,z,source,strength,k):
         #
-        #  evalaute electric and magnetic field due
+        #  evaluate electric and magnetic field due
         #  to monochromatic electric dipole located at "source"
         #  with intensity "strength"
 
@@ -161,7 +161,7 @@ def main():
 
         def dipole3m(x,y,z,source,strength,k):
         #
-        #  evalaute electric and magnetic field due
+        #  evaluate electric and magnetic field due
         #  to monochromatic magnetic dipole located at "source"
         #  with intensity "strength"
             evec = green3m(x,y,z,source,strength,k)
