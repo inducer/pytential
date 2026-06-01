@@ -8,7 +8,7 @@ potentials (and, sooner or later, volume potentials).
 It also knows how to set up meshes and solve integral
 equations.
 
-See :download:`example/helmholtz-dirichlet.py <../examples/helmholtz-dirichlet.py>`
+See :download:`examples/helmholtz-dirichlet.py <../examples/helmholtz-dirichlet.py>`
 for a complete usage example.
 
 Contents
@@ -22,7 +22,7 @@ Contents
     linalg
     misc
     qbx
-    🚀 Github <https://github.com/inducer/pytential>
+    🚀 GitHub <https://github.com/inducer/pytential>
     💾 Download Releases <https://pypi.org/project/pytential>
 
 * :ref:`genindex`

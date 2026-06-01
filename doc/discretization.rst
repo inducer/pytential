@@ -4,7 +4,7 @@ Discretizations
 QBX discretization
 ------------------
 
-To compute a layer potential as an an end user, create a
+To compute a layer potential as an end user, create a
 :class:`meshmode.discretization.Discretization`
 with a :class:`meshmode.discretization.poly_element.InterpolatoryQuadratureSimplexGroupFactory`
 as a discretization for the density.
