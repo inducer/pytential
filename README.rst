@@ -2,10 +2,10 @@ pytential: 2D/3D Layer Potential Evaluation
 ===========================================
 
 .. image:: https://gitlab.tiker.net/inducer/pytential/badges/main/pipeline.svg
-    :alt: Gitlab Build Status
+    :alt: GitLab Build Status
     :target: https://gitlab.tiker.net/inducer/pytential/commits/main
 .. image:: https://github.com/inducer/pytential/actions/workflows/ci.yml/badge.svg
-    :alt: Github Build Status
+    :alt: GitHub Build Status
     :target: https://github.com/inducer/pytential/actions/workflows/ci.yml
 .. image:: https://badge.fury.io/py/pytential.svg
     :alt: Python Package Index Release Page
