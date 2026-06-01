@@ -62,6 +62,7 @@ from pymbolic.geometric_algebra.mapper import (
     EvaluationRewriter as EvaluationRewriterBase,
 )
 from pytools import memoize_method
+from sumpy.expansion.local import LineTaylorLocalExpansion
 
 
 if TYPE_CHECKING:
@@ -497,12 +498,19 @@ class MatrixBuilder(MatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
+            target_nodes = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
+            center_nodes = flatten(centers, actx, leaf_class=DOFArray)
+            mat_kwargs = kernel_args.copy()
+            if isinstance(local_expn, LineTaylorLocalExpansion):
+                mat_kwargs["expansion_vec"] = (
+                        actx.thaw(target_nodes) - actx.thaw(center_nodes))
+
             mat, = mat_gen(actx,
-                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    targets=target_nodes,
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
-                    centers=flatten(centers, actx, leaf_class=DOFArray),
+                    centers=center_nodes,
                     expansion_radii=flatten(radii, actx),
-                    **kernel_args)
+                    **mat_kwargs)
             mat = actx.to_numpy(mat)
 
             if self.weighted:
@@ -710,14 +718,21 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
+            target_nodes = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
+            center_nodes = flatten(centers, actx, leaf_class=DOFArray)
+            mat_kwargs = kernel_args.copy()
+            if isinstance(local_expn, LineTaylorLocalExpansion):
+                mat_kwargs["expansion_vec"] = (
+                        actx.thaw(target_nodes) - actx.thaw(center_nodes))
+
             mat, = mat_gen(actx,
-                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    targets=target_nodes,
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
-                    centers=flatten(centers, actx, leaf_class=DOFArray),
+                    centers=center_nodes,
                     expansion_radii=flatten(radii, actx),
                     tgtindices=tgtindices,
                     srcindices=srcindices,
-                    **kernel_args)
+                    **mat_kwargs)
 
             if self.weighted:
                 waa = flatten(
