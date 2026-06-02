@@ -29,30 +29,30 @@ THE SOFTWARE.
 
 import sys
 
-import meshmode.mesh.generation as mgen
 import mpmath
 import numpy as np
 import pytest
-from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import (
-    InterpolatoryQuadratureSimplexGroupFactory,
-)
-from pytential import GeometryCollection, bind, sym
-from pytential.qbx import QBXLayerPotentialSource
 
+import meshmode.mesh.generation as mgen
 from arraycontext import (
     ArrayContextFactory,
     PyOpenCLArrayContext,
     flatten,
     pytest_generate_tests_for_array_contexts,
 )
+from meshmode.discretization import Discretization
+from meshmode.discretization.poly_element import (
+    InterpolatoryQuadratureSimplexGroupFactory,
+)
 from pytools.convergence import EOCRecorder
-
-from pytential.array_context import PytestPyOpenCLArrayContextFactory
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 from sumpy.expansion.local import AsymptoticDividingLineTaylorExpansion
 from sumpy.kernel import YukawaKernel
 from sumpy.qbx import LayerPotentialMatrixGenerator
+
+from pytential import GeometryCollection, bind, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
+from pytential.qbx import QBXLayerPotentialSource
+from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
@@ -63,7 +63,6 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 def asym_yukawa(dim, lam=None):
     """Asymptotic function of the Yukawa kernel."""
     from pymbolic import primitives, var
-
     from sumpy.symbolic import SpatialConstant, pymbolic_real_norm_2
 
     b = pymbolic_real_norm_2(primitives.make_sym_vector("b", dim))
@@ -122,14 +121,12 @@ def test_qbmax_yukawa_convergence(
     rng = np.random.default_rng(seed=42)
     t = rng.uniform(0, 1, 10)
     targets_h = np.array([np.cos(2 * np.pi * t), np.sin(2 * np.pi * t)])
-    targets = actx.from_numpy(targets_h)
-
     for tau in [0, 0.5, 1]:
         eoc_in = EOCRecorder()
         eoc_out = EOCRecorder()
 
         asym_expn = AsymptoticDividingLineTaylorExpansion(
-            knl, qbx_order, asymptotic=asym_knl, tau=tau)
+            knl, qbx_order, asymptotic=asym_knl)
 
         for nelement in nelements:
             mesh = mgen.make_curve_mesh(
@@ -162,8 +159,14 @@ def test_qbmax_yukawa_convergence(
             sigma = np.exp(1j * f_mode * angle) * weights_nodes_h
 
             expansion_radii_h = np.ones(targets_h.shape[1]) * np.pi / nelement
-            centers_in = actx.from_numpy((1 - expansion_radii_h) * targets_h)
-            centers_out = actx.from_numpy((1 + expansion_radii_h) * targets_h)
+            centers_in_h = (1 - expansion_radii_h) * targets_h
+            centers_out_h = (1 + expansion_radii_h) * targets_h
+            expansion_vec_in_h = targets_h - centers_in_h
+            expansion_vec_out_h = targets_h - centers_out_h
+            targets_in_h = centers_in_h + tau*expansion_vec_in_h
+            targets_out_h = centers_out_h + tau*expansion_vec_out_h
+            centers_in = actx.from_numpy(centers_in_h)
+            centers_out = actx.from_numpy(centers_out_h)
 
             mat_asym_gen = LayerPotentialMatrixGenerator(
                 expansion=asym_expn,
@@ -172,29 +175,29 @@ def test_qbmax_yukawa_convergence(
 
             mat_asym_in, = mat_asym_gen(
                 actx,
-                targets=targets,
+                targets=actx.from_numpy(targets_in_h),
                 sources=actx.from_numpy(sources_h),
                 expansion_radii=actx.from_numpy(expansion_radii_h),
                 centers=centers_in,
+                expansion_vec=actx.from_numpy(expansion_vec_in_h),
                 **extra_kwargs)
 
             mat_asym_in = actx.to_numpy(mat_asym_in)
             weighted_mat_asym_in = mat_asym_in * sigma[None, :]
-            asym_eval_in = (np.sum(weighted_mat_asym_in, axis=1) *
-                           np.exp(-lam * expansion_radii_h * (1 - tau)))
+            asym_eval_in = np.sum(weighted_mat_asym_in, axis=1)
 
             mat_asym_out, = mat_asym_gen(
                 actx,
-                targets=targets,
+                targets=actx.from_numpy(targets_out_h),
                 sources=actx.from_numpy(sources_h),
                 expansion_radii=actx.from_numpy(expansion_radii_h),
                 centers=centers_out,
+                expansion_vec=actx.from_numpy(expansion_vec_out_h),
                 **extra_kwargs)
 
             mat_asym_out = actx.to_numpy(mat_asym_out)
             weighted_mat_asym_out = mat_asym_out * sigma[None, :]
-            asym_eval_out = (np.sum(weighted_mat_asym_out, axis=1) *
-                            np.exp(-lam * expansion_radii_h * (1 - tau)))
+            asym_eval_out = np.sum(weighted_mat_asym_out, axis=1)
 
             utrue_in = utrue(lam, expansion_radii_h, tau, targets_h, f_mode, -1)
             utrue_out = utrue(lam, expansion_radii_h, tau, targets_h, f_mode, 1)
