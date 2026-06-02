@@ -364,9 +364,9 @@ def test_unregularized_with_ones_kernel(actx_factory: ArrayContextFactory):
         auto_where=("source", "target"),
     )
 
-    from sumpy.kernel import one_kernel_2d
+    from sumpy.kernel import OneKernel
     sigma_sym = sym.var("sigma")
-    op = sym.int_g_vec(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
+    op = sym.int_g_vec(OneKernel(discr.ambient_dim), sigma_sym, qbx_forced_limit=None)
 
     sigma = discr.zeros(actx) + 1
 

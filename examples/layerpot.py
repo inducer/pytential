@@ -1,7 +1,7 @@
 import numpy as np
 
 from meshmode.mesh.generation import drop, ellipse, starfish  # noqa: F401
-from sumpy.kernel import HelmholtzKernel, LaplaceKernel, one_kernel_2d  # noqa: F401
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel, OneKernel  # noqa: F401
 from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym

@@ -1,6 +1,6 @@
 import numpy as np
 
-from sumpy.kernel import HelmholtzKernel, LaplaceKernel, one_kernel_2d  # noqa
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel, OneKernel  # noqa
 from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym
