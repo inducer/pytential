@@ -5,7 +5,7 @@ import numpy as np
 import pyopencl as cl
 from sumpy.visualization import FieldPlotter
 #from mayavi import mlab
-from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
+from sumpy.kernel import OneKernel, LaplaceKernel, HelmholtzKernel  # noqa
 
 import faulthandler
 faulthandler.enable()
