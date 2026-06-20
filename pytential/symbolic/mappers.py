@@ -763,6 +763,11 @@ class EarlyInterpolationAdder(
     def map_variable(self, expr: p.Variable):
         return pp.interpolate(expr, self.from_dd, self.to_dd)
 
+    def map_q_weight(self, expr: pp.QWeight):
+        raise ValueError(
+            "EarlyInterpolationAdder must not interpolate a QWeight: "
+            "quadrature weights are intrinsic to their discretization stage")
+
     @override
     def map_call(self,
                 expr: p.Call,
@@ -854,9 +859,8 @@ class InterpolationPreprocessor(IdentityMapper):
 
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
-        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
         densities = tuple(
-            interp_adder.rec_arith(self.rec_arith(density))
+            pp.interpolate(self.rec_arith(density), from_dd, to_dd)
             for density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
