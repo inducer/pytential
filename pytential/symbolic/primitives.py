@@ -51,10 +51,11 @@ from pymbolic.geometric_algebra.primitives import (
     NablaComponent,
 )
 from pymbolic.primitives import (  # noqa: N813
+    CommonSubexpression,
     Variable as var,
     cse_scope as cse_scope_base,
     expr_dataclass,
-    make_common_subexpression as cse,
+    make_common_subexpression as _cse,
     make_sym_vector,
 )
 from pymbolic.typing import ArithmeticExpression
@@ -92,7 +93,7 @@ if TYPE_CHECKING:
 
     import modepy as mp
     from pymbolic.mapper.stringifier import StringifyMapper
-    from pymbolic.primitives import CommonSubexpression, Quotient
+    from pymbolic.primitives import Quotient
 
 
 __doc__ = """
@@ -231,6 +232,7 @@ Discretization properties
 .. autofunction:: area_element
 .. autofunction:: sqrt_jac_q_weight
 .. autofunction:: normal
+.. autofunction:: geo_density
 .. autofunction:: mean_curvature
 .. autofunction:: first_fundamental_form
 .. autofunction:: second_fundamental_form
@@ -305,6 +307,22 @@ Elementary numerics
 
 Operators
 ^^^^^^^^^
+
+.. autofunction:: cse
+
+.. autoclass:: InterpolationUnit
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
+.. autofunction:: interpolation_unit
+
+.. autoclass:: DistributeInterpolation
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
+.. autofunction:: distribute_interpolation
 
 .. autoclass:: Interpolation
     :show-inheritance:
@@ -404,7 +422,7 @@ __all__ = (  # noqa: RUF022
 
     "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
     "parametrization_derivative_matrix", "pseudoscalar", "area_element",
-    "sqrt_jac_q_weight", "normal", "mean_curvature",
+    "sqrt_jac_q_weight", "normal", "geo_density", "mean_curvature",
     "first_fundamental_form", "second_fundamental_form", "shape_operator",
 
     "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",
@@ -413,7 +431,8 @@ __all__ = (  # noqa: RUF022
     "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
     "IterativeInverse",
 
-    "Interpolation", "interpolate",
+    "Interpolation", "interpolate", "InterpolationUnit", "interpolation_unit",
+    "DistributeInterpolation", "distribute_interpolation",
 
     "Derivative",
 
@@ -525,6 +544,87 @@ class ErrorExpression(ExpressionNode):
 
     message: str
     """The error message to raise when this expression is encountered."""
+
+
+@expr_dataclass()
+class InterpolationUnit(CommonSubexpression):
+    """A common subexpression whose value should be interpolated as a unit.
+
+    This is used for quantities whose expanded symbolic form is not a valid
+    place to insert interpolation. For example, the result of
+    :func:`tangential_to_xyz` is Cartesian, while its inputs can be coefficients
+    in an element-local tangential basis.
+    """
+
+    mapper_method = "map_common_subexpression"
+
+
+@for_each_expression
+def interpolation_unit(
+            operand: ArithmeticExpression,
+            prefix: str | None = "interp_unit",
+            scope: str = cse_scope.EVALUATION,
+        ) -> ArithmeticExpression:
+    """Mark *operand* as a quantity that should be interpolated as a whole."""
+
+    return InterpolationUnit(operand, prefix, scope)
+
+
+@expr_dataclass()
+class DistributeInterpolation(CommonSubexpression):
+    """A common subexpression whose source interpolation may be distributed.
+
+    This is an opt-in marker for densities such as ``normal*h`` where the
+    geometry factors should be formed using the geometry-stage element
+    parameterization and the unknown variables are interpolated from the source
+    discretization.
+
+    """
+
+    mapper_method = "map_common_subexpression"
+
+
+@for_each_expression
+def distribute_interpolation(
+            operand: ArithmeticExpression,
+            prefix: str | None = "distribute_interp",
+            scope: str = cse_scope.EVALUATION,
+        ) -> ArithmeticExpression:
+    """Mark *operand* so source-to-quad interpolation may be pushed into it."""
+
+    return DistributeInterpolation(operand, prefix, scope)
+
+
+def cse(
+            expr: Operand,
+            prefix: str | None = None,
+            scope: str | None = None,
+            *,
+            wrap_vars: bool = True,
+        ) -> Operand:
+    """Wrap *expr* in a common subexpression.
+
+    This is the usual :func:`pymbolic.primitives.make_common_subexpression`,
+    except that top-level rewrapping of an :class:`InterpolationUnit` or
+    :class:`DistributeInterpolation` updates its name hint while preserving the
+    marker.
+    """
+
+    if isinstance(expr, (InterpolationUnit, DistributeInterpolation)):
+        if prefix is None:
+            prefix = expr.prefix
+        if scope is None:
+            scope = expr.scope
+        return cast("Operand", type(expr)(
+                expr.child,
+                prefix,
+                scope,
+                **expr.get_extra_properties()))
+
+    if scope is None:
+        scope = cse_scope.EVALUATION
+
+    return cast("Operand", _cse(expr, prefix, scope, wrap_vars=wrap_vars))
 
 
 def make_sym_mv(name: str, num_components: int) -> MultiVector[ArithmeticExpression]:
@@ -892,6 +992,23 @@ def normal(
             pder << pder.I.inv(),
             "normal",
             scope=cse_scope.DISCRETIZATION)
+
+
+def geo_density(
+            geometry: Operand,
+            density: Operand,
+            prefix: str | None = "geo_density",
+        ) -> Operand:
+    """Return ``geometry * density`` with source interpolation distributed.
+
+    This is a helper for densities whose semantic form is a geometric
+    factor multiplying a density unknown. It should not be used for
+    coordinate transforms such as :func:`tangential_to_xyz`, whose inputs are
+    local coordinate components rather than independent scalar densities.
+    """
+
+    return cast("Operand", distribute_interpolation(
+            geometry * density, prefix))
 
 
 def mean_curvature(
@@ -2498,7 +2615,8 @@ def tangential_to_xyz(
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
     result = sum(tonb[:, i] * tangential_vec[i] for i in range(ambient_dim - 1))
 
-    return cast("ObjectArray1D[ArithmeticExpression]", result)
+    return cast("ObjectArray1D[ArithmeticExpression]",
+            interpolation_unit(result, "tangential_to_xyz"))
 
 
 def project_to_tangential(
