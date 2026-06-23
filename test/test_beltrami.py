@@ -245,7 +245,7 @@ def test_beltrami_convergence(
                 actx, b=solution.source(actx, density_discr),
                 **solution.context)
 
-        from pytential.linalg.gmres import gmres
+        from arraycontext.linalg.solve import gmres
         result = gmres(
                 scipy_op, rhs,
                 x0=rhs,

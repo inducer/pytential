@@ -135,7 +135,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)
 
-    from pytential.linalg.gmres import gmres
+    from arraycontext.linalg.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(actx, sigma_sym.name, dtype=np.complex128, k=k),
             bvp_rhs, tol=1e-8, progress=True,

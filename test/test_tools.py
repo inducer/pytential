@@ -42,33 +42,6 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     ])
 
 
-# {{{ test_gmres
-
-def test_gmres():
-    rng = np.random.default_rng(seed=42)
-
-    n = 200
-    A = (
-            n * (np.eye(n) + 2j * np.eye(n))
-            + rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n)))
-
-    true_sol = rng.normal(size=n) + 1j * rng.normal(size=n)
-    b = np.dot(A, true_sol)
-
-    A_func = lambda x: np.dot(A, x)  # noqa
-    A_func.shape = A.shape
-    A_func.dtype = A.dtype
-
-    from pytential.linalg.gmres import ResidualPrinter, gmres
-    tol = 1e-6
-    sol = gmres(A_func, b, callback=ResidualPrinter(),
-            maxiter=5*n, tol=tol).solution
-
-    assert la.norm(true_sol - sol) / la.norm(sol) < tol
-
-# }}}
-
-
 # {{{ test_interpolatory_error_reporting
 
 def test_interpolatory_error_reporting(actx_factory: ArrayContextFactory):

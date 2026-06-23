@@ -210,7 +210,7 @@ def main():
 
         bound_op = bind(qbx, sym_operator)
 
-        from pytential.linalg.gmres import gmres
+        from arraycontext.linalg.solve import gmres
         if 0:
             gmres_result = gmres(
                 bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
