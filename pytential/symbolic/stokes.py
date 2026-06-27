@@ -25,7 +25,11 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.kernel import LaplaceKernel, StokesletKernel, StressletKernel
+from sumpy.kernel import (
+    LaplaceKernel,
+    StokesletComponentKernel,
+    StressletComponentKernel,
+)
 
 from pytential import sym
 
@@ -43,7 +47,7 @@ __doc__ = """
 # {{{ StokesletWrapper
 
 class StokesletWrapper:
-    """Wrapper class for the :class:`~sumpy.kernel.StokesletKernel` kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StokesletComponentKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
     out every term in the expansion of the double-indexed Stokeslet kernel
@@ -84,23 +88,21 @@ class StokesletWrapper:
 
         if dim == 2:
             self.kernel_dict = {
-                        (2, 0): StokesletKernel(dim=2, icomp=0, jcomp=0),
-                        (1, 1): StokesletKernel(dim=2, icomp=0, jcomp=1),
-                        (0, 2): StokesletKernel(dim=2, icomp=1, jcomp=1)
-                               }
-
+                (2, 0): StokesletComponentKernel(dim=2, icomp=0, jcomp=0),
+                (1, 1): StokesletComponentKernel(dim=2, icomp=0, jcomp=1),
+                (0, 2): StokesletComponentKernel(dim=2, icomp=1, jcomp=1)
+            }
         elif dim == 3:
             self.kernel_dict = {
-                        (2, 0, 0): StokesletKernel(dim=3, icomp=0, jcomp=0),
-                        (1, 1, 0): StokesletKernel(dim=3, icomp=0, jcomp=1),
-                        (1, 0, 1): StokesletKernel(dim=3, icomp=0, jcomp=2),
-                        (0, 2, 0): StokesletKernel(dim=3, icomp=1, jcomp=1),
-                        (0, 1, 1): StokesletKernel(dim=3, icomp=1, jcomp=2),
-                        (0, 0, 2): StokesletKernel(dim=3, icomp=2, jcomp=2)
-                               }
-
+                (2, 0, 0): StokesletComponentKernel(dim=3, icomp=0, jcomp=0),
+                (1, 1, 0): StokesletComponentKernel(dim=3, icomp=0, jcomp=1),
+                (1, 0, 1): StokesletComponentKernel(dim=3, icomp=0, jcomp=2),
+                (0, 2, 0): StokesletComponentKernel(dim=3, icomp=1, jcomp=1),
+                (0, 1, 1): StokesletComponentKernel(dim=3, icomp=1, jcomp=2),
+                (0, 0, 2): StokesletComponentKernel(dim=3, icomp=2, jcomp=2)
+            }
         else:
-            raise ValueError("unsupported dimension given to StokesletWrapper")
+            raise ValueError(f"unsupported dimension given to StokesletWrapper: {dim}")
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stokeslet kernel.
@@ -273,7 +275,7 @@ class StokesletWrapper:
 # {{{ StressletWrapper
 
 class StressletWrapper:
-    """Wrapper class for the :class:`~sumpy.kernel.StressletKernel` kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StressletComponentKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
     out every term in the expansion of the triple-indexed Stresslet
@@ -313,28 +315,26 @@ class StressletWrapper:
 
         if dim == 2:
             self.kernel_dict = {
-                (3, 0): StressletKernel(dim=2, icomp=0, jcomp=0, kcomp=0),
-                (2, 1): StressletKernel(dim=2, icomp=0, jcomp=0, kcomp=1),
-                (1, 2): StressletKernel(dim=2, icomp=0, jcomp=1, kcomp=1),
-                (0, 3): StressletKernel(dim=2, icomp=1, jcomp=1, kcomp=1)
-                               }
-
+                (3, 0): StressletComponentKernel(dim=2, icomp=0, jcomp=0, kcomp=0),
+                (2, 1): StressletComponentKernel(dim=2, icomp=0, jcomp=0, kcomp=1),
+                (1, 2): StressletComponentKernel(dim=2, icomp=0, jcomp=1, kcomp=1),
+                (0, 3): StressletComponentKernel(dim=2, icomp=1, jcomp=1, kcomp=1)
+            }
         elif dim == 3:
             self.kernel_dict = {
-                (3, 0, 0): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=0),
-                (2, 1, 0): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=1),
-                (2, 0, 1): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=2),
-                (1, 2, 0): StressletKernel(dim=3, icomp=0, jcomp=1, kcomp=1),
-                (1, 1, 1): StressletKernel(dim=3, icomp=0, jcomp=1, kcomp=2),
-                (1, 0, 2): StressletKernel(dim=3, icomp=0, jcomp=2, kcomp=2),
-                (0, 3, 0): StressletKernel(dim=3, icomp=1, jcomp=1, kcomp=1),
-                (0, 2, 1): StressletKernel(dim=3, icomp=1, jcomp=1, kcomp=2),
-                (0, 1, 2): StressletKernel(dim=3, icomp=1, jcomp=2, kcomp=2),
-                (0, 0, 3): StressletKernel(dim=3, icomp=2, jcomp=2, kcomp=2)
-                               }
-
+                (3, 0, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=0),
+                (2, 1, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=1),
+                (2, 0, 1): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=2),
+                (1, 2, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=1, kcomp=1),
+                (1, 1, 1): StressletComponentKernel(dim=3, icomp=0, jcomp=1, kcomp=2),
+                (1, 0, 2): StressletComponentKernel(dim=3, icomp=0, jcomp=2, kcomp=2),
+                (0, 3, 0): StressletComponentKernel(dim=3, icomp=1, jcomp=1, kcomp=1),
+                (0, 2, 1): StressletComponentKernel(dim=3, icomp=1, jcomp=1, kcomp=2),
+                (0, 1, 2): StressletComponentKernel(dim=3, icomp=1, jcomp=2, kcomp=2),
+                (0, 0, 3): StressletComponentKernel(dim=3, icomp=2, jcomp=2, kcomp=2)
+            }
         else:
-            raise ValueError("unsupported dimension given to StressletWrapper")
+            raise ValueError(f"unsupported dimension given to StressletWrapper: {dim}")
 
     def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stresslet kernel.
