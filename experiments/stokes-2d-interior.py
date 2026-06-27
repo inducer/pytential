@@ -89,7 +89,7 @@ def main(nelements):
     stresslet_obj = StressletWrapper(dim=2)
 
     # Describe boundary operator
-    bdry_op_sym = loc_sign * 0.5 * sigma_sym + sqrt_w * stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit='avg')
+    bdry_op_sym = loc_sign * 0.5 * sigma_sym + sqrt_w * stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym=mu_sym, qbx_forced_limit='avg')
 
     # Bind to the qbx discretization
     bound_op = bind(qbx, bdry_op_sym)
@@ -139,7 +139,7 @@ def main(nelements):
     sigma = gmres_result.solution
 
     # Describe representation of solution for evaluation in domain
-    representation_sym = stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=-2)
+    representation_sym = stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym=mu_sym, qbx_forced_limit=-2)
 
     from sumpy.visualization import FieldPlotter
     nsamp = 10
@@ -193,7 +193,7 @@ def main(nelements):
     print("exact velocity at max error points: x -> ", err[0][max_error_loc[0]], ", y -> ", err[1][max_error_loc[1]])
 
     from pytential.symbolic.mappers import DerivativeTaker
-    rep_pressure = stresslet_obj.apply_pressure(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=-2)
+    rep_pressure = stresslet_obj.apply_pressure(inv_sqrt_w_sigma, nvec_sym, mu_sym=mu_sym, qbx_forced_limit=-2)
     pressure = bind((qbx, PointsTarget(eval_points_dev)),
                      rep_pressure)(queue, sigma=sigma, mu=mu, normal=normal)
     pressure = pressure.get()
@@ -206,7 +206,7 @@ def main(nelements):
     x_dir_vecs = cl.array.to_device(queue, x_dir_vecs)
     y_dir_vecs = cl.array.to_device(queue, y_dir_vecs)
     dir_vec_sym = sym.make_sym_vector("force_direction", dim)
-    rep_stress = stresslet_obj.apply_stress(inv_sqrt_w_sigma, nvec_sym, dir_vec_sym, mu_sym, qbx_forced_limit=-2)
+    rep_stress = stresslet_obj.apply_stress(inv_sqrt_w_sigma, nvec_sym, dir_vec_sym, mu_sym=mu_sym, qbx_forced_limit=-2)
 
     applied_stress_x = bind((qbx, PointsTarget(eval_points_dev)),
                              rep_stress)(queue, sigma=sigma, normal=normal, force_direction=x_dir_vecs, mu=mu)

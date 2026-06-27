@@ -177,7 +177,7 @@ def run_exterior_stokes(actx_factory, *,
 
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    sym_source_pot = op.stokeslet.apply(sym_sigma, mu_sym=sym_mu, qbx_forced_limit=None)
 
     # }}}
 
