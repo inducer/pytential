@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
     from boxtree.tree_build import TreeKind
     from sumpy.expansion import ExpansionBase
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
 
     from pytential.linalg.utils import IndexList
     from pytential.symbolic.dof_desc import DOFDescriptorLike
@@ -182,7 +182,7 @@ class ProxyPointSource(PointPotentialSource):
         self.lpot_source = lpot_source
 
     def get_expansion_for_qbx_direct_eval(
-            self, base_kernel: Kernel, target_kernels: Sequence[Kernel]
+            self, base_kernel: ScalarKernel, target_kernels: Sequence[ScalarKernel]
         ) -> ExpansionBase:
         """Wrapper around
         ``pytential.qbx.QBXLayerPotentialSource.get_expansion_for_qbx_direct_eval``

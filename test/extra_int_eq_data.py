@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
     from arraycontext import ArrayContext
     from boxtree.tree_build import ExtentNorm
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
 
     from pytential.array_context import PyOpenCLArrayContext
     from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
@@ -121,7 +121,7 @@ class IntegralEquationTestCase(ABC):
     ambient_dim: int = -1
 
     # operator
-    knl_class_or_helmholtz_k: type[Kernel] | int | float = 0
+    knl_class_or_helmholtz_k: type[ScalarKernel] | int | float = 0
     knl_kwargs: dict[str, Any] = field(default_factory=dict)
     bc_type: str = "dirichlet"
     side: int = -1
@@ -157,7 +157,7 @@ class IntegralEquationTestCase(ABC):
 
     @property
     @memoize_method
-    def knl_class(self) -> type[Kernel]:
+    def knl_class(self) -> type[ScalarKernel]:
         if isinstance(self.knl_class_or_helmholtz_k, type):
             return self.knl_class_or_helmholtz_k
 

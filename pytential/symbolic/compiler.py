@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from pymbolic.geometric_algebra import MultiVector
     from pymbolic.mapper.dependency import Dependency
     from pymbolic.typing import Expression
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
 
     from pytential.collection import GeometryCollection
     from pytential.symbolic.primitives import KernelArgumentMapping, Operand
@@ -229,14 +229,14 @@ class ComputePotential(Statement):
     """A tuple of :class:`PotentialOutput` instances. The entries in the list
     correspond to :attr:`Statement.names`.
     """
-    target_kernels: tuple[Kernel, ...]
-    """A tuple of :class:`sumpy.kernel.Kernel` instances, indexed by
+    target_kernels: tuple[ScalarKernel, ...]
+    """A tuple of :class:`sumpy.kernel.ScalarKernel` instances, indexed by
     :attr:`PotentialOutput.target_kernel_index`.
     """
     kernel_arguments: KernelArgumentMapping
     """A dictionary mapping argument names to kernel arguments."""
-    source_kernels: tuple[Kernel, ...]
-    """A tuple of :class:`sumpy.kernel.Kernel` instances with only source
+    source_kernels: tuple[ScalarKernel, ...]
+    """A tuple of :class:`sumpy.kernel.ScalarKernel` instances with only source
     derivatives and no target derivatives. See the
     :class:`~pytential.symbolic.primitives.IntG` docstring for details.
     """

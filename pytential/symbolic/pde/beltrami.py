@@ -39,7 +39,7 @@ from pytential import sym
 
 
 if TYPE_CHECKING:
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
 
 
 # {{{ beltrami operator
@@ -85,7 +85,8 @@ class BeltramiOperator:
     .. automethod:: operator
     """
 
-    def __init__(self, kernel: Kernel, *,
+    def __init__(
+            self, kernel: ScalarKernel, *,
             dim: int | None = None,
             precond: str = "left",
             kernel_arguments: dict[str, Any] | None = None) -> None:

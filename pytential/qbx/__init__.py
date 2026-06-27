@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from pymbolic import ArithmeticExpression
     from sumpy.expansion import LocalExpansionFactory
     from sumpy.fmm import FMMLevelToOrder
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
 
     from pytential.collection import GeometryCollection, GeometryLike
     from pytential.qbx.cost import AbstractQBXCostModel
@@ -99,7 +99,7 @@ class QBXDefaultExpansionFactory(DefaultExpansionFactoryBase):
     """An expansion factory to create QBX local, local and multipole expansions
     """
     def get_qbx_local_expansion_class(self,
-                kernel: Kernel, /
+                kernel: ScalarKernel, /
             ) -> LocalExpansionFactory:
         local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
                 self, kernel)
@@ -199,7 +199,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         :arg fmm_level_to_order: A callable that takes arguments of
             *(kernel, kernel_args, tree, level)* and returns the expansion
             order to be used on a given *level* of *tree* with *kernel*, where
-            *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
+            *kernel* is the :class:`sumpy.kernel.ScalarKernel` being evaluated, and
             *kernel_args* is a set of *(key, value)* tuples with evaluated
             kernel arguments. May not be given if *fmm_order* is given.
         :arg fmm_backend: a string denoting the desired FMM backend to use,
