@@ -94,7 +94,7 @@ def main(mesh_name="starfish", visualize=False):
     nodes = actx.thaw(density_discr.nodes())
     bvp_rhs = actx.np.sin(nodes[0])
 
-    from pytential.linalg.gmres import gmres
+    from arraycontext.linalg.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(actx, sigma_sym.name, dtype=np.float64),
             bvp_rhs, tol=1e-8, progress=True,

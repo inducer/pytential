@@ -136,7 +136,7 @@ def main():
 
         bvp_rhs[i_bc] *= sqrt_w
 
-    from pytential.linalg.gmres import gmres
+    from arraycontext.linalg.solve import gmres
     gmres_result = gmres(
             bound_pde_op.scipy_op(queue, "unknown", dtype=np.complex128,
                 domains=[sym.DEFAULT_TARGET]*2, K0=K0, K1=K1),

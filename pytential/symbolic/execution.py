@@ -288,7 +288,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
                 **{var_name: self.rec(var_expr)
                     for var_name, var_expr in expr.extra_vars.items()})
 
-        from pytential.linalg.gmres import gmres
+        from arraycontext.linalg.solve import gmres
         rhs = self.rec(expr.rhs)
         return gmres(scipy_op, rhs)
 
