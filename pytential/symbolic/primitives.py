@@ -67,7 +67,7 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import Kernel
+from sumpy.kernel import ScalarKernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -1871,8 +1871,8 @@ class IntG(ExpressionNode):
     .. autoattribute:: kernel_arguments
     """
 
-    target_kernel: Kernel
-    """An instance of :class:`~sumpy.kernel.Kernel` with only target dervatives
+    target_kernel: ScalarKernel
+    """An instance of :class:`~sumpy.kernel.ScalarKernel` with only target dervatives
     attached. This represents the target derivative operator :math:`T` above.
 
     Note that the term ``target_kernel`` is bad as it's not a kernel and merely
@@ -1880,8 +1880,8 @@ class IntG(ExpressionNode):
     properly supports derivative operators. This also means that the user has to
     make sure that base kernels of all the kernels passed are the same.
     """
-    source_kernels: tuple[Kernel, ...]
-    """A tuple of instances of :class:`~sumpy.kernel.Kernel` with only source
+    source_kernels: tuple[ScalarKernel, ...]
+    """A tuple of instances of :class:`~sumpy.kernel.ScalarKernel` with only source
     derivatives attached. k-th elements represents the k-th source derivative
     operator above.
     """
@@ -1920,16 +1920,16 @@ class IntG(ExpressionNode):
     """
 
     kernel_arguments: KernelArgumentMapping = field(default_factory=dict)
-    """A dictionary mapping named :class:`~sumpy.kernel.Kernel` arguments
-    (see :meth:`~sumpy.kernel.Kernel.get_args` and
-    :meth:`~sumpy.kernel.Kernel.get_source_args`) to expressions that determine
+    """A dictionary mapping named :class:`~sumpy.kernel.ScalarKernel` arguments
+    (see :meth:`~sumpy.kernel.ScalarKernel.get_args` and
+    :meth:`~sumpy.kernel.ScalarKernel.get_source_args`) to expressions that determine
     them.
     """
 
     def __init__(
             self,
-            target_kernel: Kernel,
-            source_kernels: Iterable[Kernel],
+            target_kernel: ScalarKernel,
+            source_kernels: Iterable[ScalarKernel],
             densities: Iterable[ArithmeticExpression],
             qbx_forced_limit: QBXForcedLimit,
             source: DOFDescriptorLike | None = None,
@@ -2088,7 +2088,7 @@ class IntG(ExpressionNode):
 _DIR_VEC_NAME = "dsource_vec"
 
 
-def _insert_source_derivative_into_kernel(kernel: Kernel) -> Kernel:
+def _insert_source_derivative_into_kernel(kernel: ScalarKernel) -> ScalarKernel:
     # Inserts the source derivative at the innermost kernel wrapping level.
     from sumpy.kernel import DirectionalSourceDerivative
 
@@ -2139,7 +2139,7 @@ def _get_dir_vec(
 def int_g_dsource(
             ambient_dim: int,
             dsource: MultiVector[ArithmeticExpression],
-            kernel: Kernel,
+            kernel: ScalarKernel,
             density: Operand,
             qbx_forced_limit: QBXForcedLimit,
             source: DOFDescriptorLike | None = None,
@@ -2193,7 +2193,7 @@ class _unspecified:  # noqa: N801
 
 
 def int_g_vec(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: OperandTc,
         qbx_forced_limit: QBXForcedLimit,
         source: DOFDescriptorLike = None,
@@ -2248,7 +2248,7 @@ def int_g_vec(
 
 
 def S(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: OperandTc,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike = None,
@@ -2311,7 +2311,7 @@ def normal_second_derivative(
 
 
 def Sp(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: OperandTc,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike | None = None,
@@ -2326,7 +2326,7 @@ def Sp(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
-    if ambient_dim is None and isinstance(kernel, Kernel):
+    if ambient_dim is None and isinstance(kernel, ScalarKernel):
         ambient_dim = kernel.dim
 
     if ambient_dim is None:
@@ -2341,7 +2341,7 @@ def Sp(
 
 
 def Spp(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: ArithmeticExpression,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike | None = None,
@@ -2356,7 +2356,7 @@ def Spp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
-    if ambient_dim is None and isinstance(kernel, Kernel):
+    if ambient_dim is None and isinstance(kernel, ScalarKernel):
         ambient_dim = kernel.dim
 
     if ambient_dim is None:
@@ -2371,7 +2371,7 @@ def Spp(
 
 
 def D(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: OperandTc,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike | None = None,
@@ -2386,7 +2386,7 @@ def D(
              "Choosing default 'avg'.", stacklevel=2)
         qbx_forced_limit = "avg"
 
-    if ambient_dim is None and isinstance(kernel, Kernel):
+    if ambient_dim is None and isinstance(kernel, ScalarKernel):
         ambient_dim = kernel.dim
 
     if ambient_dim is None:
@@ -2405,7 +2405,7 @@ def D(
 
 
 def Dp(
-        kernel: Kernel,
+        kernel: ScalarKernel,
         density: OperandTc,
         qbx_forced_limit: QBXForcedLimit = _unspecified,
         source: DOFDescriptorLike | None = None,
@@ -2420,7 +2420,7 @@ def Dp(
              "Choosing default '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
-    if ambient_dim is None and isinstance(kernel, Kernel):
+    if ambient_dim is None and isinstance(kernel, ScalarKernel):
         ambient_dim = kernel.dim
 
     if ambient_dim is None:

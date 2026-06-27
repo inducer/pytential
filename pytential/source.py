@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
     import pyopencl as cl
     from meshmode.discretization import Discretization
-    from sumpy.kernel import Kernel
+    from sumpy.kernel import ScalarKernel
     from sumpy.p2p import P2P
 
     from pytential.collection import GeometryCollection
@@ -103,16 +103,16 @@ class PotentialSource(ABC):
 
     def get_p2p(self,
                 actx: PyOpenCLArrayContext,
-                target_kernels: tuple[Kernel, ...],
-                source_kernels: tuple[Kernel, ...] | None = None) -> P2P:
+                target_kernels: tuple[ScalarKernel, ...],
+                source_kernels: tuple[ScalarKernel, ...] | None = None) -> P2P:
         """
         :returns: a subclass of :class:`~sumpy.p2p.P2P` for evaluating
             the *target_kernels* and the *source_kernels* on the source geometry.
         """
 
         @memoize_in(actx, (PotentialSource, "p2p"))
-        def p2p(target_kernels: tuple[Kernel, ...],
-                source_kernels: tuple[Kernel, ...] | None) -> P2P:
+        def p2p(target_kernels: tuple[ScalarKernel, ...],
+                source_kernels: tuple[ScalarKernel, ...] | None) -> P2P:
             if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype
             else:
@@ -364,7 +364,7 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
 
     # {{{ fmm setup helpers
 
-    def get_fmm_kernel(self, kernels: Iterable[Kernel]) -> Kernel | None:
+    def get_fmm_kernel(self, kernels: Iterable[ScalarKernel]) -> ScalarKernel | None:
         fmm_kernel = None
 
         from sumpy.kernel import TargetTransformationRemover
@@ -380,7 +380,7 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
 
     def get_fmm_output_and_expansion_dtype(
             self,
-            kernels: Iterable[Kernel],
+            kernels: Iterable[ScalarKernel],
             strengths: ArrayOrContainerOrScalar) -> np.dtype[Any]:
         if (
                 any(knl.is_complex_valued for knl in kernels)
@@ -392,7 +392,7 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
     def get_fmm_expansion_wrangler_extra_kwargs(
             self,
             actx: PyOpenCLArrayContext,
-            target_kernels: tuple[Kernel, ...],
+            target_kernels: tuple[ScalarKernel, ...],
             tree_user_source_ids: Array,
             arguments: KernelArgumentMapping,
             evaluator: Callable[[Operand], ArrayOrContainerOrScalar],

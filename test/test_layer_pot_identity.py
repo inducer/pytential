@@ -42,7 +42,7 @@ from arraycontext import (
 )
 
 # from sumpy.visualization import FieldPlotter
-from sumpy.kernel import HelmholtzKernel, Kernel, LaplaceKernel
+from sumpy.kernel import HelmholtzKernel, LaplaceKernel, ScalarKernel
 
 from pytential import GeometryCollection, bind, norm, sym
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
@@ -78,7 +78,7 @@ class IdentityExpr(ABC):
     order_drop: ClassVar[int]
 
     @abstractmethod
-    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
+    def get_zero_op(self, kernel: ScalarKernel, **kwargs: sym.Operand) -> sym.Operand:
         pass
 
 
@@ -87,13 +87,13 @@ class GreenExpr(IdentityExpr):
     order_drop: ClassVar[int] = 0
 
     @override
-    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
+    def get_zero_op(self, kernel: ScalarKernel, **kwargs: sym.Operand) -> sym.Operand:
         u_sym = sym.var("u")
         dn_u_sym = sym.var("dn_u")
 
         return (
-            sym.S(kernel, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
-            - sym.D(kernel, u_sym, qbx_forced_limit="avg", **knl_kwargs)
+            sym.S(kernel, dn_u_sym, qbx_forced_limit=-1, **kwargs)
+            - sym.D(kernel, u_sym, qbx_forced_limit="avg", **kwargs)
             - 0.5*u_sym)
 
 
@@ -102,7 +102,7 @@ class GradGreenExpr(IdentityExpr):
     order_drop: ClassVar[int] = 1
 
     @override
-    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
+    def get_zero_op(self, kernel: ScalarKernel, **kwargs: sym.Operand) -> sym.Operand:
         d = kernel.dim
         u_sym = sym.var("u")
         grad_u_sym = sym.make_sym_mv("grad_u", d)
@@ -110,9 +110,9 @@ class GradGreenExpr(IdentityExpr):
 
         return (
                 d1.resolve(d1.dnabla(d) * d1(sym.S(kernel, dn_u_sym,
-                    qbx_forced_limit="avg", **knl_kwargs)))
+                    qbx_forced_limit="avg", **kwargs)))
                 - d2.resolve(d2.dnabla(d) * d2(sym.D(kernel, u_sym,
-                    qbx_forced_limit="avg", **knl_kwargs)))
+                    qbx_forced_limit="avg", **kwargs)))
                 - 0.5*grad_u_sym
                 ).as_vector()
 
@@ -122,9 +122,9 @@ class ZeroCalderonExpr(IdentityExpr):
     order_drop: ClassVar[int] = 1
 
     @override
-    def get_zero_op(self, kernel: Kernel, **knl_kwargs: sym.Operand) -> sym.Operand:
+    def get_zero_op(self, kernel: ScalarKernel, **kwargs: sym.Operand) -> sym.Operand:
         assert isinstance(kernel, LaplaceKernel)
-        assert not knl_kwargs
+        assert not kwargs
 
         u_sym = sym.var("u")
 
