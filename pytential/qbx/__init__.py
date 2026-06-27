@@ -44,7 +44,7 @@ from sumpy.expansion import (
     DefaultExpansionFactory as DefaultExpansionFactoryBase,
     ExpansionFactoryBase,
 )
-from sumpy.expansion.local import LocalExpansionBase
+from sumpy.expansion.local import LineTaylorLocalExpansion, LocalExpansionBase
 
 from pytential.qbx.refinement import QBXRefinementMode, QBXRefinementNeededError
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedError
@@ -798,7 +798,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def get_expansion_for_qbx_direct_eval(self, base_kernel, target_kernels):
-        from sumpy.expansion.local import LineTaylorLocalExpansion
         from sumpy.kernel import TargetDerivativeRemover
 
         # line Taylor cannot support target derivatives
@@ -957,14 +956,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         for (target_name, qbx_forced_limit), outputs in self_outputs.items():
             flat_target_nodes = _flat_nodes(target_name)
+            flat_centers = _flat_centers(target_name, qbx_forced_limit)
+            lpot_kwargs = flat_kernel_args.copy()
+
+            if isinstance(lpot_applier.expansion, LineTaylorLocalExpansion):
+                lpot_kwargs["expansion_vec"] = (
+                        actx.thaw(flat_target_nodes) - actx.thaw(flat_centers))
 
             output_for_each_kernel = lpot_applier(actx,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
-                    centers=_flat_centers(target_name, qbx_forced_limit),
+                    centers=flat_centers,
                     strengths=flat_strengths,
                     expansion_radii=_flat_expansion_radii(target_name),
-                    **flat_kernel_args)
+                    **lpot_kwargs)
 
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
