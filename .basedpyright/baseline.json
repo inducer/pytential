@@ -778,11 +778,11 @@
                 }
             },
             {
-                "code": "reportIndexIssue",
+                "code": "reportUnreachable",
                 "range": {
-                    "startColumn": 12,
-                    "endColumn": 17,
-                    "lineCount": 1
+                    "startColumn": 8,
+                    "endColumn": 45,
+                    "lineCount": 7
                 }
             },
             {
@@ -908,11 +908,11 @@
                 }
             },
             {
-                "code": "reportIndexIssue",
+                "code": "reportUnreachable",
                 "range": {
-                    "startColumn": 12,
-                    "endColumn": 17,
-                    "lineCount": 1
+                    "startColumn": 8,
+                    "endColumn": 45,
+                    "lineCount": 7
                 }
             },
             {
@@ -924,43 +924,11 @@
                 }
             },
             {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 44,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
+                "code": "reportUnreachable",
                 "range": {
                     "startColumn": 8,
                     "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 19,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 15,
-                    "lineCount": 1
+                    "lineCount": 8
                 }
             }
         ],
@@ -21186,35 +21154,11 @@
                 }
             },
             {
-                "code": "reportUnknownArgumentType",
+                "code": "reportUnreachable",
                 "range": {
-                    "startColumn": 28,
-                    "endColumn": 33,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 46,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 46,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 41,
-                    "endColumn": 53,
-                    "lineCount": 1
+                    "startColumn": 8,
+                    "endColumn": 56,
+                    "lineCount": 4
                 }
             },
             {
@@ -28690,6 +28634,14 @@
                 }
             },
             {
+                "code": "reportAbstractUsage",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 18,
+                    "lineCount": 4
+                }
+            },
+            {
                 "code": "reportCallIssue",
                 "range": {
                     "startColumn": 19,
@@ -28815,6 +28767,14 @@
                     "startColumn": 33,
                     "endColumn": 40,
                     "lineCount": 1
+                }
+            },
+            {
+                "code": "reportAbstractUsage",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 18,
+                    "lineCount": 4
                 }
             },
             {
@@ -44038,50 +43998,10 @@
                 }
             },
             {
-                "code": "reportUnnecessaryTypeIgnoreComment",
-                "range": {
-                    "startColumn": 97,
-                    "endColumn": 117,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownVariableType",
                 "range": {
                     "startColumn": 12,
                     "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 18,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 49,
-                    "endColumn": 70,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 49,
-                    "endColumn": 55,
                     "lineCount": 1
                 }
             },
@@ -44257,6 +44177,24 @@
                     "startColumn": 6,
                     "endColumn": 24,
                     "lineCount": 1
+                }
+            }
+        ],
+        "./test/test_layer_pot_eigenvalues.py": [
+            {
+                "code": "reportUnreachable",
+                "range": {
+                    "startColumn": 12,
+                    "endColumn": 21,
+                    "lineCount": 8
+                }
+            },
+            {
+                "code": "reportUnreachable",
+                "range": {
+                    "startColumn": 12,
+                    "endColumn": 21,
+                    "lineCount": 4
                 }
             }
         ],
