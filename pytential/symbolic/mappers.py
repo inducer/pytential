@@ -192,6 +192,13 @@ class IdentityMapper(IdentityMapperBase[[]]):
 
         return type(expr)(expr.from_dd, expr.to_dd, operand)
 
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        operand = self.rec_arith(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
+
     def map_interleave(self, expr: pp.Interleave):
         operand_1 = self.rec_arith(expr.operand_1)
         operand_2 = self.rec_arith(expr.operand_2)
@@ -227,6 +234,7 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
                 | pp.ElementwiseMin
                 | pp.ElementwiseMax
                 | pp.Interpolation
+                | pp.BremerWeightedDensity
             ):
         return self.rec(expr.operand)
 
@@ -242,6 +250,8 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
     map_elementwise_max: \
         Callable[[Self, pp.ElementwiseMax], ResultT] = _map_with_operand
     map_interpolation: Callable[[Self, pp.Interpolation], ResultT] = _map_with_operand
+    map_bremer_weighted_density: \
+        Callable[[Self, pp.BremerWeightedDensity], ResultT] = _map_with_operand
 
     def map_interleave(self, expr: pp.Interleave):
         return self.combine([self.rec(expr.operand_1), self.rec(expr.operand_2)])
@@ -353,6 +363,13 @@ class EvaluationRewriter(EvaluationRewriterBase):
 
         return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
+
     def map_int_g(self, expr: pp.IntG):
         densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
         if not changed:
@@ -366,7 +383,7 @@ class EvaluationRewriter(EvaluationRewriterBase):
         if child is expr.child:
             return expr
 
-        if isinstance(expr, (pp.InterpolationUnit, pp.DistributeInterpolation)):
+        if isinstance(expr, pp.InterpolationUnit):
             return type(expr)(
                     child,
                     expr.prefix,
@@ -784,8 +801,16 @@ class EarlyInterpolationAdder(
 
     def map_q_weight(self, expr: pp.QWeight):
         raise ValueError(
-            "EarlyInterpolationAdder must not interpolate a QWeight: "
-            "quadrature weights are intrinsic to their discretization stage")
+            "EarlyInterpolationAdder reached a bare QWeight.")
+
+    def map_bremer_weighted_density(
+                self,
+                expr: pp.BremerWeightedDensity,
+            ) -> Expression:
+        from_dd = self.from_dd
+        if self.variable_from_dd is not None:
+            from_dd = self.variable_from_dd
+        return pp.interpolate(expr, from_dd, self.to_dd)
 
     @override
     def map_call(self,
@@ -803,6 +828,18 @@ class EarlyInterpolationAdder(
         return pp.interpolate(expr, self.from_dd, self.to_dd)
 
     @override
+    def map_common_subexpression(self,
+                expr: p.CommonSubexpression, /,
+            ) -> Expression:
+        if isinstance(expr, pp.InterpolationUnit):
+            from_dd = self.from_dd
+            if self.variable_from_dd is not None:
+                from_dd = self.variable_from_dd
+            return pp.interpolate(expr, from_dd, self.to_dd)
+
+        return CSECachingMapperMixin.map_common_subexpression(self, expr)
+
+    @override
     def map_common_subexpression_uncached(self,
                 expr: p.CommonSubexpression, /,
             ) -> Expression:
@@ -817,277 +854,6 @@ class EarlyInterpolationAdder(
                 **expr.get_extra_properties())
 
 
-class _QWeightCollector(Collector[pp.QWeight]):
-    @override
-    def map_q_weight(self, expr: pp.QWeight):
-        return {expr}
-
-
-class _VariableCollector(Collector[p.Variable]):
-    @override
-    def map_variable(self, expr: p.Variable):
-        return {expr}
-
-    @override
-    def map_call(self, expr: p.Call):
-        result: set[p.Variable] = set()
-        for child in expr.parameters:
-            result |= self.rec(child)
-        return result
-
-    @override
-    def map_call_with_kwargs(self, expr: p.CallWithKwargs):
-        result: set[p.Variable] = set()
-        for child in expr.parameters:
-            result |= self.rec(child)
-        for child in expr.kw_parameters.values():
-            result |= self.rec(child)
-        return result
-
-
-class _DensityInterpolationUnitCollector(Collector[p.CommonSubexpression]):
-    @override
-    def map_common_subexpression(self, expr: p.CommonSubexpression):
-        if isinstance(expr, pp.InterpolationUnit):
-            return {expr}
-
-        return self.rec(expr.child)
-
-
-class _DistributedInterpolationCollector(Collector[pp.DistributeInterpolation]):
-    @override
-    def map_common_subexpression(self, expr: p.CommonSubexpression):
-        if isinstance(expr, pp.DistributeInterpolation):
-            return {expr}
-
-        return self.rec(expr.child)
-
-
-class _DensityInterpolationSplitter:
-    def __init__(self,
-            preprocessor: InterpolationPreprocessor,
-            geometry_from_dd: DOFDescriptor,
-            variable_from_dd: DOFDescriptor,
-            to_dd: DOFDescriptor,
-            ) -> None:
-        self.preprocessor = preprocessor
-        self.variable_from_dd = variable_from_dd
-        self.to_dd = to_dd
-        self.geometry_adder = EarlyInterpolationAdder(
-                geometry_from_dd, to_dd, variable_from_dd=variable_from_dd)
-        self.qweight_collector = _QWeightCollector()
-        self.variable_collector = _VariableCollector()
-        self.interpolation_unit_collector = _DensityInterpolationUnitCollector()
-
-    # Marked densities may contain both geometry quantities and density
-    # unknowns. For example, normal*u/sqrt_jac_q_weight should become
-    # normal formed from geometry_from_dd and interpolated to to_dd, multiplied
-    # by Interp(u/sqrt_jac_q_weight) from variable_from_dd to to_dd. The
-    # QWeight-scaled unknown is kept atomic.
-
-    def __call__(self, expr: ArithmeticExpression) -> ArithmeticExpression:
-        return self.rec_arith(expr)
-
-    def _contains_qweight(self, expr: ArithmeticExpression) -> bool:
-        return bool(self.qweight_collector(expr))
-
-    def _contains_variable(self, expr: ArithmeticExpression) -> bool:
-        return bool(self.variable_collector(expr))
-
-    def _contains_interpolation_unit(self, expr: ArithmeticExpression) -> bool:
-        return bool(self.interpolation_unit_collector(expr))
-
-    def _is_interpolation_unit(self, expr: Expression) -> bool:
-        return isinstance(expr, pp.InterpolationUnit)
-
-    def _is_distributed_interpolation(self, expr: Expression) -> bool:
-        return isinstance(expr, pp.DistributeInterpolation)
-
-    def _is_pure_geometry(self, expr: ArithmeticExpression) -> bool:
-        return not (
-                self._contains_qweight(expr)
-                or self._contains_variable(expr)
-                or self._contains_interpolation_unit(expr))
-
-    def _is_variable_leaf(self, expr: ArithmeticExpression) -> bool:
-        return (
-                isinstance(expr, p.Variable)
-                or (
-                    isinstance(expr, p.Subscript)
-                    and isinstance(expr.aggregate, p.Variable)))
-
-    def _factorize(self, expr: ArithmeticExpression) -> ArithmeticExpression:
-        return self.geometry_adder.rec_arith(
-                self.preprocessor.rec_arith(
-                    self.preprocessor.tagger.rec_arith(expr)))
-
-    def _interpolate_as_unit(self,
-            expr: ArithmeticExpression,
-            ) -> ArithmeticExpression:
-        return pp.interpolate(
-                self.preprocessor.rec_arith(expr),
-                self.variable_from_dd,
-                self.to_dd)
-
-    def _distribute_interpolation(
-            self,
-            expr: pp.DistributeInterpolation,
-            ) -> ArithmeticExpression:
-        return self.rec_arith(expr.child)
-
-    def _flatten_product(self,
-            expr: ArithmeticExpression,
-            ) -> list[ArithmeticExpression]:
-        if isinstance(expr, p.Product):
-            result = []
-            for child in expr.children:
-                result.extend(self._flatten_product(child))
-            return result
-
-        return [expr]
-
-    def _flatten_distributed_product(self,
-            expr: ArithmeticExpression,
-            ) -> list[ArithmeticExpression]:
-        result = []
-        for factor in self._flatten_product(expr):
-            if self._is_distributed_interpolation(factor):
-                result.extend(self._flatten_distributed_product(factor.child))
-            else:
-                result.append(factor)
-
-        return result
-
-    def _make_product(self,
-            factors: Iterable[ArithmeticExpression],
-            ) -> ArithmeticExpression:
-        factors = tuple(factors)
-        if not factors:
-            return 1
-        if len(factors) == 1:
-            return factors[0]
-
-        return p.Product(factors)
-
-    def _partition_factors(self,
-            factors: Iterable[ArithmeticExpression],
-            ) -> tuple[list[ArithmeticExpression], list[ArithmeticExpression]]:
-        geometry_factors = []
-        residual_factors = []
-
-        for factor in factors:
-            if self._is_pure_geometry(factor):
-                geometry_factors.append(self._factorize(factor))
-            else:
-                residual_factors.append(factor)
-
-        return geometry_factors, residual_factors
-
-    def rec_arith(self, expr: ArithmeticExpression) -> ArithmeticExpression:
-        if self._is_interpolation_unit(expr):
-            return self._interpolate_as_unit(expr)
-        if self._is_distributed_interpolation(expr):
-            return self._distribute_interpolation(expr)
-
-        if isinstance(expr, p.CommonSubexpression):
-            result = self.rec_arith(expr.child)
-            if result is expr.child:
-                return expr
-
-            return type(expr)(
-                    result,
-                    expr.prefix,
-                    expr.scope,
-                    **expr.get_extra_properties())
-
-        if isinstance(expr, p.Sum):
-            return self.map_sum(expr)
-
-        if isinstance(expr, p.Product):
-            return self.map_product(expr)
-
-        if isinstance(expr, p.Quotient):
-            return self.map_quotient(expr)
-
-        if self._contains_qweight(expr) or self._contains_interpolation_unit(expr):
-            return self._interpolate_as_unit(expr)
-
-        if self._contains_variable(expr) and not self._is_variable_leaf(expr):
-            return self._interpolate_as_unit(expr)
-
-        return self._factorize(expr)
-
-    def map_product(self, expr: p.Product) -> ArithmeticExpression:
-        factors = self._flatten_distributed_product(expr)
-        geometry_factors, residual_factors = self._partition_factors(factors)
-
-        if self._contains_qweight(expr):
-            result_factors = list(geometry_factors)
-            if residual_factors:
-                result_factors.append(
-                        self._interpolate_as_unit(
-                            self._make_product(residual_factors)))
-
-            return self._make_product(result_factors)
-
-        result_factors = list(geometry_factors)
-        if len(residual_factors) == 1:
-            result_factors.append(self.rec_arith(residual_factors[0]))
-        elif residual_factors:
-            result_factors.append(
-                    self._interpolate_as_unit(
-                        self._make_product(residual_factors)))
-
-        return self._make_product(result_factors)
-
-    def map_sum(self, expr: p.Sum) -> ArithmeticExpression:
-        children = tuple(self.rec_arith(child) for child in expr.children)
-        if all(
-                child is orig_child
-                for child, orig_child in zip(children, expr.children, strict=True)):
-            return expr
-
-        from pymbolic.primitives import flattened_sum
-        return flattened_sum(children)
-
-    def map_quotient(self, expr: p.Quotient) -> ArithmeticExpression:
-        if self._contains_qweight(expr):
-            if self._contains_qweight(expr.denominator):
-                numerator_factors = self._flatten_distributed_product(expr.numerator)
-                geometry_factors, residual_numerator_factors = (
-                        self._partition_factors(numerator_factors))
-
-                residual = p.Quotient(
-                        self._make_product(residual_numerator_factors),
-                        expr.denominator)
-                return self._make_product([
-                        *geometry_factors,
-                        self._interpolate_as_unit(residual)])
-
-            if self._is_pure_geometry(expr.denominator):
-                return p.Quotient(
-                        self._interpolate_as_unit(expr.numerator),
-                        self._factorize(expr.denominator))
-
-            return self._interpolate_as_unit(expr)
-
-        if self._is_pure_geometry(expr.denominator):
-            return p.Quotient(
-                    self.rec_arith(expr.numerator),
-                    self._factorize(expr.denominator))
-
-        numerator_factors = self._flatten_distributed_product(expr.numerator)
-        geometry_factors, residual_numerator_factors = (
-                self._partition_factors(numerator_factors))
-
-        residual = p.Quotient(
-                self._make_product(residual_numerator_factors),
-                expr.denominator)
-        return self._make_product([
-                *geometry_factors,
-                self._interpolate_as_unit(residual)])
-
-
 class InterpolationPreprocessor(IdentityMapper):
     """Handle expressions that require upsampling or downsampling by inserting
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
@@ -1098,12 +864,6 @@ class InterpolationPreprocessor(IdentityMapper):
     * upsample layer potential sources to
       :attr:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`, if a
       stage is not already assigned to the source descriptor.
-
-    Unmarked layer-potential densities are interpolated as whole units. Only
-    densities marked with :func:`pytential.symbolic.primitives.geo_density` or
-    :func:`pytential.symbolic.primitives.distribute_interpolation` are split.
-    These markers are only honored in layer-potential densities, not in kernel
-    arguments.
 
     .. attribute:: from_discr_stage
     .. automethod:: __init__
@@ -1161,17 +921,11 @@ class InterpolationPreprocessor(IdentityMapper):
         # area_element.
         geometry_from_dd = variable_from_dd.copy(discr_stage=self.from_discr_stage)
 
-        density_splitter = _DensityInterpolationSplitter(
-                self, geometry_from_dd, variable_from_dd, to_dd)
-        distributed_interpolation_collector = _DistributedInterpolationCollector()
-
-        def process_density(density: ArithmeticExpression) -> ArithmeticExpression:
-            if distributed_interpolation_collector(density):
-                return density_splitter(density)
-            return pp.interpolate(
-                    self.rec_arith(density), variable_from_dd, to_dd)
-
-        densities = tuple(process_density(density) for density in expr.densities)
+        density_interp_adder = EarlyInterpolationAdder(
+                geometry_from_dd, to_dd, variable_from_dd=variable_from_dd)
+        densities = tuple(
+            density_interp_adder.rec_arith(self.rec_arith(density))
+            for density in expr.densities)
 
         interp_adder = EarlyInterpolationAdder(geometry_from_dd, to_dd)
         kernel_arguments = constantdict({
@@ -1362,6 +1116,14 @@ class StringifyMapper(BaseStringifyMapper[[]]):
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_NONE))
 
+    def map_bremer_weighted_density(
+                self,
+                expr: pp.BremerWeightedDensity,
+                enclosing_prec: int,
+            ):
+        return "BremerWeightedDensity({})".format(
+                self.rec(expr.operand, PREC_NONE))
+
     def map_interleave(self, expr: pp.Interleave, enclosing_prec: int):
         return "Interleave[{}]({}, {})".format(
                 stringify_where(expr.from_dd),
@@ -1419,6 +1181,16 @@ class GraphvizMapper(GraphvizMapperBase):
     map_parametrization_derivative = map_pytential_leaf
 
     map_q_weight = map_pytential_leaf
+
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        self.lines.append(
+                '{} [label="BremerWeightedDensity",shape=circle];'.format(
+                    self.get_id(expr)))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.operand)
+        self.post_visit(expr)
 
     def map_int_g(self, expr: pp.IntG):
         descr = "Int[%s->%s]@(%d) (%s)" % (

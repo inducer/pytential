@@ -232,7 +232,6 @@ Discretization properties
 .. autofunction:: area_element
 .. autofunction:: sqrt_jac_q_weight
 .. autofunction:: normal
-.. autofunction:: geo_density
 .. autofunction:: mean_curvature
 .. autofunction:: first_fundamental_form
 .. autofunction:: second_fundamental_form
@@ -317,12 +316,12 @@ Operators
 
 .. autofunction:: interpolation_unit
 
-.. autoclass:: DistributeInterpolation
+.. autoclass:: BremerWeightedDensity
     :show-inheritance:
     :undoc-members:
     :members: mapper_method
 
-.. autofunction:: distribute_interpolation
+.. autofunction:: bremer_weighted_density
 
 .. autoclass:: Interpolation
     :show-inheritance:
@@ -422,7 +421,7 @@ __all__ = (  # noqa: RUF022
 
     "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
     "parametrization_derivative_matrix", "pseudoscalar", "area_element",
-    "sqrt_jac_q_weight", "normal", "geo_density", "mean_curvature",
+    "sqrt_jac_q_weight", "normal", "bremer_weighted_density", "mean_curvature",
     "first_fundamental_form", "second_fundamental_form", "shape_operator",
 
     "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",
@@ -432,7 +431,7 @@ __all__ = (  # noqa: RUF022
     "IterativeInverse",
 
     "Interpolation", "interpolate", "InterpolationUnit", "interpolation_unit",
-    "DistributeInterpolation", "distribute_interpolation",
+    "BremerWeightedDensity", "bremer_weighted_density",
 
     "Derivative",
 
@@ -571,28 +570,22 @@ def interpolation_unit(
 
 
 @expr_dataclass()
-class DistributeInterpolation(CommonSubexpression):
-    """A common subexpression whose source interpolation may be distributed.
+class BremerWeightedDensity(ExpressionNode):
+    """A right-preconditioned density with Bremer/L2 quadrature weighting.
 
-    This is an opt-in marker for densities such as ``normal*h`` where the
-    geometry factors should be formed using the geometry-stage element
-    parameterization and the unknown variables are interpolated from the source
-    discretization.
-
+    .. autoattribute:: operand
     """
 
-    mapper_method = "map_common_subexpression"
+    operand: ArithmeticExpression
 
 
 @for_each_expression
-def distribute_interpolation(
+def bremer_weighted_density(
             operand: ArithmeticExpression,
-            prefix: str | None = "distribute_interp",
-            scope: str = cse_scope.EVALUATION,
         ) -> ArithmeticExpression:
-    """Mark *operand* so source-to-quad interpolation may be pushed into it."""
+    """Mark *operand* as a Bremer/L2-weighted density."""
 
-    return DistributeInterpolation(operand, prefix, scope)
+    return BremerWeightedDensity(operand)
 
 
 def cse(
@@ -602,15 +595,7 @@ def cse(
             *,
             wrap_vars: bool = True,
         ) -> Operand:
-    """Wrap *expr* in a common subexpression.
-
-    This is the usual :func:`pymbolic.primitives.make_common_subexpression`,
-    except that top-level rewrapping of an :class:`InterpolationUnit` or
-    :class:`DistributeInterpolation` updates its name hint while preserving the
-    marker.
-    """
-
-    if isinstance(expr, (InterpolationUnit, DistributeInterpolation)):
+    if isinstance(expr, InterpolationUnit):
         if prefix is None:
             prefix = expr.prefix
         if scope is None:
@@ -992,23 +977,6 @@ def normal(
             pder << pder.I.inv(),
             "normal",
             scope=cse_scope.DISCRETIZATION)
-
-
-def geo_density(
-            geometry: Operand,
-            density: Operand,
-            prefix: str | None = "geo_density",
-        ) -> Operand:
-    """Return ``geometry * density`` with source interpolation distributed.
-
-    This is a helper for densities whose semantic form is a geometric
-    factor multiplying a density unknown. It should not be used for
-    coordinate transforms such as :func:`tangential_to_xyz`, whose inputs are
-    local coordinate components rather than independent scalar densities.
-    """
-
-    return cast("Operand", distribute_interpolation(
-            geometry * density, prefix))
 
 
 def mean_curvature(
