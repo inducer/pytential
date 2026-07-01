@@ -51,10 +51,11 @@ from pymbolic.geometric_algebra.primitives import (
     NablaComponent,
 )
 from pymbolic.primitives import (  # noqa: N813
+    CommonSubexpression,
     Variable as var,
     cse_scope as cse_scope_base,
     expr_dataclass,
-    make_common_subexpression as cse,
+    make_common_subexpression as _cse,
     make_sym_vector,
 )
 from pymbolic.typing import ArithmeticExpression
@@ -92,7 +93,7 @@ if TYPE_CHECKING:
 
     import modepy as mp
     from pymbolic.mapper.stringifier import StringifyMapper
-    from pymbolic.primitives import CommonSubexpression, Quotient
+    from pymbolic.primitives import Quotient
 
 
 __doc__ = """
@@ -306,6 +307,15 @@ Elementary numerics
 Operators
 ^^^^^^^^^
 
+.. autofunction:: cse
+
+.. autoclass:: BremerWeightedDensity
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
+.. autofunction:: bremer_weighted_density
+
 .. autoclass:: Interpolation
     :show-inheritance:
     :undoc-members:
@@ -404,7 +414,7 @@ __all__ = (  # noqa: RUF022
 
     "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
     "parametrization_derivative_matrix", "pseudoscalar", "area_element",
-    "sqrt_jac_q_weight", "normal", "mean_curvature",
+    "sqrt_jac_q_weight", "normal", "bremer_weighted_density", "mean_curvature",
     "first_fundamental_form", "second_fundamental_form", "shape_operator",
 
     "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",
@@ -413,7 +423,8 @@ __all__ = (  # noqa: RUF022
     "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
     "IterativeInverse",
 
-    "Interpolation", "interpolate",
+    "Interpolation", "interpolate", "BremerWeightedDensity",
+    "bremer_weighted_density",
 
     "Derivative",
 
@@ -525,6 +536,38 @@ class ErrorExpression(ExpressionNode):
 
     message: str
     """The error message to raise when this expression is encountered."""
+
+
+@expr_dataclass()
+class BremerWeightedDensity(ExpressionNode):
+    """A right-preconditioned density with Bremer/L2 quadrature weighting.
+
+    .. autoattribute:: operand
+    """
+
+    operand: ArithmeticExpression
+
+
+@for_each_expression
+def bremer_weighted_density(
+            operand: ArithmeticExpression,
+        ) -> ArithmeticExpression:
+    """Mark *operand* as a Bremer/L2-weighted density."""
+
+    return BremerWeightedDensity(operand)
+
+
+def cse(
+            expr: Operand,
+            prefix: str | None = None,
+            scope: str | None = None,
+            *,
+            wrap_vars: bool = True,
+        ) -> Operand:
+    if scope is None:
+        scope = cse_scope.EVALUATION
+
+    return cast("Operand", _cse(expr, prefix, scope, wrap_vars=wrap_vars))
 
 
 def make_sym_mv(name: str, num_components: int) -> MultiVector[ArithmeticExpression]:
