@@ -383,13 +383,6 @@ class EvaluationRewriter(EvaluationRewriterBase):
         if child is expr.child:
             return expr
 
-        if isinstance(expr, pp.InterpolationUnit):
-            return type(expr)(
-                    child,
-                    expr.prefix,
-                    expr.scope,
-                    **expr.get_extra_properties())
-
         return pp.cse(
                 child, expr.prefix, expr.scope)
 
@@ -831,12 +824,6 @@ class EarlyInterpolationAdder(
     def map_common_subexpression(self,
                 expr: p.CommonSubexpression, /,
             ) -> Expression:
-        if isinstance(expr, pp.InterpolationUnit):
-            from_dd = self.from_dd
-            if self.variable_from_dd is not None:
-                from_dd = self.variable_from_dd
-            return pp.interpolate(expr, from_dd, self.to_dd)
-
         return CSECachingMapperMixin.map_common_subexpression(self, expr)
 
     @override

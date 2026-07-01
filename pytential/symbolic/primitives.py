@@ -309,13 +309,6 @@ Operators
 
 .. autofunction:: cse
 
-.. autoclass:: InterpolationUnit
-    :show-inheritance:
-    :undoc-members:
-    :members: mapper_method
-
-.. autofunction:: interpolation_unit
-
 .. autoclass:: BremerWeightedDensity
     :show-inheritance:
     :undoc-members:
@@ -430,8 +423,8 @@ __all__ = (  # noqa: RUF022
     "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
     "IterativeInverse",
 
-    "Interpolation", "interpolate", "InterpolationUnit", "interpolation_unit",
-    "BremerWeightedDensity", "bremer_weighted_density",
+    "Interpolation", "interpolate", "BremerWeightedDensity",
+    "bremer_weighted_density",
 
     "Derivative",
 
@@ -546,30 +539,6 @@ class ErrorExpression(ExpressionNode):
 
 
 @expr_dataclass()
-class InterpolationUnit(CommonSubexpression):
-    """A common subexpression whose value should be interpolated as a unit.
-
-    This is used for quantities whose expanded symbolic form is not a valid
-    place to insert interpolation. For example, the result of
-    :func:`tangential_to_xyz` is Cartesian, while its inputs can be coefficients
-    in an element-local tangential basis.
-    """
-
-    mapper_method = "map_common_subexpression"
-
-
-@for_each_expression
-def interpolation_unit(
-            operand: ArithmeticExpression,
-            prefix: str | None = "interp_unit",
-            scope: str = cse_scope.EVALUATION,
-        ) -> ArithmeticExpression:
-    """Mark *operand* as a quantity that should be interpolated as a whole."""
-
-    return InterpolationUnit(operand, prefix, scope)
-
-
-@expr_dataclass()
 class BremerWeightedDensity(ExpressionNode):
     """A right-preconditioned density with Bremer/L2 quadrature weighting.
 
@@ -595,17 +564,6 @@ def cse(
             *,
             wrap_vars: bool = True,
         ) -> Operand:
-    if isinstance(expr, InterpolationUnit):
-        if prefix is None:
-            prefix = expr.prefix
-        if scope is None:
-            scope = expr.scope
-        return cast("Operand", type(expr)(
-                expr.child,
-                prefix,
-                scope,
-                **expr.get_extra_properties()))
-
     if scope is None:
         scope = cse_scope.EVALUATION
 
@@ -2583,8 +2541,7 @@ def tangential_to_xyz(
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
     result = sum(tonb[:, i] * tangential_vec[i] for i in range(ambient_dim - 1))
 
-    return cast("ObjectArray1D[ArithmeticExpression]",
-            interpolation_unit(result, "tangential_to_xyz"))
+    return cast("ObjectArray1D[ArithmeticExpression]", result)
 
 
 def project_to_tangential(
