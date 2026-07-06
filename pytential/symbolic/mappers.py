@@ -192,6 +192,13 @@ class IdentityMapper(IdentityMapperBase[[]]):
 
         return type(expr)(expr.from_dd, expr.to_dd, operand)
 
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        operand = self.rec_arith(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
+
     def map_interleave(self, expr: pp.Interleave):
         operand_1 = self.rec_arith(expr.operand_1)
         operand_2 = self.rec_arith(expr.operand_2)
@@ -227,6 +234,7 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
                 | pp.ElementwiseMin
                 | pp.ElementwiseMax
                 | pp.Interpolation
+                | pp.BremerWeightedDensity
             ):
         return self.rec(expr.operand)
 
@@ -242,6 +250,8 @@ class CombineMapper(CombineMapperBase[ResultT, []]):
     map_elementwise_max: \
         Callable[[Self, pp.ElementwiseMax], ResultT] = _map_with_operand
     map_interpolation: Callable[[Self, pp.Interpolation], ResultT] = _map_with_operand
+    map_bremer_weighted_density: \
+        Callable[[Self, pp.BremerWeightedDensity], ResultT] = _map_with_operand
 
     def map_interleave(self, expr: pp.Interleave):
         return self.combine([self.rec(expr.operand_1), self.rec(expr.operand_2)])
@@ -353,6 +363,13 @@ class EvaluationRewriter(EvaluationRewriterBase):
 
         return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
+
     def map_int_g(self, expr: pp.IntG):
         densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
         if not changed:
@@ -367,9 +384,7 @@ class EvaluationRewriter(EvaluationRewriterBase):
             return expr
 
         return pp.cse(
-                child,
-                expr.prefix,
-                expr.scope)
+                child, expr.prefix, expr.scope)
 
 # }}}
 
@@ -596,12 +611,13 @@ class DiscretizationStageTagger(IdentityMapper):
     @override
     def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         dofdesc = expr.dofdesc
-        if dofdesc.discr_stage == self.discr_stage:
+        operand = self.rec_arith(expr.operand)
+        if dofdesc.discr_stage == self.discr_stage and operand is expr.operand:
             return expr
 
         return type(expr)(
                 expr.ref_axes,
-                self.rec_arith(expr.operand),
+                operand,
                 dofdesc.copy(discr_stage=self.discr_stage))
 
 # }}}
@@ -758,10 +774,62 @@ class EarlyInterpolationAdder(
     """
     from_dd: DOFDescriptor
     to_dd: DOFDescriptor
+    variable_from_dd: DOFDescriptor | None = None
 
     @override
     def map_variable(self, expr: p.Variable):
-        return pp.interpolate(expr, self.from_dd, self.to_dd)
+        from_dd = self.from_dd
+        if self.variable_from_dd is not None:
+            from_dd = self.variable_from_dd
+        return pp.interpolate(expr, from_dd, self.to_dd)
+
+    @override
+    def map_subscript(self, expr: p.Subscript):
+        if isinstance(expr.aggregate, p.Variable):
+            from_dd = self.from_dd
+            if self.variable_from_dd is not None:
+                from_dd = self.variable_from_dd
+            return pp.interpolate(expr, from_dd, self.to_dd)
+
+        return super().map_subscript(expr)
+
+    def map_q_weight(self, expr: pp.QWeight):
+        raise ValueError(
+            "EarlyInterpolationAdder reached a bare QWeight.")
+
+    def map_bremer_weighted_density(
+                self,
+                expr: pp.BremerWeightedDensity,
+            ) -> Expression:
+        from_dd = self.from_dd
+        if self.variable_from_dd is not None:
+            from_dd = self.variable_from_dd
+        return pp.interpolate(expr, from_dd, self.to_dd)
+
+    def _map_scalar_reduction(
+                self,
+                expr: pp.NodeSum | pp.NodeMax | pp.NodeMin,
+            ) -> Expression:
+        if self.from_dd.discr_stage is None:
+            return expr
+
+        return DiscretizationStageTagger(self.from_dd.discr_stage).rec_arith(expr)
+
+    def map_node_sum(self, expr: pp.NodeSum) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_node_max(self, expr: pp.NodeMax) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_node_min(self, expr: pp.NodeMin) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_int_g(self, expr: pp.IntG) -> Expression:
+        from_dd = expr.target
+        if from_dd.discr_stage is None:
+            from_dd = from_dd.to_stage1()
+
+        return pp.interpolate(expr, from_dd, self.to_dd)
 
     @override
     def map_call(self,
@@ -776,7 +844,19 @@ class EarlyInterpolationAdder(
 
     @override
     def handle_unsupported_expression(self, expr: p.ExpressionNode) -> Expression:
-        return pp.interpolate(expr, self.from_dd, self.to_dd)
+        if self.from_dd.discr_stage is None:
+            operand = expr
+        else:
+            operand = DiscretizationStageTagger(
+                    self.from_dd.discr_stage).rec_arith(expr)
+
+        return pp.interpolate(operand, self.from_dd, self.to_dd)
+
+    @override
+    def map_common_subexpression(self,
+                expr: p.CommonSubexpression, /,
+            ) -> Expression:
+        return CSECachingMapperMixin.map_common_subexpression(self, expr)
 
     @override
     def map_common_subexpression_uncached(self,
@@ -852,15 +932,19 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dd = expr.source.to_stage1()
-        to_dd = from_dd.to_quad_stage2()
-        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
-        densities = tuple(
-            interp_adder.rec_arith(self.rec_arith(density))
-            for density in expr.densities)
+        variable_from_dd = expr.source.to_stage1()
+        to_dd = variable_from_dd.to_quad_stage2()
 
-        from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
-        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
+        geometry_from_dd = expr.source.copy(discr_stage=self.from_discr_stage)
+
+        density_interp_adder = EarlyInterpolationAdder(
+                geometry_from_dd, to_dd, variable_from_dd=variable_from_dd)
+        rec_densities = tuple(self.rec_arith(density) for density in expr.densities)
+        densities = tuple(
+            density_interp_adder.rec_arith(density)
+            for density in rec_densities)
+
+        interp_adder = EarlyInterpolationAdder(geometry_from_dd, to_dd)
         kernel_arguments = constantdict({
                 name: componentwise(
                     lambda aexpr: interp_adder.rec_arith(
@@ -944,7 +1028,7 @@ def stringify_where(where: DOFDescriptorLike):
     return str(pp.as_dofdesc(where))
 
 
-class StringifyMapper(BaseStringifyMapper[[]]):
+class StringifyMapper(BaseStringifyMapper):
 
     def map_ones(self, expr: pp.Ones, enclosing_prec: int):
         return "Ones[%s]" % stringify_where(expr.dofdesc)
@@ -1049,6 +1133,14 @@ class StringifyMapper(BaseStringifyMapper[[]]):
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_NONE))
 
+    def map_bremer_weighted_density(
+                self,
+                expr: pp.BremerWeightedDensity,
+                enclosing_prec: int,
+            ):
+        return "BremerWeightedDensity({})".format(
+                self.rec(expr.operand, PREC_NONE))
+
     def map_interleave(self, expr: pp.Interleave, enclosing_prec: int):
         return "Interleave[{}]({}, {})".format(
                 stringify_where(expr.from_dd),
@@ -1106,6 +1198,16 @@ class GraphvizMapper(GraphvizMapperBase):
     map_parametrization_derivative = map_pytential_leaf
 
     map_q_weight = map_pytential_leaf
+
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        self.lines.append(
+                '{} [label="BremerWeightedDensity",shape=circle];'.format(
+                    self.get_id(expr)))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.operand)
+        self.post_visit(expr)
 
     def map_int_g(self, expr: pp.IntG):
         descr = "Int[%s->%s]@(%d) (%s)" % (

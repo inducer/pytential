@@ -38,7 +38,7 @@ __doc__ = """
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import numpy as np
 from typing_extensions import override
@@ -88,6 +88,7 @@ class L2WeightedPDEOperator(ABC):
     .. automethod:: get_sqrt_weight
 
     .. automethod:: get_density_var
+    .. automethod:: get_weighted_density
     .. automethod:: prepare_rhs
 
     .. automethod:: representation
@@ -154,6 +155,18 @@ class L2WeightedPDEOperator(ABC):
             corresponding to the density with the given *name*.
         """
         return sym.var(name)
+
+    def get_weighted_density(
+                self,
+                u: ArithmeticExpression,
+                dofdesc: DOFDescriptorLike = None,
+            ) -> ArithmeticExpression:
+        if not self.use_l2_weighting:
+            return cast("ArithmeticExpression", sym.cse(u))
+
+        return cast("ArithmeticExpression", sym.cse(
+                sym.bremer_weighted_density(
+                    u / self.get_sqrt_weight(dofdesc))))
 
     @abstractmethod
     def representation(self,
@@ -284,8 +297,7 @@ class DirichletOperator(L2WeightedPDEOperator):
                        source: DOFDescriptorLike = None,
                        target: DOFDescriptorLike = None,
                        **kwargs: Operand) -> ArithmeticExpression:
-        sqrt_w = self.get_sqrt_weight(source)
-        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        inv_sqrt_w_u = self.get_weighted_density(u, source)
 
         if map_potentials is None:
             def default_map_potentials(x: ArithmeticExpression) -> ArithmeticExpression:
@@ -319,7 +331,7 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         dofdesc = sym.as_dofdesc(dofdesc)
         sqrt_w = self.get_sqrt_weight(dofdesc)
-        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        inv_sqrt_w_u = self.get_weighted_density(u, dofdesc)
 
         if self.is_unique_only_up_to_constant():
             # The exterior Dirichlet operator in this representation
@@ -451,8 +463,7 @@ class NeumannOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         laplace = LaplaceKernel(self.dim)
 
-        sqrt_w = self.get_sqrt_weight(source)
-        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        inv_sqrt_w_u = self.get_weighted_density(u, source)
         laplace_s_inv_sqrt_w_u = sym.cse(
                 sym.S(laplace, inv_sqrt_w_u,
                       qbx_forced_limit=+1,
@@ -485,7 +496,7 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         dofdesc = sym.as_dofdesc(dofdesc)
         sqrt_w = self.get_sqrt_weight(dofdesc)
-        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        inv_sqrt_w_u = self.get_weighted_density(u, dofdesc)
         laplace_s_inv_sqrt_w_u = sym.cse(
                 sym.S(laplace, inv_sqrt_w_u,
                       qbx_forced_limit=+1,

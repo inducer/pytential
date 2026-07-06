@@ -305,6 +305,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
         else:
             raise TypeError(f"cannot interpolate '{type(operand).__name__}'")
 
+    def map_bremer_weighted_density(self, expr: pp.BremerWeightedDensity):
+        return self.rec(expr.operand)
+
     def map_interleave(self, expr: pp.Interleave):
         return interleave_dof_arrays(
                         self.places.get_discretization(

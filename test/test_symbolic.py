@@ -525,8 +525,7 @@ def test_mapper_int_g_term_collector(op_name, k=0):
     expr_only_intgs = IntGTermCollector()(expr)
 
     # FIXME: how to check this did something?
-    sigma = sym.cse(op.get_density_var("sigma") / op.get_sqrt_weight(),
-                    scope=sym.cse_scope.EVALUATION)
+    sigma = op.get_weighted_density(op.get_density_var("sigma"))
     if op_name == "dirichlet":
         expected_expr = -1 * sym.D(op.kernel, sigma, qbx_forced_limit="avg")
     elif op_name == "neumann":
