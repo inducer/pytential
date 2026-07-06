@@ -611,12 +611,13 @@ class DiscretizationStageTagger(IdentityMapper):
     @override
     def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         dofdesc = expr.dofdesc
-        if dofdesc.discr_stage == self.discr_stage:
+        operand = self.rec_arith(expr.operand)
+        if dofdesc.discr_stage == self.discr_stage and operand is expr.operand:
             return expr
 
         return type(expr)(
                 expr.ref_axes,
-                self.rec_arith(expr.operand),
+                operand,
                 dofdesc.copy(discr_stage=self.discr_stage))
 
 # }}}
@@ -805,6 +806,31 @@ class EarlyInterpolationAdder(
             from_dd = self.variable_from_dd
         return pp.interpolate(expr, from_dd, self.to_dd)
 
+    def _map_scalar_reduction(
+                self,
+                expr: pp.NodeSum | pp.NodeMax | pp.NodeMin,
+            ) -> Expression:
+        if self.from_dd.discr_stage is None:
+            return expr
+
+        return DiscretizationStageTagger(self.from_dd.discr_stage).rec_arith(expr)
+
+    def map_node_sum(self, expr: pp.NodeSum) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_node_max(self, expr: pp.NodeMax) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_node_min(self, expr: pp.NodeMin) -> Expression:
+        return self._map_scalar_reduction(expr)
+
+    def map_int_g(self, expr: pp.IntG) -> Expression:
+        from_dd = expr.target
+        if from_dd.discr_stage is None:
+            from_dd = from_dd.to_stage1()
+
+        return pp.interpolate(expr, from_dd, self.to_dd)
+
     @override
     def map_call(self,
                 expr: p.Call,
@@ -818,7 +844,13 @@ class EarlyInterpolationAdder(
 
     @override
     def handle_unsupported_expression(self, expr: p.ExpressionNode) -> Expression:
-        return pp.interpolate(expr, self.from_dd, self.to_dd)
+        if self.from_dd.discr_stage is None:
+            operand = expr
+        else:
+            operand = DiscretizationStageTagger(
+                    self.from_dd.discr_stage).rec_arith(expr)
+
+        return pp.interpolate(operand, self.from_dd, self.to_dd)
 
     @override
     def map_common_subexpression(self,
@@ -903,16 +935,14 @@ class InterpolationPreprocessor(IdentityMapper):
         variable_from_dd = expr.source.to_stage1()
         to_dd = variable_from_dd.to_quad_stage2()
 
-        # stage1 density discretization for geometry can give wrong values for
-        # quantities that depend on the stage2 element parameterization, such as
-        # area_element.
-        geometry_from_dd = variable_from_dd.copy(discr_stage=self.from_discr_stage)
+        geometry_from_dd = expr.source.copy(discr_stage=self.from_discr_stage)
 
         density_interp_adder = EarlyInterpolationAdder(
                 geometry_from_dd, to_dd, variable_from_dd=variable_from_dd)
+        rec_densities = tuple(self.rec_arith(density) for density in expr.densities)
         densities = tuple(
-            density_interp_adder.rec_arith(self.rec_arith(density))
-            for density in expr.densities)
+            density_interp_adder.rec_arith(density)
+            for density in rec_densities)
 
         interp_adder = EarlyInterpolationAdder(geometry_from_dd, to_dd)
         kernel_arguments = constantdict({
@@ -998,7 +1028,7 @@ def stringify_where(where: DOFDescriptorLike):
     return str(pp.as_dofdesc(where))
 
 
-class StringifyMapper(BaseStringifyMapper[[]]):
+class StringifyMapper(BaseStringifyMapper):
 
     def map_ones(self, expr: pp.Ones, enclosing_prec: int):
         return "Ones[%s]" % stringify_where(expr.dofdesc)

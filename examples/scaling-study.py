@@ -101,7 +101,7 @@ def timing_run(nx, ny, visualize=False):
 
     sigma_sym = sym.var("sigma")
     sqrt_w = sym.sqrt_jac_q_weight(2)
-    inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
+    inv_sqrt_w_sigma = sym.cse(sym.bremer_weighted_density(sigma_sym/sqrt_w))
 
     # Brakhage-Werner parameter
     alpha = 1j

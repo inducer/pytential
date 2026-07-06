@@ -414,7 +414,7 @@ __all__ = (  # noqa: RUF022
 
     "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
     "parametrization_derivative_matrix", "pseudoscalar", "area_element",
-    "sqrt_jac_q_weight", "normal", "bremer_weighted_density", "mean_curvature",
+    "sqrt_jac_q_weight", "normal", "mean_curvature",
     "first_fundamental_form", "second_fundamental_form", "shape_operator",
 
     "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",

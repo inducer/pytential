@@ -38,7 +38,7 @@ __doc__ = """
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import numpy as np
 from typing_extensions import override
@@ -162,10 +162,11 @@ class L2WeightedPDEOperator(ABC):
                 dofdesc: DOFDescriptorLike = None,
             ) -> ArithmeticExpression:
         if not self.use_l2_weighting:
-            return sym.cse(u)
+            return cast("ArithmeticExpression", sym.cse(u))
 
-        return sym.cse(sym.bremer_weighted_density(
-                u / self.get_sqrt_weight(dofdesc)))
+        return cast("ArithmeticExpression", sym.cse(
+                sym.bremer_weighted_density(
+                    u / self.get_sqrt_weight(dofdesc))))
 
     @abstractmethod
     def representation(self,
