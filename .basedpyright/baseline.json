@@ -2,22 +2,6 @@
     "files": {
         "./examples/fmm-error.py": [
             {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 43,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownArgumentType",
                 "range": {
                     "startColumn": 32,
@@ -746,14 +730,6 @@
         ],
         "./examples/layerpot-3d.py": [
             {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 57,
-                    "endColumn": 66,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportMissingParameterType",
                 "range": {
                     "startColumn": 9,
@@ -803,30 +779,6 @@
             }
         ],
         "./examples/layerpot.py": [
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 43,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 57,
-                    "endColumn": 66,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportMissingParameterType",
                 "range": {
@@ -1385,14 +1337,6 @@
             }
         ],
         "./pytential/array_context.py": [
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 4,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportUnknownVariableType",
                 "range": {
@@ -27914,22 +27858,6 @@
                 }
             },
             {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 52,
-                    "endColumn": 57,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 68,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownMemberType",
                 "range": {
                     "startColumn": 19,
@@ -28141,14 +28069,6 @@
             }
         ],
         "./pytential/symbolic/dof_connection.py": [
-            {
-                "code": "reportUnusedImport",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 18,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportUnreachable",
                 "range": {
@@ -28634,14 +28554,6 @@
                 }
             },
             {
-                "code": "reportAbstractUsage",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 18,
-                    "lineCount": 4
-                }
-            },
-            {
                 "code": "reportCallIssue",
                 "range": {
                     "startColumn": 19,
@@ -28767,14 +28679,6 @@
                     "startColumn": 33,
                     "endColumn": 40,
                     "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAbstractUsage",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 18,
-                    "lineCount": 4
                 }
             },
             {
@@ -43998,10 +43902,50 @@
                 }
             },
             {
+                "code": "reportUnnecessaryTypeIgnoreComment",
+                "range": {
+                    "startColumn": 97,
+                    "endColumn": 117,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportUnknownVariableType",
                 "range": {
                     "startColumn": 12,
                     "endColumn": 24,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownVariableType",
+                "range": {
+                    "startColumn": 12,
+                    "endColumn": 18,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 21,
+                    "endColumn": 48,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 49,
+                    "endColumn": 70,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 49,
+                    "endColumn": 55,
                     "lineCount": 1
                 }
             },
