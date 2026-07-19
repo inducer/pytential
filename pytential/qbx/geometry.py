@@ -99,7 +99,7 @@ Geometry description code container
 
 # {{{ code getter
 
-class target_state(Enum):  # noqa
+class target_state(Enum):  # ruff:ignore[invalid-class-name]
     """This enumeration contains special values that are used in
     the array returned by :meth:`QBXFMMGeometryData.user_target_to_center`.
 

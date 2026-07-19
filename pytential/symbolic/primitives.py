@@ -50,7 +50,7 @@ from pymbolic.geometric_algebra.primitives import (
     Nabla,
     NablaComponent,
 )
-from pymbolic.primitives import (  # noqa: N813
+from pymbolic.primitives import (  # ruff:ignore[camelcase-imported-as-lowercase]
     Variable as var,
     cse_scope as cse_scope_base,
     expr_dataclass,
@@ -370,7 +370,7 @@ Pretty-printing expressions
 .. autofunction:: pretty
 """
 
-__all__ = (  # noqa: RUF022
+__all__ = (  # ruff:ignore[unsorted-dunder-all]
     # re-export from pymbolic
     "Variable",
     "cse",
@@ -481,7 +481,7 @@ KernelArgumentLike = (
     | tuple[tuple[str, Operand], ...])
 
 
-class cse_scope(cse_scope_base):  # noqa: N801
+class cse_scope(cse_scope_base):  # ruff:ignore[invalid-class-name]
     DISCRETIZATION: ClassVar[str] = "pytential_discretization"
 
 
@@ -2188,7 +2188,7 @@ def int_g_dsource(
 # {{{ geometric calculus
 
 
-class _unspecified:  # noqa: N801
+class _unspecified:  # ruff:ignore[invalid-class-name]
     pass
 
 

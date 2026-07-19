@@ -654,7 +654,7 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
                         nqbx_centers += global_qbx_center_weight[iparticle];
 
                     nqbx_centers_itgt_box[i] = nqbx_centers;
-                """).render(        # noqa: E501
+                """).render(        # ruff:ignore[line-too-long]
                     box_id_t=dtype_to_ctype(box_id_dtype),
                     particle_id_t=dtype_to_ctype(particle_id_dtype)
                 ),

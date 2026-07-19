@@ -53,11 +53,11 @@ __doc__ = """
 
 # {{{ utils
 
-class PROXY_SKELETONIZATION_SOURCE:             # noqa: N801
+class PROXY_SKELETONIZATION_SOURCE:             # ruff:ignore[invalid-class-name]
     pass
 
 
-class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
+class PROXY_SKELETONIZATION_TARGET:             # ruff:ignore[invalid-class-name]
     pass
 
 

@@ -46,7 +46,9 @@ from sumpy.kernel import HelmholtzKernel, LaplaceKernel, ScalarKernel
 
 from pytential import GeometryCollection, bind, norm, sym
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+from pytential.utils import (
+    pytest_teardown_function as teardown_function,  # ruff:ignore[unused-import]
+)
 
 
 if TYPE_CHECKING:
@@ -419,7 +421,7 @@ def test_identity_convergence(actx_factory: ArrayContextFactory,
 if __name__ == "__main__":
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     if len(sys.argv) > 1:
         exec(sys.argv[1])

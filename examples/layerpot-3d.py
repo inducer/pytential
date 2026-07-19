@@ -1,6 +1,10 @@
 import numpy as np
 
-from sumpy.kernel import HelmholtzKernel, LaplaceKernel, OneKernel  # noqa
+from sumpy.kernel import (  # ruff:ignore[unused-import]
+    HelmholtzKernel,
+    LaplaceKernel,
+    OneKernel,
+)
 from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym

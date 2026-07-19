@@ -38,7 +38,7 @@ from pymbolic.geometric_algebra.mapper import (
     Collector as CollectorBase,
     CombineMapper as CombineMapperBase,
     DerivativeBinder as DerivativeBinderBase,
-    DerivativeSourceAndNablaComponentCollector as DerivativeSourceAndNablaComponentCollectorBase,  # noqa: E501
+    DerivativeSourceAndNablaComponentCollector as DerivativeSourceAndNablaComponentCollectorBase,  # ruff:ignore[line-too-long]
     DerivativeSourceFinder as DerivativeSourceFinderBase,
     EvaluationRewriter as EvaluationRewriterBase,
     GraphvizMapper as GraphvizMapperBase,
@@ -281,11 +281,11 @@ class Collector(CollectorBase[CollectedT, []], CombineMapper[AbstractSet[Collect
         return set()
 
     map_ones: Callable[[Self, pp.Ones], AbstractSet[CollectedT]] = _map_leaf
-    map_is_shape_class: Callable[[Self, pp.IsShapeClass], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
-    map_error_expression: Callable[[Self, pp.ErrorExpression], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
-    map_node_coordinate_component: Callable[[Self, pp.NodeCoordinateComponent], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
+    map_is_shape_class: Callable[[Self, pp.IsShapeClass], AbstractSet[CollectedT]] = _map_leaf  # ruff:ignore[line-too-long]
+    map_error_expression: Callable[[Self, pp.ErrorExpression], AbstractSet[CollectedT]] = _map_leaf  # ruff:ignore[line-too-long]
+    map_node_coordinate_component: Callable[[Self, pp.NodeCoordinateComponent], AbstractSet[CollectedT]] = _map_leaf  # ruff:ignore[line-too-long]
     map_q_weight: Callable[[Self, pp.QWeight], AbstractSet[CollectedT]] = _map_leaf
-    map_spatial_constant: Callable[[Self, pp.SpatialConstant], AbstractSet[CollectedT]] = _map_leaf  # noqa: E501
+    map_spatial_constant: Callable[[Self, pp.SpatialConstant], AbstractSet[CollectedT]] = _map_leaf  # ruff:ignore[line-too-long]
 
 
 class OperatorCollector(Collector[pp.IntG]):

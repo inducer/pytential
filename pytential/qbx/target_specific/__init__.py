@@ -24,4 +24,4 @@ THE SOFTWARE.
 """
 
 
-from .impl import *  # noqa
+from .impl import *  # ruff:ignore[undefined-local-with-import-star]

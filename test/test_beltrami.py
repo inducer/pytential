@@ -39,7 +39,9 @@ from pytential.symbolic.pde.beltrami import (
     LaplaceBeltramiOperator,
     YukawaBeltramiOperator,
 )
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+from pytential.utils import (
+    pytest_teardown_function as teardown_function,  # ruff:ignore[unused-import]
+)
 
 
 if TYPE_CHECKING:
@@ -303,7 +305,7 @@ def test_beltrami_convergence(
 if __name__ == "__main__":
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     if len(sys.argv) > 1:
         exec(sys.argv[1])

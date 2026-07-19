@@ -150,7 +150,7 @@ Target association driver
 
 # {{{ kernels
 
-class target_status_enum(Enum):  # noqa
+class target_status_enum(Enum):  # ruff:ignore[invalid-class-name]
     c_name = "TargetStatus"
     dtype = np.dtype(np.int32)
     c_value_prefix = ""
@@ -160,7 +160,7 @@ class target_status_enum(Enum):  # noqa
     MARKED_QBX_CENTER_FOUND = 2
 
 
-class target_flag_enum(Enum):  # noqa
+class target_flag_enum(Enum):  # ruff:ignore[invalid-class-name]
     c_name = "TargetFlag"
     dtype = np.dtype(np.int32)
     c_value_prefix = ""

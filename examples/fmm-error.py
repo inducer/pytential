@@ -1,6 +1,11 @@
 import numpy as np
 
-from meshmode.mesh.generation import drop, ellipse, make_curve_mesh, starfish  # noqa
+from meshmode.mesh.generation import (  # ruff:ignore[unused-import]
+    drop,
+    ellipse,
+    make_curve_mesh,
+    starfish,
+)
 from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 from sumpy.visualization import FieldPlotter
 

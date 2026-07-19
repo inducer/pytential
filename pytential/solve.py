@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from warnings import warn
 
-from pytential.linalg.gmres import *  # noqa: F403
+from pytential.linalg.gmres import *  # ruff:ignore[undefined-local-with-import-star]
 
 
 warn(

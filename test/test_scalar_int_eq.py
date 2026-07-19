@@ -41,7 +41,9 @@ from sumpy.kernel import BiharmonicKernel, HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, sym
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+from pytential.utils import (
+    pytest_teardown_function as teardown_function,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -472,7 +474,7 @@ cases += [
 
 
 # Sample test run:
-# 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # noqa: E501
+# 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # ruff:ignore[line-too-long]
 
 @pytest.mark.parametrize("case", cases)
 def test_integral_equation(actx_factory: ArrayContextFactory, case, visualize=False):
@@ -525,7 +527,7 @@ def test_integral_equation(actx_factory: ArrayContextFactory, case, visualize=Fa
 if __name__ == "__main__":
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     if len(sys.argv) > 1:
         exec(sys.argv[1])

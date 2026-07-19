@@ -46,7 +46,7 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
 
     def S_G(self, i, density, qbx_forced_limit, op_map=None):
         if op_map is None:
-            op_map = lambda x: x  # noqa: E731
+            op_map = lambda x: x  # ruff:ignore[lambda-assignment]
 
         from sumpy.kernel import HelmholtzKernel
         hhk = HelmholtzKernel(2, allow_evanescent=True)

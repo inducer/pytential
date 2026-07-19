@@ -39,11 +39,11 @@ if TYPE_CHECKING:
 
 # {{{ constants
 
-class colors:  # noqa
+class colors:  # ruff:ignore[invalid-class-name]
     BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
 
-class term_seq:  # noqa
+class term_seq:  # ruff:ignore[invalid-class-name]
     RESET_SEQ = "\033[0m"
     COLOR_SEQ = "\033[1;%dm"
     BOLD_SEQ = "\033[1m"
