@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING
 
-import numpy as np  # noqa: F401
+import numpy as np  # ruff:ignore[unused-import]
 from typing_extensions import override
 
 import loopy as lp

@@ -106,7 +106,7 @@ sphinxconfig_missing_reference_aliases = {
     "P2P": "class:sumpy.p2p.P2P",
     "P2PBase": "class:sumpy.p2p.P2PBase",
     "FMMLevelToOrder": "class:sumpy.fmm.FMMLevelToOrder",
-    "MultipoleExpansionFromOrderFactory": "class:sumpy.fmm.MultipoleExpansionFromOrderFactory",  # noqa: E501
+    "MultipoleExpansionFromOrderFactory": "class:sumpy.fmm.MultipoleExpansionFromOrderFactory",  # ruff:ignore[line-too-long]
     "LocalExpansionFromOrderFactory": "class:sumpy.fmm.LocalExpansionFromOrderFactory",
     # pytential
     "DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
@@ -123,8 +123,8 @@ sphinxconfig_missing_reference_aliases = {
     "Side": "obj:pytential.symbolic.primitives.Side",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
     "VectorExpression": "obj:pytential.symbolic.pde.scalar.VectorExpression",
-    "pytential.symbolic.dof_desc.DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",  # noqa: E501
-    "pytential.symbolic.primitives.ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",  # noqa: E501
+    "pytential.symbolic.dof_desc.DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",  # ruff:ignore[line-too-long]
+    "pytential.symbolic.primitives.ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",  # ruff:ignore[line-too-long]
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",
@@ -132,4 +132,4 @@ sphinxconfig_missing_reference_aliases = {
 
 
 def setup(app):
-    app.connect("missing-reference", process_autodoc_missing_reference)  # noqa: F821
+    app.connect("missing-reference", process_autodoc_missing_reference)  # ruff:ignore[undefined-name]

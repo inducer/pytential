@@ -396,8 +396,8 @@ def test_pec_mfie_extinction(actx_factory: ArrayContextFactory, case,
                 source = "source"
 
             return bind(
-                places, sym_repr, auto_where=(source, target)       # noqa: B023
-                )(actx, jt=jt, rho=rho, **knl_kwargs)               # noqa: B023
+                places, sym_repr, auto_where=(source, target)       # ruff:ignore[function-uses-loop-variable]
+                )(actx, jt=jt, rho=rho, **knl_kwargs)               # ruff:ignore[function-uses-loop-variable]
 
         pde_test_repr = EHField(
             actx.from_numpy(eval_repr_at(places, target="patch_target"))
@@ -539,7 +539,7 @@ def test_pec_mfie_extinction(actx_factory: ArrayContextFactory, case,
 if __name__ == "__main__":
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     if len(sys.argv) > 1:
         exec(sys.argv[1])

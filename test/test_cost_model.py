@@ -44,7 +44,9 @@ from pytential.qbx.cost import (
     _PythonQBXCostModel,
     make_pde_aware_translation_cost_model,
 )
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+from pytential.utils import (
+    pytest_teardown_function as teardown_function,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -849,7 +851,7 @@ if __name__ == "__main__":
     import os
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
     if len(sys.argv) > 1:

@@ -31,7 +31,7 @@ from arraycontext.pytest import (
     _PytestPyOpenCLArrayContextFactoryWithClass,
     register_pytest_array_context_factory,
 )
-from sumpy.array_context import (  # noqa: F401
+from sumpy.array_context import (  # ruff:ignore[unused-import]
     PyOpenCLArrayContext as PyOpenCLArrayContextBase,
     make_loopy_program,
 )

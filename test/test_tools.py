@@ -33,7 +33,9 @@ import pytest
 from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
 
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
-from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
+from pytential.utils import (
+    pytest_teardown_function as teardown_function,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ def test_gmres():
     true_sol = rng.normal(size=n) + 1j * rng.normal(size=n)
     b = np.dot(A, true_sol)
 
-    A_func = lambda x: np.dot(A, x)  # noqa
+    A_func = lambda x: np.dot(A, x)  # ruff:ignore[lambda-assignment]
     A_func.shape = A.shape
     A_func.dtype = A.dtype
 
@@ -292,7 +294,7 @@ def test_add_geometry_to_collection(actx_factory: ArrayContextFactory):
 if __name__ == "__main__":
     import sys
 
-    from pytential.array_context import _acf  # noqa: F401
+    from pytential.array_context import _acf  # ruff:ignore[unused-import]
 
     if len(sys.argv) > 1:
         exec(sys.argv[1])

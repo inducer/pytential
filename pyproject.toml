@@ -91,14 +91,14 @@ extend-select = [
 ]
 extend-ignore = [
     "C90",      # McCabe complexity
-    "E226",     # missing whitespace around arithmetic operator
-    "E402",     # module level import not at the top of file
-    "N802",     # function name should be lowercase
-    "N803",     # argument name should be lowercase
-    "N806",     # variable name should be lowercase
-    "RUF067",   # non-empty-init-module
-    "UP031",    # use f-strings instead of %
-    "UP032",    # use f-strings instead of .format
+    "missing-whitespace-around-arithmetic-operator",
+    "module-import-not-at-top-of-file",
+    "invalid-function-name",
+    "invalid-argument-name",
+    "non-lowercase-variable-in-function",
+    "non-empty-init-module",
+    "printf-string-formatting",
+    "f-string",
 ]
 exclude = [
     "experiments/*.py",
@@ -107,9 +107,9 @@ exclude = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"doc/*.py" = ["I002", "S102"]
-"examples/*.py" = ["I002"]
-"test/test_*.py" = ["S102"]
+"doc/*.py" = ["missing-required-import", "exec-builtin"]
+"examples/*.py" = ["missing-required-import"]
+"test/test_*.py" = ["exec-builtin"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
@@ -162,6 +162,9 @@ reportImportCycles = "none"
 
 reportPrivateUsage = "hint"
 
+# covered by ruff
+reportUnusedImport = "none"
+
 pythonVersion = "3.12"
 pythonPlatform = "All"
 
@@ -199,4 +202,3 @@ reportPrivateImportUsage = "hint"
 reportPrivateUsage = "hint"
 reportUnknownLambdaType = "hint"
 reportMissingTypeStubs = "hint"
-reportUnusedImport = "none"

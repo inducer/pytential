@@ -31,7 +31,10 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from arraycontext import Array, PyOpenCLArrayContext  # noqa: TC001
+from arraycontext import (  # ruff:ignore[typing-only-first-party-import]
+    Array,
+    PyOpenCLArrayContext,
+)
 from boxtree.array_context import dataclass_array_container
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 from boxtree.tree import Tree
