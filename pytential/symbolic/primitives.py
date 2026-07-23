@@ -54,6 +54,7 @@ from pymbolic.primitives import (  # ruff:ignore[camelcase-imported-as-lowercase
     Variable as var,
     cse_scope as cse_scope_base,
     expr_dataclass,
+    flattened_product,
     make_common_subexpression as cse,
     make_sym_vector,
 )
@@ -67,7 +68,7 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import ScalarKernel
+from sumpy.kernel import ScalarKernel, SystemKernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -470,6 +471,7 @@ OperandTc = TypeVar("OperandTc",
 
         MultiVector[ArithmeticExpression],
         Operand)
+
 
 Side: TypeAlias = Literal[-1, 1]
 QBXForcedLimit: TypeAlias = Literal[-2, -1, +1, +2, "avg"] | None
@@ -2455,7 +2457,89 @@ def Dp(
 
 # }}}
 
-# }}}
+
+# {{{ system potentials
+
+
+def int_g_system(
+    spec: str,
+    kernel: SystemKernel | ObjectArrayND[ScalarKernel],
+    density: ObjectArray1D[ArithmeticExpression],
+    *directions: ObjectArray1D[ArithmeticExpression],
+    qbx_forced_limit: QBXForcedLimit | None = None,
+    source: DOFDescriptorLike | None = None,
+    target: DOFDescriptorLike | None = None,
+    kernel_arguments: KernelArgumentLike | None = None,
+) -> ObjectArrayND[ArithmeticExpression]:
+    if kernel_arguments is None:
+        kernel_arguments = constantdict()
+    else:
+        kernel_arguments = constantdict(kernel_arguments)
+
+    if "->" not in spec:
+        raise ValueError(f"'spec' must contain '->': {spec!r}")
+
+    lhs, rhs = spec.split("->")
+    in_inames = tuple(arg.strip() for arg in lhs.split(","))
+    out_inames = rhs.strip()
+
+    if len(in_inames) != len(directions) + 2:
+        raise ValueError(
+            f"number of arguments should match the number of arg specs: {lhs!r}: "
+            f"got {len(directions) + 2} args and {len(in_inames)} arg specs"
+        )
+
+    if len(out_inames) != len(set(out_inames)):
+        raise ValueError(f"right-hand side must contain unique indices: {out_inames!r}")
+
+    if len(in_inames[0]) != kernel.ndim:
+        raise ValueError(
+            f"kernel indices {in_inames[0]!r} do not match shape {kernel.shape}"
+        )
+
+    # build sizes
+    sizes: dict[str, int] = {}
+    shapes = (kernel.shape, density.shape, *(d.shape for d in directions))
+    for inames, shape in zip(in_inames, shapes, strict=True):
+        for iname, size in zip(inames, shape, strict=True):
+            sizes[iname] = size
+
+    # get kernel components
+    from itertools import product
+
+    if isinstance(kernel, SystemKernel):
+        knl = np.empty(kernel.shape, dtype=object)
+        for k_idx in np.ndindex(*kernel.shape):
+            knl[k_idx] = kernel[k_idx]
+    else:
+        knl = kernel
+
+    # einsum
+    operands = (knl, density, *directions)
+    contractions = {iname: n for iname, n in sizes.items() if iname not in out_inames}
+
+    result = np.zeros(tuple(sizes[iname] for iname in out_inames), dtype=object)
+    for o_idx in product(*(range(n) for n in result.shape)):
+        idx = dict(zip(out_inames, o_idx, strict=True))
+
+        term = 0
+        for c_idx in product(*(range(n) for n in contractions.values())):
+            idx.update(zip(contractions, c_idx, strict=True))
+            i_operands = [
+                operand[tuple(idx[iname] for iname in inames)]
+                for operand, inames in zip(operands, in_inames, strict=True)
+            ]
+
+            term += int_g_vec(
+                cast("ScalarKernel", i_operands[0]),
+                flattened_product(i_operands[1:]),
+                qbx_forced_limit=qbx_forced_limit,
+                source=source, target=target,
+                kernel_arguments=kernel_arguments,
+            )
+        result[o_idx] = term
+
+    return from_numpy(result, ArithmeticExpression)
 
 # }}}
 
