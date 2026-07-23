@@ -42,6 +42,11 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import (
     InterpolatoryQuadratureSimplexGroupFactory,
 )
+from sumpy.kernel import (
+    BrinkmanStressSystemKernel,
+    ElasticityStressSystemKernel,
+    StressletSystemKernel,
+)
 
 from pytential import bind, sym
 from pytential.array_context import PytestPyOpenCLArrayContextFactory
@@ -599,6 +604,136 @@ def test_derivative_with_spatial_constant():
         sym.d_dx(ambient_dim,
                 (3+sym.Variable("kappa"))
                 * sym.D(knl, density, qbx_forced_limit="avg"))
+
+# }}}
+
+
+# {{{ test_int_g_system
+
+@pytest.mark.parametrize("dim", [2, 3])
+def test_int_g_system_stokeslet(dim):
+    from sumpy.kernel import StokesletSystemKernel
+
+    from pytential.symbolic.mappers import OperatorCollector
+
+    kernel = StokesletSystemKernel(dim)
+    density = sym.make_sym_vector("sigma", dim)
+    mu_sym = sym.SpatialConstant("mu")
+
+    result = sym.int_g_system(
+        "ci,i->c", kernel, density,
+        qbx_forced_limit=None,
+        kernel_arguments={"mu": mu_sym})
+
+    assert result.shape == (dim,)
+
+    collector = OperatorCollector()
+    for comp in range(dim):
+        intgs = collector(result[comp])
+        assert len(intgs) == dim
+
+        for intg in intgs:
+            # the kernel component shows up both as the "target kernel" and
+            # as the (single) source kernel
+            assert intg.target_kernel == kernel[comp, intg.densities[0].index]
+            assert intg.source_kernels == (intg.target_kernel,)
+            assert len(intg.densities) == 1
+            assert intg.densities[0] in set(density)
+
+# }}}
+
+
+# {{{ test_int_g_system_stress_kernels
+
+@pytest.mark.parametrize("dim", [2, 3])
+@pytest.mark.parametrize(("kernel_factory", "kernel_arguments"), [
+    pytest.param(
+        lambda dim: StressletSystemKernel(dim),
+        {"mu": sym.SpatialConstant("mu")},
+        id="stresslet"),
+    pytest.param(
+        lambda dim: ElasticityStressSystemKernel(dim),
+        {"mu": sym.SpatialConstant("mu"), "nu": sym.SpatialConstant("nu")},
+        id="elasticity_stress"),
+    pytest.param(
+        lambda dim: BrinkmanStressSystemKernel(dim),
+        {"mu": sym.SpatialConstant("mu"), "k": sym.SpatialConstant("k")},
+        id="brinkman_stress"),
+    ])
+def test_int_g_system_stress_kernel(dim, kernel_factory, kernel_arguments):
+    kernel = kernel_factory(dim)
+    assert kernel.shape == (dim, dim, dim)
+
+    density = sym.make_sym_vector("sigma", dim)
+    direction = sym.make_sym_vector("dir", dim)
+
+    # "double layer": direction contracts inside the IntG density
+    inside = sym.int_g_system(
+        "cij,j,i->c", kernel, density, direction,
+        qbx_forced_limit=None,
+        kernel_arguments=kernel_arguments)
+    assert inside.shape == (dim,)
+
+    # "traction": direction stays outside, to be dotted in by the caller
+    outside = sym.int_g_system(
+        "cij,j->ci", kernel, density,
+        qbx_forced_limit=None,
+        kernel_arguments=kernel_arguments)
+    assert outside.shape == (dim, dim)
+
+# }}}
+
+
+# {{{ test_int_g_system_scalar_output
+
+def test_int_g_system_scalar_output():
+    from sumpy.kernel import StokesletSystemKernel
+
+    from pytential.symbolic.mappers import OperatorCollector
+
+    dim = 2
+    kernel = StokesletSystemKernel(dim)
+    density = sym.make_sym_vector("sigma", dim)
+    mu_sym = sym.SpatialConstant("mu")
+
+    result = sym.int_g_system(
+        "ci,i->", kernel, density,
+        qbx_forced_limit=None,
+        kernel_arguments={"mu": mu_sym})
+
+    assert result.shape == ()
+
+    # every kernel component contributes one IntG
+    intgs = OperatorCollector()(result[()])
+    assert len(intgs) == dim * dim
+
+# }}}
+
+
+# {{{ test_int_g_system_spec_errors
+
+def test_int_g_system_spec_errors():
+    from sumpy.kernel import StokesletSystemKernel
+
+    dim = 2
+    kernel = StokesletSystemKernel(dim)
+    density = sym.make_sym_vector("sigma", dim)
+
+    with pytest.raises(ValueError, match="must contain"):
+        sym.int_g_system("ci,i", kernel, density, qbx_forced_limit=None)
+
+    with pytest.raises(ValueError, match="number of arguments"):
+        sym.int_g_system("ci,i,j->c", kernel, density, qbx_forced_limit=None)
+
+    with pytest.raises(ValueError, match="unique"):
+        sym.int_g_system("ci,i->cc", kernel, density, qbx_forced_limit=None)
+
+    with pytest.raises(ValueError, match="kernel indices"):
+        sym.int_g_system("cij,i->c", kernel, density, qbx_forced_limit=None)
+
+    # 'mu' kernel argument is not supplied
+    with pytest.raises(ValueError, match="not supplied"):
+        sym.int_g_system("ci,i->c", kernel, density, qbx_forced_limit=None)
 
 # }}}
 
