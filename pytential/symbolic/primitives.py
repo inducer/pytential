@@ -451,6 +451,11 @@ class ExpressionNode(ExpressionNodeBase):
         return StringifyMapper()
 
 
+@expr_dataclass()
+class NamedIntermediateResult(Variable):
+    """Internal variables used by ``pytential.compiler``."""
+
+
 Operand: TypeAlias = (
     ArithmeticExpression
         | ObjectArrayND[ArithmeticExpression]
@@ -510,10 +515,7 @@ def for_each_expression(
 # }}}
 
 
-@expr_dataclass()
-class NamedIntermediateResult(Variable):
-    """Internal variables used by ``pytential.compiler``."""
-
+# {{{ diagonistics
 
 @expr_dataclass()
 class ErrorExpression(ExpressionNode):
@@ -526,6 +528,10 @@ class ErrorExpression(ExpressionNode):
     message: str
     """The error message to raise when this expression is encountered."""
 
+# }}}
+
+
+# {{{ placeholders
 
 def make_sym_mv(name: str, num_components: int) -> MultiVector[ArithmeticExpression]:
     return MultiVector(make_sym_vector(name, num_components))
@@ -544,6 +550,10 @@ def make_sym_surface_mv(
             * cse(MultiVector(vec), f"tangent{i}", cse_scope.DISCRETIZATION)
             for i, vec in enumerate(par_grad.T))
 
+# }}}
+
+
+# {{{ functions
 
 @expr_dataclass()
 class Function(Variable):
@@ -615,6 +625,8 @@ arctanh = NumpyMathFunction("arctanh")
 
 exp = NumpyMathFunction("exp")
 log = NumpyMathFunction("log")
+
+# }}}
 
 
 # {{{ discretization properties
@@ -1406,105 +1418,7 @@ def weights_and_area_elements(
 # }}}
 
 
-# {{{ operators
-
-@expr_dataclass()
-class Interpolation(ExpressionNode):
-    """Interpolate quantity from a DOF described by *from_dd* to a DOF
-    described by *to_dd*."
-
-    .. autoattribute:: from_dd
-    .. autoattribute:: to_dd
-    .. autoattribute:: operand
-    """
-
-    from_dd: DOFDescriptor
-    """A descriptor for the geometry on which *operand* is defined."""
-    to_dd: DOFDescriptor
-    """A descriptor for the geometry to which to interpolate *operand* to."""
-    operand: ArithmeticExpression
-    """An expression or array of expressions to interpolate. Arrays are
-    interpolated componentwise.
-    """
-
-    def __new__(cls,
-                from_dd: DOFDescriptorLike,
-                to_dd: DOFDescriptorLike,
-                operand: OperandTc) -> Interpolation | OperandTc:
-        from_dd = as_dofdesc(from_dd)
-        to_dd = as_dofdesc(to_dd)
-
-        if from_dd == to_dd:
-            return operand
-
-        if isinstance(operand, ObjectArray | MultiVector):
-            warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
-                 "is deprecated and will result in an error from 2025. Use "
-                 "the 'interpolate' function instead.",
-                 DeprecationWarning, stacklevel=3)
-
-            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
-                return cls(from_dd, to_dd, operand_i)
-
-            return componentwise(make_op, operand)
-        else:
-            return ExpressionNode.__new__(cls)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.from_dd, DOFDescriptor):
-            warn("Passing a 'from_dd' that is not a 'DOFDescriptor' to "
-                 f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
-                 DeprecationWarning, stacklevel=2)
-
-            object.__setattr__(self, "from_dd", as_dofdesc(self.from_dd))
-
-        if not isinstance(self.to_dd, DOFDescriptor):
-            warn("Passing a 'to_dd' that is not a 'DOFDescriptor' to "
-                 f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
-                 DeprecationWarning, stacklevel=2)
-
-            object.__setattr__(self, "to_dd", as_dofdesc(self.to_dd))
-
-
-@for_each_expression
-def interpolate(operand: ArithmeticExpression,
-                from_dd: DOFDescriptorLike,
-                to_dd: DOFDescriptorLike) -> ArithmeticExpression:
-    from_dd = as_dofdesc(from_dd)
-    to_dd = as_dofdesc(to_dd)
-
-    if from_dd == to_dd:
-        return operand
-
-    if to_dd.granularity == GRANULARITY_CENTER:
-        raise ValueError("use _interleave to attain GRANULARITY_CENTER")
-
-    return Interpolation(from_dd, to_dd, operand)
-
-
-# purposefully undocumented, only for use in interleaved_centers.
-@expr_dataclass()
-class Interleave(ExpressionNode):
-    from_dd: DOFDescriptor
-    operand_1: ArithmeticExpression
-    operand_2: ArithmeticExpression
-
-    @property
-    def to_dd(self):
-        return self.from_dd.copy(granularity=GRANULARITY_CENTER)
-
-
-def interleave(
-            operand_1: ArithmeticExpression,
-            operand_2: ArithmeticExpression,
-            from_dd: DOFDescriptorLike = None) -> ArithmeticExpression:
-    dof_desc = as_dofdesc(from_dd)
-    if dof_desc.granularity != GRANULARITY_NODE:
-        raise ValueError("can only interleave from node granularity")
-
-    return Interleave(dof_desc, operand_1, operand_2)
+# {{{ elementary numerics
 
 
 @expr_dataclass()
@@ -1749,6 +1663,113 @@ class IterativeInverse(ExpressionNode):
 
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
 
+# }}}
+
+
+# {{{ operators
+
+@expr_dataclass()
+class Interpolation(ExpressionNode):
+    """Interpolate quantity from a DOF described by *from_dd* to a DOF
+    described by *to_dd*."
+
+    .. autoattribute:: from_dd
+    .. autoattribute:: to_dd
+    .. autoattribute:: operand
+    """
+
+    from_dd: DOFDescriptor
+    """A descriptor for the geometry on which *operand* is defined."""
+    to_dd: DOFDescriptor
+    """A descriptor for the geometry to which to interpolate *operand* to."""
+    operand: ArithmeticExpression
+    """An expression or array of expressions to interpolate. Arrays are
+    interpolated componentwise.
+    """
+
+    def __new__(cls,
+                from_dd: DOFDescriptorLike,
+                to_dd: DOFDescriptorLike,
+                operand: OperandTc) -> Interpolation | OperandTc:
+        from_dd = as_dofdesc(from_dd)
+        to_dd = as_dofdesc(to_dd)
+
+        if from_dd == to_dd:
+            return operand
+
+        if isinstance(operand, ObjectArray | MultiVector):
+            warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
+                 "is deprecated and will result in an error from 2025. Use "
+                 "the 'interpolate' function instead.",
+                 DeprecationWarning, stacklevel=3)
+
+            def make_op(operand_i: ArithmeticExpression) -> ArithmeticExpression:
+                return cls(from_dd, to_dd, operand_i)
+
+            return componentwise(make_op, operand)
+        else:
+            return ExpressionNode.__new__(cls)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.from_dd, DOFDescriptor):
+            warn("Passing a 'from_dd' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
+
+            object.__setattr__(self, "from_dd", as_dofdesc(self.from_dd))
+
+        if not isinstance(self.to_dd, DOFDescriptor):
+            warn("Passing a 'to_dd' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
+
+            object.__setattr__(self, "to_dd", as_dofdesc(self.to_dd))
+
+
+@for_each_expression
+def interpolate(operand: ArithmeticExpression,
+                from_dd: DOFDescriptorLike,
+                to_dd: DOFDescriptorLike) -> ArithmeticExpression:
+    from_dd = as_dofdesc(from_dd)
+    to_dd = as_dofdesc(to_dd)
+
+    if from_dd == to_dd:
+        return operand
+
+    if to_dd.granularity == GRANULARITY_CENTER:
+        raise ValueError("use _interleave to attain GRANULARITY_CENTER")
+
+    return Interpolation(from_dd, to_dd, operand)
+
+
+# purposefully undocumented, only for use in interleaved_centers.
+@expr_dataclass()
+class Interleave(ExpressionNode):
+    from_dd: DOFDescriptor
+    operand_1: ArithmeticExpression
+    operand_2: ArithmeticExpression
+
+    @property
+    def to_dd(self):
+        return self.from_dd.copy(granularity=GRANULARITY_CENTER)
+
+
+def interleave(
+            operand_1: ArithmeticExpression,
+            operand_2: ArithmeticExpression,
+            from_dd: DOFDescriptorLike = None) -> ArithmeticExpression:
+    dof_desc = as_dofdesc(from_dd)
+    if dof_desc.granularity != GRANULARITY_NODE:
+        raise ValueError("can only interleave from node granularity")
+
+    return Interleave(dof_desc, operand_1, operand_2)
+
+# }}}
+
+
+# {{{ geometric calculus
 
 class Derivative(DerivativeBase):
     """A symbolic derivative.
@@ -1834,6 +1855,8 @@ def laplace(ambient_dim: int, operand: ArithmeticExpression) -> ArithmeticExpres
         nabla
         | d(d.resolve(nabla * d(operand)))
     ).as_scalar()
+
+# }}}
 
 
 # {{{ potentials
@@ -2179,13 +2202,6 @@ def int_g_dsource(
 
     density = cse(density)
     return (dsource*nabla).map(add_dir_vector_to_kernel_arguments)
-
-# }}}
-
-
-# {{{ non-dimension-specific operators
-
-# {{{ geometric calculus
 
 
 class _unspecified:  # ruff:ignore[invalid-class-name]
