@@ -23,16 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
+import numpy as np
+from typing_extensions import override
+
+from pymbolic.typing import ArithmeticExpression
+from pytools.obj_array import ObjectArray1D, from_numpy
 from sumpy.kernel import (
+    AxisTargetDerivative,
     LaplaceKernel,
-    StokesletComponentKernel,
-    StressletComponentKernel,
+    StokesletSystemKernel,
+    StressletSystemKernel,
 )
 
 from pytential import sym
 
+
+if TYPE_CHECKING:
+    from pytential.symbolic.primitives import QBXForcedLimit, Side
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -43,36 +53,29 @@ __doc__ = """
 .. autoclass:: HebekerExteriorStokesOperator
 """
 
+Vector = ObjectArray1D[ArithmeticExpression]
+
 
 # {{{ StokesletWrapper
 
 class StokesletWrapper:
-    """Wrapper class for the :class:`~sumpy.kernel.StokesletComponentKernel` kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StokesletSystemKernel` kernel.
 
-    This class is meant to shield the user from the messiness of writing
-    out every term in the expansion of the double-indexed Stokeslet kernel
-    applied to the density vector.  The object is created
-    to do some of the set-up and bookkeeping once, rather than every
-    time we want to create a symbolic expression based on the kernel -- say,
-    once when we solve for the density, and once when we want a symbolic
-    representation for the solution, for example.
+    This class is meant to shield the user from the messiness of writing out
+    every term in the expansion of the double-indexed Stokeslet kernel applied
+    to the density vector.
 
-    The :meth:`apply` function returns the integral expressions needed for
-    the vector velocity resulting from convolution with the vector density,
-    and is meant to work similarly to calling
-    :func:`~pytential.symbolic.primitives.S` (which is
-    :class:`~pytential.symbolic.primitives.IntG`).
+    The :meth:`apply` function returns the integral expressions needed for the
+    vector velocity resulting from convolution with the vector density, and is
+    meant to work similarly to calling :func:`~pytential.symbolic.primitives.S`
+    (which returns a :class:`~pytential.symbolic.primitives.IntG`).
 
-    Similar functions are available for other useful things related to
+    Similar functions are available for other useful variables related to
     the flow: :meth:`apply_pressure`, :meth:`apply_derivative` (target derivative),
-    :meth:`apply_stress` (applies symmetric viscous stress tensor in
+    :meth:`apply_stress` (applies the symmetric viscous stress tensor in
     the requested direction).
 
-    .. attribute:: kernel_dict
-
-        The dictionary allows us to exploit symmetry -- that
-        :math:`S_{01}` is identical to :math:`S_{10}` -- and avoid creating
-        multiple expansions for the same kernel in a different ordering.
+    .. autoattribute:: dim
 
     .. automethod:: __init__
     .. automethod:: apply
@@ -83,87 +86,75 @@ class StokesletWrapper:
 
     dim: int
 
-    def __init__(self, dim: int):
+    stokeslet: StokesletSystemKernel
+    stresslet: StressletSystemKernel
+
+    def __init__(self, dim: int) -> None:
         self.dim = dim
+        self.stokeslet = StokesletSystemKernel(dim)
+        self.stresslet = StressletSystemKernel(dim)
 
-        if dim == 2:
-            self.kernel_dict = {
-                (2, 0): StokesletComponentKernel(dim=2, icomp=0, jcomp=0),
-                (1, 1): StokesletComponentKernel(dim=2, icomp=0, jcomp=1),
-                (0, 2): StokesletComponentKernel(dim=2, icomp=1, jcomp=1)
-            }
-        elif dim == 3:
-            self.kernel_dict = {
-                (2, 0, 0): StokesletComponentKernel(dim=3, icomp=0, jcomp=0),
-                (1, 1, 0): StokesletComponentKernel(dim=3, icomp=0, jcomp=1),
-                (1, 0, 1): StokesletComponentKernel(dim=3, icomp=0, jcomp=2),
-                (0, 2, 0): StokesletComponentKernel(dim=3, icomp=1, jcomp=1),
-                (0, 1, 1): StokesletComponentKernel(dim=3, icomp=1, jcomp=2),
-                (0, 0, 2): StokesletComponentKernel(dim=3, icomp=2, jcomp=2)
-            }
-        else:
-            raise ValueError(f"unsupported dimension given to StokesletWrapper: {dim}")
-
-    def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
-        """Symbolic expressions for integrating Stokeslet kernel.
+    def apply(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        """Symbolic expressions for integrating the Stokeslet kernel.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic Stokeslet kernel with
-        variable *density_vec_sym*.
+        resulting from integrating the dyadic Stokeslet kernel with the
+        *density_vec_sym*.
 
-        :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        from itertools import product
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
-        for comp in range(self.dim):
+        for comp, i in product(range(self.dim), repeat=2):
+            sym_expr[comp] += sym.int_g_vec(
+                self.stokeslet[comp, i],
+                density_vec_sym[i],
+                qbx_forced_limit=qbx_forced_limit,
+                mu=mu_sym,
+            )
 
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int32)
-            base_count[comp] += 1
+        return from_numpy(sym_expr, ArithmeticExpression)
 
-            for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = sym.int_g_vec(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + sym.int_g_vec(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-        return sym_expr
-
-    def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
+    def apply_pressure(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ArithmeticExpression:
         """Symbolic expression for pressure field associated with the Stokeslet."""
 
-        from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
 
+        sym_expr = 0
         for i in range(self.dim):
-
-            if i < 1:
-                sym_expr = DerivativeTaker(i).map_int_g(
-                                sym.int_g_vec(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit))
-            else:
-                sym_expr = sym_expr + (DerivativeTaker(i).map_int_g(
-                                sym.int_g_vec(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit)))
+            sym_expr += sym.int_g_vec(
+                AxisTargetDerivative(i, kernel),
+                density_vec_sym[i],
+                qbx_forced_limit=qbx_forced_limit)
 
         return sym_expr
 
-    def apply_derivative(self, deriv_dir, density_vec_sym,
-                             mu_sym, qbx_forced_limit):
+    def apply_derivative(
+            self,
+            deriv_dir: int,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         """Symbolic derivative of velocity from Stokeslet.
 
         Returns an object array of symbolic expressions for the vector
@@ -176,42 +167,30 @@ class StokesletWrapper:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        from pytential.symbolic.mappers import DerivativeTaker
+        from itertools import product
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        for comp, i in product(range(self.dim), repeat=2):
+            sym_expr[comp] += sym.int_g_vec(
+                AxisTargetDerivative(deriv_dir, self.stokeslet[comp, i]),
+                density_vec_sym[i],
+                qbx_forced_limit=qbx_forced_limit,
+                mu=mu_sym,
+            )
 
-        for comp in range(self.dim):
+        return from_numpy(sym_expr, ArithmeticExpression)
 
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int32)
-            base_count[comp] += 1
-
-            for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                         sym.int_g_vec(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
-                                         deriv_dir).map_int_g(
-                                             sym.int_g_vec(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
-
-        return sym_expr
-
-    def apply_stress(self, density_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+    def apply_stress(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            dir_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
@@ -223,11 +202,11 @@ class StokesletWrapper:
 
         applied in the direction of *dir_vec_sym*.
 
-        Note that this computation is very similar to computing
-        a double-layer potential with the Stresslet kernel in
-        :class:`StressletWrapper`. The difference is that here the direction
-        vector is applied at the target points, while in the Stresslet the
-        direction is applied at the source points.
+        Note that this computation is very similar to computing a double-layer
+        potential with the Stresslet kernel in :class:`StressletWrapper`. The
+        difference is that here the direction vector is applied at the target
+        points, while in the Stresslet the direction is applied at the source
+        points.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector for the application direction.
@@ -235,39 +214,21 @@ class StokesletWrapper:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        import itertools
+        from itertools import product
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
-        sym_expr = np.empty((self.dim,), dtype=object)
-        stresslet_obj = StressletWrapper(dim=self.dim)
+        for comp, i, j in product(range(self.dim), repeat=3):
+            sym_expr[comp] += dir_vec_sym[i] * sym.int_g_vec(
+                self.stresslet[comp, i, j],
+                density_vec_sym[j],
+                qbx_forced_limit=qbx_forced_limit,
+                mu=mu_sym,
+            )
 
-        for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int32)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = dir_vec_sym[i] * sym.int_g_vec(
-                                     stresslet_obj.kernel_dict[ctr_key],
-                                     density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + dir_vec_sym[i] * sym.int_g_vec(
-                                                stresslet_obj.kernel_dict[ctr_key],
-                                                density_vec_sym[j],
-                                                qbx_forced_limit=qbx_forced_limit,
-                                                mu=mu_sym)
-
-        return sym_expr
+        return from_numpy(sym_expr, ArithmeticExpression)
 
 # }}}
 
@@ -275,31 +236,14 @@ class StokesletWrapper:
 # {{{ StressletWrapper
 
 class StressletWrapper:
-    """Wrapper class for the :class:`~sumpy.kernel.StressletComponentKernel` kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StressletSystemKernel` kernel.
 
-    This class is meant to shield the user from the messiness of writing
-    out every term in the expansion of the triple-indexed Stresslet
-    kernel applied to both a normal vector and the density vector.
-    The object is created to do some of the set-up and bookkeeping once,
-    rather than every time we want to create a symbolic expression based
-    on the kernel -- say, once when we solve for the density, and once when
-    we want a symbolic representation for the solution, for example.
+    This class is meant to shield the user from the messiness of writing out
+    every term in the expansion of the triple-indexed Stresslet kernel applied
+    to both a normal vector and the density vector. It provides the same
+    functionality as :class:`StokesletWrapper`.
 
-    The :meth:`apply` function returns the integral expressions needed for
-    convolving the kernel with a vector density, and is meant to work
-    similarly to :func:`~pytential.symbolic.primitives.S` (which is
-    :class:`~pytential.symbolic.primitives.IntG`).
-
-    Similar functions are available for other useful things related to
-    the flow: :meth:`apply_pressure`, :meth:`apply_derivative` (target derivative),
-    :meth:`apply_stress` (applies symmetric viscous stress tensor in
-    the requested direction).
-
-    .. attribute:: kernel_dict
-
-        The dictionary allows us to exploit symmetry -- that
-        :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
-        multiple expansions for the same kernel in a different ordering.
+    .. autoattribute:: dim
 
     .. automethod:: __init__
     .. automethod:: apply
@@ -309,39 +253,25 @@ class StressletWrapper:
     """
 
     dim: int
+    stresslet: StressletSystemKernel
 
-    def __init__(self, dim: int):
+    def __init__(self, dim: int) -> None:
         self.dim = dim
+        self.stresslet = StressletSystemKernel(dim)
 
-        if dim == 2:
-            self.kernel_dict = {
-                (3, 0): StressletComponentKernel(dim=2, icomp=0, jcomp=0, kcomp=0),
-                (2, 1): StressletComponentKernel(dim=2, icomp=0, jcomp=0, kcomp=1),
-                (1, 2): StressletComponentKernel(dim=2, icomp=0, jcomp=1, kcomp=1),
-                (0, 3): StressletComponentKernel(dim=2, icomp=1, jcomp=1, kcomp=1)
-            }
-        elif dim == 3:
-            self.kernel_dict = {
-                (3, 0, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=0),
-                (2, 1, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=1),
-                (2, 0, 1): StressletComponentKernel(dim=3, icomp=0, jcomp=0, kcomp=2),
-                (1, 2, 0): StressletComponentKernel(dim=3, icomp=0, jcomp=1, kcomp=1),
-                (1, 1, 1): StressletComponentKernel(dim=3, icomp=0, jcomp=1, kcomp=2),
-                (1, 0, 2): StressletComponentKernel(dim=3, icomp=0, jcomp=2, kcomp=2),
-                (0, 3, 0): StressletComponentKernel(dim=3, icomp=1, jcomp=1, kcomp=1),
-                (0, 2, 1): StressletComponentKernel(dim=3, icomp=1, jcomp=1, kcomp=2),
-                (0, 1, 2): StressletComponentKernel(dim=3, icomp=1, jcomp=2, kcomp=2),
-                (0, 0, 3): StressletComponentKernel(dim=3, icomp=2, jcomp=2, kcomp=2)
-            }
-        else:
-            raise ValueError(f"unsupported dimension given to StressletWrapper: {dim}")
-
-    def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
-        """Symbolic expressions for integrating Stresslet kernel.
+    def apply(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            dir_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        """Symbolic expressions for integrating the Stresslet kernel.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic Stresslet kernel with
-        variable *density_vec_sym* and source direction vectors *dir_vec_sym*.
+        resulting from integrating the triadic Stresslet kernel with
+        *density_vec_sym* and source direction vectors *dir_vec_sym*.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector variable for the direction vector.
@@ -349,74 +279,61 @@ class StressletWrapper:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        import itertools
+        from itertools import product
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        for comp, i, j in product(range(self.dim), repeat=3):
+            sym_expr[comp] += sym.int_g_vec(
+                self.stresslet[comp, i, j],
+                dir_vec_sym[i] * density_vec_sym[j],
+                qbx_forced_limit=qbx_forced_limit,
+                mu=mu_sym
+            )
 
-        for comp in range(self.dim):
+        return from_numpy(sym_expr, ArithmeticExpression)
 
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int32)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = sym.int_g_vec(
-                                     self.kernel_dict[ctr_key],
-                                     dir_vec_sym[i] * density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + sym.int_g_vec(
-                                                self.kernel_dict[ctr_key],
-                                                dir_vec_sym[i] * density_vec_sym[j],
-                                                qbx_forced_limit=qbx_forced_limit,
-                                                mu=mu_sym)
-
-        return sym_expr
-
-    def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply_pressure(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            dir_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ArithmeticExpression:
         """Symbolic expression for pressure field associated with the Stresslet."""
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        import itertools
-
-        from pytential.symbolic.mappers import DerivativeTaker
+        from itertools import product
         kernel = LaplaceKernel(dim=self.dim)
 
-        factor = (2. * mu_sym)
-
-        for i, j in itertools.product(range(self.dim), range(self.dim)):
-
-            if i + j < 1:
-                sym_expr = factor * DerivativeTaker(i).map_int_g(
-                             DerivativeTaker(j).map_int_g(
-                                 sym.int_g_vec(kernel,
-                                     density_vec_sym[i] * dir_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit)))
-            else:
-                sym_expr = sym_expr + (
-                               factor * DerivativeTaker(i).map_int_g(
-                                   DerivativeTaker(j).map_int_g(
-                                       sym.int_g_vec(kernel,
-                                             density_vec_sym[i] * dir_vec_sym[j],
-                                             qbx_forced_limit=qbx_forced_limit))))
+        sym_expr = 0
+        for i, j in product(range(self.dim), repeat=2):
+            sym_expr += 2 * mu_sym * sym.int_g_vec(
+                AxisTargetDerivative(i, AxisTargetDerivative(j, kernel)),
+                density_vec_sym[i] * dir_vec_sym[j],
+                qbx_forced_limit=qbx_forced_limit,
+            )
 
         return sym_expr
 
-    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
-                             mu_sym, qbx_forced_limit):
-        """Symbolic derivative of velocity from stresslet.
+    def apply_derivative(
+            self,
+            deriv_dir: int,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            dir_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        """Symbolic derivative of velocity from Stresslet.
 
         Returns an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Stresslet kernel with variable *density_vec_sym* and source
+        triadic Stresslet kernel with the *density_vec_sym* and source
         direction vectors *dir_vec_sym*.
 
         :arg deriv_dir: integer denoting the axis direction for the derivative.
@@ -426,45 +343,31 @@ class StressletWrapper:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        import itertools
+        from itertools import product
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
-        from pytential.symbolic.mappers import DerivativeTaker
+        for comp, i, j in product(range(self.dim), repeat=3):
+            sym_expr[comp] += sym.int_g_vec(
+                AxisTargetDerivative(deriv_dir, self.stresslet[comp, i, j]),
+                dir_vec_sym[i] * density_vec_sym[j],
+                qbx_forced_limit=qbx_forced_limit,
+                mu=mu_sym
+            )
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        return from_numpy(sym_expr, ArithmeticExpression)
 
-        for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int32)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                     sym.int_g_vec(self.kernel_dict[ctr_key],
-                                        dir_vec_sym[i] * density_vec_sym[j],
-                                        qbx_forced_limit=qbx_forced_limit,
-                                        mu=mu_sym))
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
-                                        deriv_dir).map_int_g(
-                                        sym.int_g_vec(self.kernel_dict[ctr_key],
-                                            dir_vec_sym[i] * density_vec_sym[j],
-                                            qbx_forced_limit=qbx_forced_limit,
-                                            mu=mu_sym))
-
-        return sym_expr
-
-    def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+    def apply_stress(
+            self,
+            density_vec_sym: ObjectArray1D[ArithmeticExpression],
+            normal_vec_sym: ObjectArray1D[ArithmeticExpression],
+            dir_vec_sym: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu_sym: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
@@ -484,41 +387,44 @@ class StressletWrapper:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
+        if mu_sym is None:
+            mu_sym = sym.SpatialConstant("mu")
 
-        sym_expr = np.empty((self.dim,), dtype=object)
-
-        # Build velocity derivative matrix
+        # velocity velocity gradient
         sym_grad_matrix = np.empty((self.dim, self.dim), dtype=object)
         for i in range(self.dim):
-            sym_grad_matrix[:, i] = self.apply_derivative(i, density_vec_sym,
-                                     normal_vec_sym, mu_sym, qbx_forced_limit)
+            sym_grad_matrix[:, i] = self.apply_derivative(
+                i, density_vec_sym, normal_vec_sym,
+                qbx_forced_limit=qbx_forced_limit,
+                mu_sym=mu_sym
+            )
 
+        # compute stress
+        sym_expr = np.zeros((self.dim,), dtype=object)
         for comp in range(self.dim):
+            sym_expr[comp] = -dir_vec_sym[comp] * self.apply_pressure(
+                density_vec_sym, normal_vec_sym,
+                qbx_forced_limit=qbx_forced_limit,
+                mu_sym=mu_sym,
+            )
 
-            # First, add the pressure term:
-            sym_expr[comp] = - dir_vec_sym[comp] * self.apply_pressure(
-                                            density_vec_sym, normal_vec_sym,
-                                            mu_sym, qbx_forced_limit)
+            for i in range(self.dim):
+                sym_expr[comp] += mu_sym * dir_vec_sym[i] * (
+                        sym_grad_matrix[comp, i]
+                        + sym_grad_matrix[i, comp])
 
-            # Now add the velocity derivative components
-            for j in range(self.dim):
-                sym_expr[comp] = sym_expr[comp] + (
-                                    dir_vec_sym[j] * mu_sym * (
-                                        sym_grad_matrix[comp][j]
-                                        + sym_grad_matrix[j][comp])
-                                        )
-
-        return sym_expr
+        return from_numpy(sym_expr, ArithmeticExpression)
 
 # }}}
 
 
 # {{{ base Stokes operator
 
-class StokesOperator:
+class StokesOperator(ABC):
     """
-    .. attribute:: ambient_dim
-    .. attribute:: side
+    .. autoattribute:: side
+    .. autoattribute:: ambient_dim
+    .. autoproperty:: dim
 
     .. automethod:: __init__
     .. automethod:: get_density_var
@@ -529,7 +435,13 @@ class StokesOperator:
     .. automethod:: pressure
     """
 
-    def __init__(self, ambient_dim, side):
+    ambient_dim: int
+    side: Side
+
+    stokeslet: StokesletWrapper
+    stresslet: StressletWrapper
+
+    def __init__(self, ambient_dim: int, side: Side) -> None:
         """
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
@@ -541,44 +453,71 @@ class StokesOperator:
         self.ambient_dim = ambient_dim
         self.side = side
 
-        self.stresslet = StressletWrapper(dim=self.ambient_dim)
-        self.stokeslet = StokesletWrapper(dim=self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stresslet = StressletWrapper(self.ambient_dim)
 
     @property
-    def dim(self):
+    def dim(self) -> int:
         return self.ambient_dim - 1
 
-    def get_density_var(self, name="sigma"):
+    def get_density_var(
+            self, name: str = "sigma",
+        ) -> ObjectArray1D[ArithmeticExpression]:
         """
         :returns: a symbolic vector corresponding to the density.
         """
         return sym.make_sym_vector(name, self.ambient_dim)
 
-    def prepare_rhs(self, b, *, mu):
+    def prepare_rhs(
+            self,
+            b: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         """
         :returns: a (potentially) modified right-hand side *b* that matches
             requirements of the representation.
         """
         return b
 
-    def operator(self, sigma):
+    @abstractmethod
+    def operator(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         """
         :returns: the integral operator that should be solved to obtain the
             density *sigma*.
         """
-        raise NotImplementedError
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=None):
+    @abstractmethod
+    def velocity(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         """
         :returns: a representation of the velocity field in the Stokes flow.
         """
-        raise NotImplementedError
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=None):
+    @abstractmethod
+    def pressure(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ArithmeticExpression:
         """
         :returns: a representation of the pressure in the Stokes flow.
         """
-        raise NotImplementedError
 
 # }}}
 
@@ -598,7 +537,17 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None):
+    omega: ObjectArray1D[ArithmeticExpression]
+    alpha: float
+    eta: float
+
+    def __init__(
+            self,
+            *,
+            omega: ObjectArray1D[ArithmeticExpression],
+            alpha: float | None = None,
+            eta: float | None = None,
+        ) -> None:
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
             by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
@@ -624,14 +573,32 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         self.alpha = alpha
         self.eta = eta
 
-    def _farfield(self, mu, qbx_forced_limit):
+    def _farfield(
+            self,
+            *,
+            mu: ArithmeticExpression | None,
+            qbx_forced_limit: QBXForcedLimit | None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        if mu is None:
+            mu = sym.SpatialConstant("mu")
+
         length = sym.integral(self.ambient_dim, self.dim, 1)
         return self.stokeslet.apply(
                 -self.omega / length,
-                mu,
+                mu_sym=mu,
                 qbx_forced_limit=qbx_forced_limit)
 
-    def _operator(self, sigma, normal, mu, qbx_forced_limit):
+    def _operator(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None,
+            qbx_forced_limit: QBXForcedLimit | None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        if mu is None:
+            mu = sym.SpatialConstant("mu")
+
         slp_qbx_forced_limit = qbx_forced_limit
         if slp_qbx_forced_limit == "avg":
             slp_qbx_forced_limit = +1
@@ -644,31 +611,67 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         int_sigma = sym.integral(self.ambient_dim, self.dim, sigma, dofdesc=dd)
         meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim, self.dim, sigma))
 
-        op_k = self.stresslet.apply(sigma, normal, mu,
+        op_k = self.stresslet.apply(
+                sigma, normal,
+                mu_sym=mu,
                 qbx_forced_limit=qbx_forced_limit)
         op_s = (
                 self.alpha / (2.0 * np.pi) * int_sigma
-                - self.stokeslet.apply(meanless_sigma, mu,
+                - self.stokeslet.apply(
+                    meanless_sigma,
+                    mu_sym=mu,
                     qbx_forced_limit=slp_qbx_forced_limit)
                 )
 
         return op_k + self.eta * op_s
 
-    def prepare_rhs(self, b, *, mu):
-        return b + self._farfield(mu, qbx_forced_limit=+1)
+    @override
+    def prepare_rhs(
+            self,
+            b: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        return b + self._farfield(mu=mu, qbx_forced_limit=+1)
 
-    def operator(self, sigma, *, normal, mu):
+    @override
+    def operator(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         # NOTE: H. K. 1985 Equation 2.18
-        return -0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg")
+        return (
+            -0.5 * self.side * sigma
+            - self._operator(sigma, normal, mu=mu, qbx_forced_limit="avg")
+        )
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    @override
+    def velocity(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         # NOTE: H. K. 1985 Equation 2.16
         return (
-                -self._farfield(mu, qbx_forced_limit)
-                - self._operator(sigma, normal, mu, qbx_forced_limit)
-                )
+            -self._farfield(mu=mu, qbx_forced_limit=qbx_forced_limit)
+            - self._operator(sigma, normal, mu=mu, qbx_forced_limit=qbx_forced_limit)
+        )
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    @override
+    def pressure(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ArithmeticExpression:
         # FIXME: H. K. 1985 Equation 2.17
         raise NotImplementedError
 
@@ -686,7 +689,9 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None):
+    eta: float
+
+    def __init__(self, *, eta: float | None = None) -> None:
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
@@ -701,27 +706,67 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
         self.eta = eta
 
-    def _operator(self, sigma, normal, mu, qbx_forced_limit):
+    def _operator(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None,
+            qbx_forced_limit: QBXForcedLimit | None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
+        if mu is None:
+            mu = sym.SpatialConstant("mu")
+
         slp_qbx_forced_limit = qbx_forced_limit
         if slp_qbx_forced_limit == "avg":
             slp_qbx_forced_limit = self.side
 
-        op_w = self.stresslet.apply(sigma, normal, mu,
+        op_w = self.stresslet.apply(
+                sigma, normal,
+                mu_sym=mu,
                 qbx_forced_limit=qbx_forced_limit)
-        op_v = self.stokeslet.apply(sigma, mu,
+        op_v = self.stokeslet.apply(
+                sigma,
+                mu_sym=mu,
                 qbx_forced_limit=slp_qbx_forced_limit)
 
         return op_w + self.eta * op_v
 
-    def operator(self, sigma, *, normal, mu):
+    @override
+    def operator(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         # NOTE: H. 1986 Equation 17
-        return -0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg")
+        return (
+            -0.5 * self.side * sigma
+            - self._operator(sigma, normal, mu=mu, qbx_forced_limit="avg")
+        )
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    @override
+    def velocity(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ObjectArray1D[ArithmeticExpression]:
         # NOTE: H. 1986 Equation 16
-        return -self._operator(sigma, normal, mu, qbx_forced_limit)
+        return -self._operator(sigma, normal, mu=mu, qbx_forced_limit=qbx_forced_limit)
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    @override
+    def pressure(
+            self,
+            sigma: ObjectArray1D[ArithmeticExpression],
+            normal: ObjectArray1D[ArithmeticExpression],
+            *,
+            mu: ArithmeticExpression | None = None,
+            qbx_forced_limit: QBXForcedLimit | None = None,
+        ) -> ArithmeticExpression:
         # FIXME: not given in H. 1986, but should be easy to derive using the
         # equivalent single-/double-layer pressure kernels
         raise NotImplementedError
