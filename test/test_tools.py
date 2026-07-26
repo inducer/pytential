@@ -288,6 +288,48 @@ def test_add_geometry_to_collection(actx_factory: ArrayContextFactory):
 # }}}
 
 
+# {{{ test_dot_dataflow_graph
+
+def test_dot_dataflow_graph() -> None:
+    from pymbolic.primitives import Variable
+
+    from pytential.symbolic.compiler import Assign, Code, dot_dataflow_graph
+    from pytential.symbolic.mappers import DependencyMapper
+
+    dep_mapper = DependencyMapper(composite_leaves=False)
+
+    x = Variable("x")
+    y = Variable("y")
+    z = Variable("z")
+
+    stmt = Assign(names=("w",), exprs=(x + y,), priority=0)
+    code = Code(
+        inputs={"x", "y"},
+        schedule=[(stmt, set())],
+        result=z,
+    )
+
+    dot = dot_dataflow_graph(dep_mapper, code)
+    logger.info("dot graph:\n%s", dot)
+    assert "digraph dataflow" in dot
+
+    import shutil
+    if shutil.which("dot") is None:
+        return
+
+    import subprocess
+
+    result = subprocess.run(  # ruff: ignore[subprocess-run-without-check]
+        ["dot", "-Tsvg"],
+        input=dot,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_tools.py 'test_routine()'
 
