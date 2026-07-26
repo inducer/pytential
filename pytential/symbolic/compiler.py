@@ -333,8 +333,9 @@ def dot_dataflow_graph(
     node_names: dict[Statement, str] = {}
 
     result = [
-            'initial [label="initial"]'
-            'result [label="result"]']
+        'initial [label="initial"];',
+        'result [label="result"];',
+    ]
 
     for num, insn in enumerate(code.statements):
         node_name = f"node{num}"
@@ -380,7 +381,7 @@ def dot_dataflow_graph(
     else:
         gen_expr_arrow(code_res, "result")
 
-    return "digraph dataflow {\n%s\n}\n" % "\n".join(result)
+    return "digraph dataflow {\n  %s\n}\n" % "\n  ".join(result)
 
 # }}}
 
