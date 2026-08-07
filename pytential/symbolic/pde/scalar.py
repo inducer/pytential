@@ -517,7 +517,6 @@ class NeumannOperator(L2WeightedPDEOperator):
                 Dp1 = sym.Dp(
                     laplace, laplace_s_inv_sqrt_w_u,
                     qbx_forced_limit=+1,
-                    kernel_arguments=kernel_arguments,
                     source=dofdesc, target=dofdesc)
 
                 DpS0u = Dp0 - Dp1 + Dp0S0u
