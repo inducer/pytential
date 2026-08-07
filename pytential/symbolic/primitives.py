@@ -2040,15 +2040,12 @@ class IntG(ExpressionNode):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
         provided_arg_names = set(self.kernel_arguments.keys())
-        missing_args = kernel_arg_names - provided_arg_names
-        if missing_args:
+        if missing_args := (kernel_arg_names - provided_arg_names):
             raise ValueError(
                 "Kernel argument(s) not supplied: '{}'".format(", ".join(missing_args))
             )
 
-        # FIXME: this check is clearly wrong :(
-        extra_args = provided_arg_names - kernel_arg_names
-        if missing_args:
+        if extra_args := (provided_arg_names - kernel_arg_names):
             raise ValueError(
                 "Kernel argument(s) not recognized: '{}'".format(", ".join(extra_args))
             )
