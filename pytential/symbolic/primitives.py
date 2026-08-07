@@ -634,7 +634,7 @@ class DiscretizationProperty(ExpressionNode):
         if not isinstance(self.dofdesc, DOFDescriptor):
             warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
@@ -719,7 +719,7 @@ class NumReferenceDerivative(DiscretizationProperty):
                 ) -> NumReferenceDerivative | OperandTc:
         if isinstance(operand, ObjectArray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
-                 "is deprecated and will result in an error from 2025. Use "
+                 "is deprecated and will result in an error from 2027. Use "
                  "the 'num_reference_derivative' function instead.",
                  DeprecationWarning, stacklevel=3)
 
@@ -739,7 +739,7 @@ class NumReferenceDerivative(DiscretizationProperty):
                  dofdesc: DOFDescriptorLike) -> None:
         if isinstance(ref_axes, int):
             warn(f"Passing an 'int' as 'ref_axes' to {type(self).__name__!r} "
-                 "is deprecated and will result in an error in 2025. Pass the "
+                 "is deprecated and will result in an error in 2027. Pass the "
                  "well-formatted tuple '((ref_axes, 1),)' instead.",
                  DeprecationWarning, stacklevel=2)
 
@@ -1446,7 +1446,7 @@ class Interpolation(ExpressionNode):
 
         if isinstance(operand, ObjectArray | MultiVector):
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
-                 "is deprecated and will result in an error from 2025. Use "
+                 "is deprecated and will result in an error from 2027. Use "
                  "the 'interpolate' function instead.",
                  DeprecationWarning, stacklevel=3)
 
@@ -1461,7 +1461,7 @@ class Interpolation(ExpressionNode):
         if not isinstance(self.from_dd, DOFDescriptor):
             warn("Passing a 'from_dd' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "from_dd", as_dofdesc(self.from_dd))
@@ -1469,7 +1469,7 @@ class Interpolation(ExpressionNode):
         if not isinstance(self.to_dd, DOFDescriptor):
             warn("Passing a 'to_dd' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "to_dd", as_dofdesc(self.to_dd))
@@ -1529,7 +1529,7 @@ class SingleScalarOperandExpression(ExpressionNode):
         if isinstance(operand, ObjectArray | MultiVector):
             name = cls.mapper_method[4:]
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
-                 "is deprecated and will result in an error from 2025. Use "
+                 "is deprecated and will result in an error from 2027. Use "
                  f"the '{name}' function instead.",
                  DeprecationWarning, stacklevel=3)
 
@@ -1615,7 +1615,7 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
         if isinstance(operand, ObjectArray | MultiVector):
             name = cls.mapper_method[4:]
             warn(f"Passing {type(operand)} directly to {cls.__name__!r} "
-                 "is deprecated and will result in an error from 2025. Use "
+                 "is deprecated and will result in an error from 2027. Use "
                  f"the '{name}' function instead.",
                  DeprecationWarning, stacklevel=2)
 
@@ -1630,7 +1630,7 @@ class SingleScalarOperandExpressionWithWhere(ExpressionNode):
         if not isinstance(self.dofdesc, DOFDescriptor):
             warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
@@ -1693,7 +1693,7 @@ class Ones(ExpressionNode):
         if not isinstance(self.dofdesc, DOFDescriptor):
             warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
@@ -1751,7 +1751,7 @@ class IterativeInverse(ExpressionNode):
         if not isinstance(self.dofdesc, DOFDescriptor):
             warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
@@ -1960,7 +1960,7 @@ class IntG(ExpressionNode):
 
         if kwargs:
             warn(f"Passing named '**kwargs' to {type(self).__name__!r} is "
-                 "deprecated and will result in an error in 2025. Use the "
+                 "deprecated and will result in an error in 2027. Use the "
                  "'kernel_arguments' argument instead.",
                  DeprecationWarning, stacklevel=2)
 
@@ -1993,20 +1993,20 @@ class IntG(ExpressionNode):
         if not isinstance(self.source_kernels, tuple):
             warn(f"'source_kernels' is not tuple ({type(self.source_kernels)}). "
                  "Passing a different type is deprecated and will stop working in "
-                 "2025.", DeprecationWarning, stacklevel=2)
+                 "2027.", DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "source_kernels", tuple(self.source_kernels))
 
         if not isinstance(self.densities, tuple):
             warn(f"'densities' is not tuple ({type(self.densities)}). "
                  "Passing a different type is deprecated and will stop working in "
-                 "2025.", DeprecationWarning, stacklevel=2)
+                 "2027.", DeprecationWarning, stacklevel=2)
             object.__setattr__(self, "densities", tuple(self.densities))
 
         if not isinstance(self.source, DOFDescriptor):
             warn("Passing a 'source' descriptor that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "source", as_dofdesc(self.source))
@@ -2014,7 +2014,7 @@ class IntG(ExpressionNode):
         if not isinstance(self.target, DOFDescriptor):
             warn("Passing a 'target' descriptor that is not a 'DOFDescriptor' to "
                  f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2025. Use 'as_dofdesc' to convert the descriptor.",
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
                  DeprecationWarning, stacklevel=2)
 
             object.__setattr__(self, "target", as_dofdesc(self.target))
@@ -2024,7 +2024,7 @@ class IntG(ExpressionNode):
                  "'kernel_arguments' is not a constantdict "
                  f"({type(self.kernel_arguments)}). "
                  "Passing a different type is deprecated and will stop being "
-                 "supported in 2025.", DeprecationWarning, stacklevel=2)
+                 "supported in 2027.", DeprecationWarning, stacklevel=2)
 
             kernel_arguments = self.kernel_arguments if self.kernel_arguments else {}
             object.__setattr__(self, "kernel_arguments", constantdict(kernel_arguments))
@@ -2055,7 +2055,7 @@ class IntG(ExpressionNode):
 
     def copy(self, **kwargs: Any) -> IntG:
         warn(f"'{type(self).__name__}.copy' is deprecated and will be removed in "
-             f"2025. {type(self)} is a dataclass now and can use "
+             f"2027. {type(self)} is a dataclass now and can use "
              "'dataclasses.replace'.", DeprecationWarning, stacklevel=2)
 
         from dataclasses import replace
