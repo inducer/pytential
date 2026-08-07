@@ -408,8 +408,10 @@ __all__ = (  # ruff:ignore[unsorted-dunder-all]
 
     "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",
 
-    "NumReferenceDerivative", "NodeSum", "NodeMax", "NodeMin", "ElementwiseSum",
-    "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
+    "NumReferenceDerivative", "NodeSum", "NodeMax", "NodeMin", "node_sum",
+    "node_max", "node_min", "ElementwiseSum", "ElementwiseMax", "ElementwiseMin",
+    "elementwise_sum", "elementwise_max", "elementwise_min", "integral", "Ones",
+    "ones_vec", "area", "mean",
     "IterativeInverse",
 
     "Interpolation", "interpolate",
