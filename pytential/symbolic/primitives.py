@@ -95,6 +95,8 @@ if TYPE_CHECKING:
     from pymbolic.primitives import CommonSubexpression, Quotient
 
 
+# {{{ docs
+
 __doc__ = """
 .. |dofdesc-blurb| replace:: A
     :class:`~pytential.symbolic.dof_desc.DOFDescriptor` or a symbolic
@@ -223,6 +225,12 @@ Discretization properties
     :undoc-members:
     :members: mapper_method
 
+.. autoclass:: Ones
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
+
+.. autofunction:: ones_vec
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
 .. autofunction:: parametrization_derivative_matrix
@@ -288,19 +296,8 @@ Elementary numerics
 
 .. autofunction:: integral
 
-.. autoclass:: Ones
-    :show-inheritance:
-    :undoc-members:
-    :members: mapper_method
-
-.. autofunction:: ones_vec
 .. autofunction:: area
 .. autofunction:: mean
-
-.. autoclass:: IterativeInverse
-    :show-inheritance:
-    :undoc-members:
-    :members: mapper_method
 
 Operators
 ^^^^^^^^^
@@ -311,6 +308,11 @@ Operators
     :members: mapper_method
 
 .. autofunction:: interpolate
+
+.. autoclass:: IterativeInverse
+    :show-inheritance:
+    :undoc-members:
+    :members: mapper_method
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -368,6 +370,8 @@ Pretty-printing expressions
 
 .. autofunction:: pretty
 """
+
+# }}}
 
 __all__ = (  # ruff:ignore[unsorted-dunder-all]
     # re-export from pymbolic
@@ -508,25 +512,6 @@ def for_each_expression(
 
     return wrapper
 
-# }}}
-
-
-@expr_dataclass()
-class NamedIntermediateResult(Variable):
-    """Internal variables used by ``pytential.compiler``."""
-
-
-@expr_dataclass()
-class ErrorExpression(ExpressionNode):
-    """An expression that, if evaluated, causes an error with the supplied
-    *message*.
-
-    .. autoattribute:: message
-    """
-
-    message: str
-    """The error message to raise when this expression is encountered."""
-
 
 def make_sym_mv(name: str, num_components: int) -> MultiVector[ArithmeticExpression]:
     return MultiVector(make_sym_vector(name, num_components))
@@ -545,6 +530,31 @@ def make_sym_surface_mv(
             * cse(MultiVector(vec), f"tangent{i}", cse_scope.DISCRETIZATION)
             for i, vec in enumerate(par_grad.T))
 
+# }}}
+
+
+# {{{ internal
+
+@expr_dataclass()
+class NamedIntermediateResult(Variable):
+    """Internal variables used by ``pytential.compiler``."""
+
+
+@expr_dataclass()
+class ErrorExpression(ExpressionNode):
+    """An expression that, if evaluated, causes an error with the supplied
+    *message*.
+
+    .. autoattribute:: message
+    """
+
+    message: str
+    """The error message to raise when this expression is encountered."""
+
+# }}}
+
+
+# {{{ function
 
 @expr_dataclass()
 class Function(Variable):
@@ -617,6 +627,8 @@ arctanh = NumpyMathFunction("arctanh")
 exp = NumpyMathFunction("exp")
 log = NumpyMathFunction("log")
 
+# }}}
+
 
 # {{{ discretization properties
 
@@ -660,6 +672,30 @@ class IsShapeClass(DiscretizationProperty):
 @expr_dataclass()
 class QWeight(DiscretizationProperty):
     """Bare quadrature weights (without Jacobians)."""
+
+
+@expr_dataclass()
+class Ones(ExpressionNode):
+    """A DOF-vector that is constant *one* on the whole discretization.
+    """
+
+    dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
+    """A descriptor for the discretization where the array is defined."""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
+
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
+
+
+def ones_vec(dim: int,
+             dofdesc: DOFDescriptorLike = None) -> MultiVector[ArithmeticExpression]:
+    dofdesc = as_dofdesc(dofdesc)
+    return MultiVector(obj_array.new_1d(dim*[Ones(dofdesc)]))
 
 
 @expr_dataclass(init=False)
@@ -1013,6 +1049,10 @@ def shape_operator(
             1/(E*G-F*F)*from_numpy(result),
             "shape_operator")
 
+# }}}
+
+
+# {{{ qbx-specific geometry
 
 def _element_size(
             ambient_dim: int,
@@ -1257,10 +1297,6 @@ def _scaled_max_curvature(
         _max_curvature(ambient_dim, dim, dofdesc=dofdesc)
         * _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=dofdesc))
 
-# }}}
-
-
-# {{{ qbx-specific geometry
 
 def _expansion_radii_factor(ambient_dim: int, dim: int | None) -> float:
     if dim is None:
@@ -1515,6 +1551,44 @@ def interleave(
 
 
 @expr_dataclass()
+class IterativeInverse(ExpressionNode):
+    """A symbolic :math:`A x = b` linear solve expression.
+
+    .. autoattribute:: expression
+    .. autoattribute:: rhs
+    .. autoattribute:: variable_name
+    .. autoattribute:: extra_vars
+    .. autoattribute:: dofdesc
+    """
+
+    expression: ArithmeticExpression
+    """The operator *A* used in the linear solve."""
+    rhs: ArithmeticExpression
+    """The right-hand side variable used in the linear solve."""
+    variable_name: str
+    """The name of the variable to solve for."""
+
+    extra_vars: dict[str, Expression] = field(default_factory=dict)
+    """A dictionary of additional variables required to define the operator."""
+
+    dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
+    """A descriptor for the geometry on which the solution is defined."""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.dofdesc, DOFDescriptor):
+            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
+                 f"{type(self).__name__!r} is deprecated and will stop working "
+                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
+                 DeprecationWarning, stacklevel=2)
+
+            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
+
+# }}}
+
+
+# {{{ reductions
+
+@expr_dataclass()
 class SingleScalarOperandExpression(ExpressionNode):
     """
     .. autoattribute:: operand
@@ -1681,30 +1755,6 @@ def elementwise_max(expr: ArithmeticExpression,
     return ElementwiseMax(expr, as_dofdesc(dofdesc))
 
 
-@expr_dataclass()
-class Ones(ExpressionNode):
-    """A DOF-vector that is constant *one* on the whole discretization.
-    """
-
-    dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
-    """A descriptor for the discretization where the array is defined."""
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.dofdesc, DOFDescriptor):
-            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
-                 f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
-                 DeprecationWarning, stacklevel=2)
-
-            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
-
-
-def ones_vec(dim: int,
-             dofdesc: DOFDescriptorLike = None) -> MultiVector[ArithmeticExpression]:
-    dofdesc = as_dofdesc(dofdesc)
-    return MultiVector(obj_array.new_1d(dim*[Ones(dofdesc)]))
-
-
 def area(ambient_dim: int,
          dim: int, dofdesc:
          DOFDescriptorLike = None) -> ArithmeticExpression:
@@ -1722,40 +1772,10 @@ def mean(ambient_dim: int,
             integral(ambient_dim, dim, operand, dofdesc)
             / area(ambient_dim, dim, dofdesc))
 
+# }}}
 
-@expr_dataclass()
-class IterativeInverse(ExpressionNode):
-    """A symbolic :math:`A x = b` linear solve expression.
 
-    .. autoattribute:: expression
-    .. autoattribute:: rhs
-    .. autoattribute:: variable_name
-    .. autoattribute:: extra_vars
-    .. autoattribute:: dofdesc
-    """
-
-    expression: ArithmeticExpression
-    """The operator *A* used in the linear solve."""
-    rhs: ArithmeticExpression
-    """The right-hand side variable used in the linear solve."""
-    variable_name: str
-    """The name of the variable to solve for."""
-
-    extra_vars: dict[str, Expression] = field(default_factory=dict)
-    """A dictionary of additional variables required to define the operator."""
-
-    dofdesc: DOFDescriptor = field(default_factory=lambda: DEFAULT_DOFDESC)
-    """A descriptor for the geometry on which the solution is defined."""
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.dofdesc, DOFDescriptor):
-            warn("Passing a 'dofdesc' that is not a 'DOFDescriptor' to "
-                 f"{type(self).__name__!r} is deprecated and will stop working "
-                 "in 2027. Use 'as_dofdesc' to convert the descriptor.",
-                 DeprecationWarning, stacklevel=2)
-
-            object.__setattr__(self, "dofdesc", as_dofdesc(self.dofdesc))
-
+# {{{ derivatives
 
 class Derivative(DerivativeBase):
     """A symbolic derivative.
@@ -1843,6 +1863,8 @@ def laplace(ambient_dim: int, operand: ArithmeticExpression) -> ArithmeticExpres
         nabla
         | d(d.resolve(nabla * d(operand)))
     ).as_scalar()
+
+# }}}
 
 
 # {{{ potentials
@@ -2186,13 +2208,6 @@ def int_g_dsource(
     density = cse(density)
     return (dsource*nabla).map(add_dir_vector_to_kernel_arguments)
 
-# }}}
-
-
-# {{{ non-dimension-specific operators
-
-# {{{ geometric calculus
-
 
 class _unspecified:  # ruff:ignore[invalid-class-name]
     pass
@@ -2442,10 +2457,6 @@ def Dp(
            **kwargs)
 
     return normal_derivative(ambient_dim, Dk, dim=dim, dofdesc=target)
-
-# }}}
-
-# }}}
 
 # }}}
 
