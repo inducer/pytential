@@ -27914,14 +27914,6 @@
                 }
             },
             {
-                "code": "reportAbstractUsage",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 18,
-                    "lineCount": 4
-                }
-            },
-            {
                 "code": "reportCallIssue",
                 "range": {
                     "startColumn": 19,
@@ -28047,14 +28039,6 @@
                     "startColumn": 33,
                     "endColumn": 40,
                     "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAbstractUsage",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 18,
-                    "lineCount": 4
                 }
             },
             {
@@ -30940,9 +30924,9 @@
                 }
             },
             {
-                "code": "reportUnannotatedClassAttribute",
+                "code": "reportIncompatibleMethodOverride",
                 "range": {
-                    "startColumn": 4,
+                    "startColumn": 8,
                     "endColumn": 16,
                     "lineCount": 1
                 }
@@ -30951,6 +30935,30 @@
                 "code": "reportUnannotatedClassAttribute",
                 "range": {
                     "startColumn": 4,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 37,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 27,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnannotatedClassAttribute",
+                "range": {
+                    "startColumn": 4,
                     "endColumn": 23,
                     "lineCount": 1
                 }
@@ -30960,6 +30968,22 @@
                 "range": {
                     "startColumn": 4,
                     "endColumn": 23,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 26,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 28,
                     "lineCount": 1
                 }
             },
@@ -30989,6 +31013,14 @@
             },
             {
                 "code": "reportUnknownParameterType",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 37,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
                 "range": {
                     "startColumn": 8,
                     "endColumn": 37,
@@ -43536,6 +43568,48 @@
                 "range": {
                     "startColumn": 11,
                     "endColumn": 16,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./test/testlib.py": [
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 25,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 20,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 27,
                     "lineCount": 1
                 }
             }
