@@ -27914,6 +27914,14 @@
                 }
             },
             {
+                "code": "reportAbstractUsage",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 18,
+                    "lineCount": 4
+                }
+            },
+            {
                 "code": "reportCallIssue",
                 "range": {
                     "startColumn": 19,
@@ -28039,6 +28047,14 @@
                     "startColumn": 33,
                     "endColumn": 40,
                     "lineCount": 1
+                }
+            },
+            {
+                "code": "reportAbstractUsage",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 18,
+                    "lineCount": 4
                 }
             },
             {
