@@ -638,7 +638,7 @@ def _prepare_expr(places: GeometryCollection,
 
     # FIXME: There's some mismatch between OperandTc and a conditional union
     # type that I was too impatient to figure out in detail.
-    expr = componentwise(flatten, expr)  # pyright: ignore[reportAssignmentType]
+    expr = flatten(expr)
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
     expr = componentwise(  # pyright: ignore[reportAssignmentType]
             ToTargetTagger(

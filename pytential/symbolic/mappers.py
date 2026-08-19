@@ -380,8 +380,17 @@ class FlattenMapper(FlattenMapperBase, IdentityMapper):
     pass
 
 
-def flatten(expr: ArithmeticExpression):
-    return FlattenMapper().rec_arith(expr)
+def flatten(expr: pp.OperandTc) -> pp.OperandTc:
+    from pymbolic.geometric_algebra import MultiVector, componentwise
+    from pytools.obj_array import ObjectArray
+
+    def func(expr_i: ArithmeticExpression) -> ArithmeticExpression:
+        return FlattenMapper().rec_arith(expr_i)
+
+    if isinstance(expr, (ObjectArray, MultiVector)):
+        return componentwise(func, expr)
+    else:
+        return cast("pp.OperandTc", func(expr))
 
 # }}}
 
