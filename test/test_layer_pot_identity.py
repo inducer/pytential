@@ -148,9 +148,8 @@ class StaticTestCase:
 
 @dataclass
 class StarfishGreenTest(StaticTestCase):
-    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
-    geometry: ied.IntegralEquationTestCase = field(
-        default_factory=lambda: ied.StarfishTestCase())
+    expr: IdentityExpr = field(default_factory=GreenExpr)
+    geometry: ied.IntegralEquationTestCase = field(default_factory=ied.StarfishTestCase)
 
     k: float = 0
     qbx_order: int = 5
@@ -165,9 +164,9 @@ class StarfishGreenTest(StaticTestCase):
 
 @dataclass
 class WobblyCircleGreenTest(StaticTestCase):
-    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
+    expr: IdentityExpr = field(default_factory=GreenExpr)
     geometry: ied.IntegralEquationTestCase = field(
-        default_factory=lambda: ied.WobbleCircleTestCase())
+        default_factory=ied.WobbleCircleTestCase)
 
     k: float = 0
     qbx_order: int = 3
@@ -180,9 +179,8 @@ class WobblyCircleGreenTest(StaticTestCase):
 
 @dataclass
 class SphereGreenTest(StaticTestCase):
-    expr: IdentityExpr = field(default_factory=lambda: GreenExpr())
-    geometry: ied.IntegralEquationTestCase = field(
-        default_factory=lambda: ied.SphereTestCase())
+    expr: IdentityExpr = field(default_factory=GreenExpr)
+    geometry: ied.IntegralEquationTestCase = field(default_factory=ied.SphereTestCase)
 
     k: float = 0
     qbx_order: int = 3

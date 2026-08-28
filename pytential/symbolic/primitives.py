@@ -2048,7 +2048,7 @@ class IntG(ExpressionNode):
                  "Passing a different type is deprecated and will stop being "
                  "supported in 2027.", DeprecationWarning, stacklevel=2)
 
-            kernel_arguments = self.kernel_arguments if self.kernel_arguments else {}
+            kernel_arguments = self.kernel_arguments or {}
             object.__setattr__(self, "kernel_arguments", constantdict(kernel_arguments))
 
         from pytools import single_valued
@@ -2058,8 +2058,10 @@ class IntG(ExpressionNode):
 
         kernel_arg_names: set[str] = set()
         for kernel in kernels:
-            for karg in (*kernel.get_args(), *kernel.get_source_args()):
-                kernel_arg_names.add(karg.loopy_arg.name)
+            kernel_arg_names.update(
+                karg.loopy_arg.name
+                for karg in (*kernel.get_args(), *kernel.get_source_args())
+            )
 
         provided_arg_names = set(self.kernel_arguments.keys())
         if missing_args := (kernel_arg_names - provided_arg_names):

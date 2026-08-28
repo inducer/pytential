@@ -308,7 +308,7 @@ def test_interpolation(
     if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
         assert error < 1.0e-10
-    elif name in ("stage2_center",):
+    elif name == "stage2_center":
         assert len(sigma_target_interp) == 2 * len(sigma_target)
     else:
         raise ValueError(f"unknown test case name: {name}")
