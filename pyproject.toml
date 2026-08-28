@@ -90,15 +90,16 @@ extend-select = [
     "W",    # pycodestyle
 ]
 extend-ignore = [
-    "C90",      # McCabe complexity
+    "complex-structure",
+    "f-string",
+    "invalid-argument-name",
+    "invalid-function-name",
     "missing-whitespace-around-arithmetic-operator",
     "module-import-not-at-top-of-file",
-    "invalid-function-name",
-    "invalid-argument-name",
-    "non-lowercase-variable-in-function",
     "non-empty-init-module",
+    "non-lowercase-variable-in-function",
     "printf-string-formatting",
-    "f-string",
+    "pytest-parameter-with-default-argument",
 ]
 exclude = [
     "experiments/*.py",
