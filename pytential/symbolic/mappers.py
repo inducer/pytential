@@ -580,7 +580,9 @@ class DiscretizationStageTagger(IdentityMapper):
         :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage`.
     """
 
-    def __init__(self, discr_stage):
+    discr_stage: DiscretizationStage
+
+    def __init__(self, discr_stage: DiscretizationStage):
         if discr_stage not in {
                 pp.QBX_SOURCE_STAGE1,
                 pp.QBX_SOURCE_STAGE2,
@@ -590,7 +592,8 @@ class DiscretizationStageTagger(IdentityMapper):
 
         self.discr_stage = discr_stage
 
-    def map_node_coordinate_component(self, expr):
+    @override
+    def map_node_coordinate_component(self, expr: pp.NodeCoordinateComponent):
         dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
@@ -599,7 +602,8 @@ class DiscretizationStageTagger(IdentityMapper):
                 expr.ambient_axis,
                 dofdesc.copy(discr_stage=self.discr_stage))
 
-    def map_num_reference_derivative(self, expr):
+    @override
+    def map_num_reference_derivative(self, expr: pp.NumReferenceDerivative):
         dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
@@ -749,6 +753,55 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 # {{{ InterpolationPreprocessor
 
+@dataclass
+class EarlyInterpolationAdder(
+            # This is deliberately inheriting from the pymbolic mapper,
+            # based on the assumption that all the pymbolic-defined operations
+            # will apply elementwise. Pytential nodes will end up in
+            # handle_unsupported_expression below.
+            IdentityMapperBase[[]],
+            CSECachingMapperMixin[Expression, []]):
+    """Used from within :class:`InterpolationPreprocessor`. Rather than
+    interpolate the result of a computation, push interpolation as far
+    'upstream' as possible, to minimize aliasing error.
+    """
+    from_dd: DOFDescriptor
+    to_dd: DOFDescriptor
+
+    @override
+    def map_variable(self, expr: p.Variable):
+        return pp.interpolate(expr, self.from_dd, self.to_dd)
+
+    @override
+    def map_call(self,
+                expr: p.Call,
+            ) -> Expression:
+        parameters = tuple(self.rec(child) for child in expr.parameters)
+        if all(child is orig_child for child, orig_child in
+                        zip(expr.parameters, parameters, strict=True)):
+            return expr
+
+        return type(expr)(expr.function, parameters)
+
+    @override
+    def handle_unsupported_expression(self, expr: p.ExpressionNode) -> Expression:
+        return pp.interpolate(expr, self.from_dd, self.to_dd)
+
+    @override
+    def map_common_subexpression_uncached(self,
+                expr: p.CommonSubexpression, /,
+            ) -> Expression:
+        result = self.rec(expr.child)
+        if result is expr.child:
+            return expr
+
+        return type(expr)(
+                result,
+                expr.prefix,
+                expr.scope,
+                **expr.get_extra_properties())
+
+
 class InterpolationPreprocessor(IdentityMapper):
     """Handle expressions that require upsampling or downsampling by inserting
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
@@ -810,16 +863,18 @@ class InterpolationPreprocessor(IdentityMapper):
 
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
+        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
         densities = tuple(
-            pp.interpolate(self.rec_arith(density), from_dd, to_dd)
+            interp_adder.rec_arith(self.rec_arith(density))
             for density in expr.densities)
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
+        interp_adder = EarlyInterpolationAdder(from_dd, to_dd)
         kernel_arguments = constantdict({
                 name: componentwise(
-                    lambda aexpr: pp.interpolate(
+                    lambda aexpr: interp_adder.rec_arith(
                         self.rec_arith(
-                            self.tagger.rec_arith(aexpr)), from_dd, to_dd),
+                            self.tagger.rec_arith(aexpr))),
                     arg_expr)
                 for name, arg_expr in expr.kernel_arguments.items()})
 
@@ -898,7 +953,7 @@ def stringify_where(where: DOFDescriptorLike):
     return str(pp.as_dofdesc(where))
 
 
-class StringifyMapper(BaseStringifyMapper):
+class StringifyMapper(BaseStringifyMapper[[]]):
 
     def map_ones(self, expr: pp.Ones, enclosing_prec: int):
         return "Ones[%s]" % stringify_where(expr.dofdesc)
@@ -1034,9 +1089,6 @@ class PrettyStringifyMapper(
 # {{{ graphviz
 
 class GraphvizMapper(GraphvizMapperBase):
-    def __init__(self):
-        super().__init__()
-
     def map_pytential_leaf(self, expr):
         self.lines.append(
                 '{} [label="{}", shape=box];'.format(
@@ -1048,7 +1100,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     map_ones = map_pytential_leaf
 
-    def map_map_node_sum(self, expr):
+    def map_map_node_sum(self, expr: pp.NodeSum):
         self.lines.append(
                 '{} [label="{}",shape=circle];'.format(
                     self.get_id(expr), type(expr).__name__))
@@ -1064,7 +1116,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     map_q_weight = map_pytential_leaf
 
-    def map_int_g(self, expr):
+    def map_int_g(self, expr: pp.IntG):
         descr = "Int[%s->%s]@(%d) (%s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
