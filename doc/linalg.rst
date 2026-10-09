@@ -32,6 +32,7 @@ Low-level Functionality
     All the classes and routines in this module are experimental and the
     API can change at any point.
 
+.. automodule:: pytential.linalg.cluster
 .. automodule:: pytential.linalg.proxy
 .. automodule:: pytential.linalg.skeletonization
 
