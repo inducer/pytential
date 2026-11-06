@@ -62,3 +62,5 @@ How a symbolic operator gets executed
 .. automodule:: pytential.symbolic.execution
 
 .. automodule:: pytential.symbolic.compiler
+
+.. automodule:: pytential.symbolic.reduce_fmm
