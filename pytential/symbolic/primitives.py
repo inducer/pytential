@@ -67,7 +67,7 @@ from pytools.obj_array import (
     ShapeT,
     from_numpy,
 )
-from sumpy.kernel import ScalarKernel
+from sumpy.kernel import ScalarKernel, SystemKernel
 from sumpy.symbolic import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
@@ -2115,6 +2115,197 @@ class IntG(ExpressionNode):
             ))
 
 
+@expr_dataclass()
+class ScalarKernelWrapper(ExpressionNode):
+    kernel: ScalarKernel
+    kernel_arguments: KernelArgumentMapping
+
+    @property
+    def ambient_dim(self) -> int:
+        return self.kernel.dim
+
+    def grad(self) -> SystemKernelWrapper:
+        from sumpy.kernel import AxisSourceDerivative
+
+        result = np.empty((self.ambient_dim,), dtype=object)
+        for i in range(self.kernel.dim):
+            result[i] = ScalarKernelWrapper(
+                AxisSourceDerivative(i, self.kernel),
+                self.kernel_arguments
+            )
+
+        return SystemKernelWrapper(result)
+
+
+@expr_dataclass()
+class SystemKernelWrapper(ExpressionNode):
+    kernel: SystemKernel | None
+    components: obj_array.ObjectArrayND[ScalarKernelWrapper]
+
+    def __init__(
+            self,
+            kernel: SystemKernel | obj_array.ObjectArrayND[ScalarKernelWrapper],
+            kernel_arguments: KernelArgumentMapping | None = None,
+        ) -> None:
+        from pytools import ndindex
+
+        if kernel_arguments is None:
+            kernel_arguments = constantdict({})
+
+        if isinstance(kernel, SystemKernel):
+            knl = kernel
+            components = np.empty(kernel.shape, dtype=object)
+            for i in ndindex(kernel.shape):
+                components[i] = ScalarKernelWrapper(kernel[i], kernel_arguments)
+        else:
+            components = kernel
+            knl = None
+
+        if not components.size:
+            raise ValueError(f"system kernel cannot be empty: {components.shape}")
+
+        object.__setattr__(self, "kernel", knl)
+        object.__setattr__(self, "components", components)
+
+    @property
+    def ambient_dim(self) -> int:
+        return self.components.item(0).ambient_dim
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.components.shape
+
+    @property
+    def size(self) -> int:
+        return self.components.size
+
+    @property
+    def ndim(self) -> int:
+        return self.components.ndim
+
+    # NOTE: this is required so np.einsum works with the object as is. Otherwise,
+    # it would convert it to an object array with shape `(1,)`.
+    def __array__(
+            self, dtype: Any = None, copy: bool | None = None
+    ) -> obj_array.ObjectArrayND[ScalarKernelWrapper]:
+        if not (dtype is None or np.dtype(dtype).char == "O"):
+            raise ValueError(f"non-object dtypes are not supported: {dtype}")
+
+        if copy:
+            return np.copy(self.components)
+        else:
+            return self.components
+
+    def __getitem__(self, idx: tuple[int, ...]) -> ScalarKernelWrapper:
+        return self.components[idx]
+
+    def grad(self) -> SystemKernelWrapper:
+        from pytools import ndindex
+        from sumpy.kernel import AxisSourceDerivative
+
+        result = np.empty((self.ambient_dim, *self.shape), dtype=object)
+        for i in ndindex(self.shape):
+            kernel = self.components[i:].kernel
+            kernel_arguments = self.components[1:].kernel_arguments
+
+            result[i] = ScalarKernelWrapper(
+                AxisSourceDerivative(i[0], kernel),
+                kernel_arguments
+            )
+
+        return SystemKernelWrapper(result)
+
+
+@overload
+def as_expr_kernel(
+        kernel: ScalarKernel,
+        kernel_arguments: KernelArgumentLike | None = None,
+    ) -> ScalarKernelWrapper: ...
+
+
+@overload
+def as_expr_kernel(
+        kernel: SystemKernel,
+        kernel_arguments: KernelArgumentLike | None = None,
+    ) -> SystemKernelWrapper: ...
+
+
+def as_expr_kernel(
+        kernel: ScalarKernel | SystemKernel,
+        kernel_arguments: KernelArgumentLike | None = None,
+    ) -> ScalarKernelWrapper | SystemKernelWrapper:
+    if kernel_arguments is None:
+        kernel_arguments = constantdict({})
+    else:
+        kernel_arguments = constantdict(kernel_arguments)
+
+    if isinstance(kernel, ScalarKernel):
+        return ScalarKernelWrapper(kernel, kernel_arguments)
+    elif isinstance(kernel, SystemKernel):
+        return SystemKernelWrapper(kernel, kernel_arguments)
+    else:
+        raise TypeError(f"unsupported kernel type: {type(kernel)}")
+
+
+def make_int_g(
+        expr: OperandTc,
+        *,
+        # FIXME: this should be per-kernel probably, so that we can have
+        #   L = S + D + 1/2
+        # in one go. Not clear if that's a good idea though..
+        qbx_forced_limit: QBXForcedLimit | None = None,
+        source: DOFDescriptorLike = None,
+        target: DOFDescriptorLike = None,
+    ) -> OperandTc:
+    from sumpy.kernel import SourceTransformationRemover, TargetTransformationRemover
+
+    sxr = SourceTransformationRemover()
+    txr = TargetTransformationRemover()
+
+    source = as_dofdesc(source)
+    target = as_dofdesc(target)
+
+    import pymbolic.primitives as prim
+
+    from pytential.symbolic.mappers import IdentityMapper
+
+    class IntGExpander(IdentityMapper):
+        def map_scalar_kernel_wrapper(
+                self, expr: ScalarKernelWrapper) -> ArithmeticExpression:
+            # NOTE: `map_product` should catch all of these. expressions outside
+            # of a product of the form `K * sigma` are not allowed
+            raise NotImplementedError
+
+        def map_product(self, expr: prim.Product) -> ArithmeticExpression:
+            kernel = None
+            density: ArithmeticExpression = 1
+            for child in expr.children:
+                if isinstance(child, ScalarKernelWrapper):
+                    if kernel is not None:
+                        raise ValueError(f"cannot nest kernels: {expr}")
+
+                    kernel = child
+                else:
+                    density *= self.rec(child)
+
+            if kernel is None:
+                return density
+
+            target_kernel = sxr(kernel.kernel)
+            source_kernels = (txr(kernel.kernel),)
+            return IntG(
+                target_kernel=target_kernel,
+                source_kernels=source_kernels,
+                densities=(density,),
+                qbx_forced_limit=qbx_forced_limit,
+                source=source,
+                target=target,
+                kernel_arguments=kernel.kernel_arguments,
+            )
+
+    return IntGExpander()(expr)
+
+
 _DIR_VEC_NAME = "dsource_vec"
 
 
@@ -2285,9 +2476,21 @@ def S(
              "Choosing default to '+1'.", stacklevel=2)
         qbx_forced_limit = +1
 
-    return int_g_vec(
-            kernel, density, qbx_forced_limit, source, target,
-            kernel_arguments, **kwargs)
+    if kernel_arguments is None:
+        kernel_arguments = {}
+    else:
+        kernel_arguments = dict(kernel_arguments)
+
+    if kwargs:
+        kernel_arguments = {**kernel_arguments, **kwargs}
+    kernel_arguments = constantdict(kernel_arguments)
+
+    return make_int_g(
+        as_expr_kernel(kernel, kernel_arguments) * density,
+        qbx_forced_limit=qbx_forced_limit,
+        source=source,
+        target=target,
+    )
 
 
 def tangential_derivative(

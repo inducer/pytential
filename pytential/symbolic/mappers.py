@@ -185,6 +185,21 @@ class IdentityMapper(IdentityMapperBase[[]]):
 
         return replace(expr, densities=densities, kernel_arguments=kernel_arguments)
 
+    def map_scalar_kernel_wrapper(
+            self, expr: pp.ScalarKernelWrapper) -> ArithmeticExpression:
+        kernel_arguments = constantdict({
+            name: componentwise(self.rec_arith, arg)
+            for name, arg in expr.kernel_arguments.items()
+        })
+        if all(arg is orig for arg, orig in zip(
+            kernel_arguments.values(),
+            expr.kernel_arguments.values(),
+            strict=True,
+        )):
+            return expr
+
+        replace(expr, kernel=expr.kernel, kernel_arguments=kernel_arguments)
+
     def map_interpolation(self, expr: pp.Interpolation):
         operand = self.rec_arith(expr.operand)
         if operand is expr.operand:
@@ -996,6 +1011,10 @@ class StringifyMapper(BaseStringifyMapper):
                 self._stringify_kernel_args(
                     expr.kernel_arguments),
                 kernel_str)
+
+    def map_scalar_kernel_wrapper(
+            self, expr: pp.ScalarKernelWrapper, enclosing_prec: int):
+        return f"{expr.kernel}"
 
     def map_interpolation(self, expr: pp.Interpolation, enclosing_prec: int):
         return "Interp[{}->{}]({})".format(

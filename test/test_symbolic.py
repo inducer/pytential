@@ -603,6 +603,97 @@ def test_derivative_with_spatial_constant():
 # }}}
 
 
+# {{{ test_system_kernel_int_g
+
+@pytest.mark.parametrize("lpot_name", [
+    "scalar_s",
+    "scalar_sp",
+    "scalar_spp",
+    "scalar_d",
+    "scalar_dp",
+    "stokeslet",
+    "stresslet",
+    "stresslet_from_stokeslet",
+])
+@pytest.mark.parametrize("dim", [2, 3])
+def test_system_kernel_int_g(lpot_name: str, dim: int) -> None:
+    from sumpy.kernel import LaplaceKernel, StokesletSystemKernel, StressletSystemKernel
+
+    normal = sym.make_sym_vector("n", dim)
+    q = sym.make_sym_vector("q", dim)
+    sigma = sym.var("sigma")
+
+    mu = sym.var("mu")
+
+    # TODO:
+    # 1. How to do nested kernels? we need a sym.integrate involved in here?
+    #   - `sym.integrate(kernel1 * sym.integrate(kernel * density))`
+    # 2. What do with target vs soruce derivatives?
+    #   - Add a flag to .grad()? .source_grad and .target_grad?
+    # 3. How to handle dots inside vs outside of the integrals?
+    #   - sym.integrate((kernel.grad() @ normal) * density)
+    #   - sym.integrate(kernel.grad() * density) @ normal?
+    #   - we also have tagging, which should tell the expression where it lives.
+
+    if lpot_name == "scalar_s":
+        knl = sym.as_expr_kernel(LaplaceKernel(dim))
+        expr = knl * sigma
+    elif lpot_name == "scalar_sp":
+        # FIXME: wrong: grad is not a target derivative
+        knl = sym.as_expr_kernel(LaplaceKernel(dim))
+        expr = np.einsum("i,i->", knl.grad(), normal) * sigma
+    elif lpot_name == "scalar_spp":
+        # FIXME: wrong: grad is not a target derivative
+        knl = sym.as_expr_kernel(LaplaceKernel(dim))
+        expr = np.einsum("ij,i,j->", knl.grad().grad(), normal, normal) * sigma
+    elif lpot_name == "scalar_d":
+        # NOTE: right: grad is a source derivative so this should work?
+        knl = sym.as_expr_kernel(LaplaceKernel(dim))
+        expr = np.einsum("i,i->", knl.grad(), normal) * sigma
+    elif lpot_name == "scalar_dp":
+        # FIXME: wrong: grad is a source derivative
+        knl = sym.as_expr_kernel(LaplaceKernel(dim))
+        expr = np.einsum("ij,i,j->", knl.grad().grad(), normal, normal) * sigma
+    elif lpot_name == "stokeslet":
+        knl = sym.as_expr_kernel(StokesletSystemKernel(dim),
+                                 kernel_arguments={"mu": mu})
+        expr = np.einsum("ij,j->i", knl, q)
+    elif lpot_name == "stresslet":
+        knl = sym.as_expr_kernel(StressletSystemKernel(dim),
+                                 kernel_arguments={"mu": mu})
+        expr = np.einsum("ijk,j,k->i", knl, q, normal)
+    elif lpot_name == "stresslet_from_stokeslet":
+        # FIXME: wrong: no way to do arithmetic on these kernel things? maybe
+        # it works with more einsums in there, should be (I think? see Pozrikidis)
+        #   S_{ijk} = -d K / d_j \delta_ik
+        #             + \mu (d G_{ij} / d_k + d G_{kj} / d_i)
+        u = sym.as_expr_kernel(StokesletSystemKernel(dim), kernel_arguments={"mu": mu})
+        p = sym.as_expr_kernel(LaplaceKernel(dim))
+
+        knl = -p.grad() + mu * (u.grad() + u.grad().T)
+        expr = np.einsum("ijk,i,k->j", knl, q, normal)
+    else:
+        raise ValueError(f"unknown 'lpot_name': {lpot_name!r}")
+
+    from pytential.symbolic.mappers import flatten
+
+    expr = flatten(expr)
+    int_g_expr = flatten(sym.make_int_g(expr, qbx_forced_limit="avg"))
+
+    print("Result:")
+    if isinstance(expr, np.ndarray):
+        for expr_i in expr:
+            print("    " + sym.pretty(expr_i))
+
+        for expr_i in int_g_expr:
+            print("    " + sym.pretty(expr_i))
+    else:
+        print("    " + sym.pretty(expr))
+        print("    " + sym.pretty(int_g_expr))
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_symbolic.py 'test_routine()'
 
