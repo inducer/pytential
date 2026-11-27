@@ -462,44 +462,45 @@ class CoefficientCollector(Mapper[PolyCoeffMapping, []]):
 
     @override
     def map_sum(self, expr: prim.Sum, /) -> PolyCoeffMapping:
-        stride_dicts = [self.rec(ch) for ch in expr.children]
-
         result: PolyCoeffMapping = {}
-        for stride_dict in stride_dicts:
-            for var, stride in stride_dict.items():
+        for child in expr.children:
+            ch = self.rec(child)
+            for var, stride in ch.items():
                 result[var] = result.get(var, 0) + stride
 
         return result
 
     @override
     def map_product(self, expr: prim.Product, /) -> PolyCoeffMapping:
-        if len(expr.children) == 1:
-            return self.rec(expr.children[0])
+        children: list[PolyCoeffMapping] = []
+        for child in expr.children:
+            child_rec = self.rec(child)
+            if not child_rec:
+                return {}
 
-        if len(expr.children) == 0:
-            return {1: 1}
+            children.append(child_rec)
 
-        if len(expr.children) > 2:
-            # rewrite products of more than two children as a nested
-            # product and recurse to make it easier to handle.
-            left = expr.children[0]
-            right = prim.Product(tuple(expr.children[1:]))
-            new_prod = prim.Product((left, right))
-            return self.rec(new_prod)
+        from itertools import product
 
-        left, right = expr.children
-        d_left = self.rec(left)
-        d_right = self.rec(right)
+        result: PolyCoeffMapping = {}
+        for coeffs in product(*(c.items() for c in children)):
+            # gather terms
+            factors: list[ArithmeticExpression] = []
+            coeff = 1
+            for var_i, coeff_i in coeffs:
+                if var_i != 1:
+                    factors.append(var_i)
 
-        from pytential.symbolic.mappers import flatten
+                coeff = coeff * coeff_i
 
-        d: PolyCoeffMapping = {}
-        for var_left, coeff_left in d_left.items():
-            for var_right, coeff_right in d_right.items():
-                key = flatten(var_left * var_right)
-                d[key] = d.get(key, 0) + coeff_left * coeff_right
+            # normalize the key so that `a * b <=> b * a`
+            key = prim.flattened_product(factors)
+            if isinstance(key, prim.Product):
+                key = prim.Product(tuple(sorted(key.children, key=str)))
 
-        return d
+            result[key] = result.get(key, 0) + coeff
+
+        return result
 
     def map_node_coordinate_component(
             self, expr: NodeCoordinateComponent
