@@ -17504,14 +17504,6 @@
                 }
             },
             {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 21,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportImplicitOverride",
                 "range": {
                     "startColumn": 8,
@@ -17700,14 +17692,6 @@
                 "range": {
                     "startColumn": 8,
                     "endColumn": 20,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 21,
                     "lineCount": 1
                 }
             },
@@ -39318,14 +39302,6 @@
                 "range": {
                     "startColumn": 31,
                     "endColumn": 60,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAssignmentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 19,
                     "lineCount": 1
                 }
             },

@@ -543,6 +543,11 @@ def test_coefficient_collector() -> None:
     terms = collect(a * b + a * c + b * c, [a, b, c])
     assert terms == {a * b: 1, a * c: 1, b * c: 1}
 
+    # product factor ordering is canonicalized
+    assert collect(b * a, [a, b]) == {a * b: 1}
+    assert collect(c * (a * b), [a, b, c]) == {prim.Product((a, b, c)): 1}
+    assert collect(a * b + b * a, [a, b]) == {a * b: 2}
+
     # powers
     assert collect(a**3, [a]) == {a**3: 1}
     assert collect(a**n, [a]) == {a**n: 1}
@@ -626,8 +631,8 @@ def test_coefficient_collector_elasticity_densities() -> None:
     # stresslet-style: w / 6 * (sigma[k] * normal[j] + sigma[j] * normal[k])
     expr = w / 6 * (q[0] * normal[1] + q[1] * normal[0])
     assert collect(expr, basis) == {
-        q[0] * normal[1]: w / 6,
-        q[1] * normal[0]: w / 6,
+        normal[1] * q[0]: w / 6,
+        normal[0] * q[1]: w / 6,
     }
 
     # Tornberg-style: products of normal, density and source coordinates
@@ -643,12 +648,12 @@ def test_coefficient_collector_elasticity_densities() -> None:
     # common-density products: (sum_k source[k] * sigma[k]) * normal[j]
     expr = (source[0] * q[0] + source[1] * q[1]) * normal[0]
     assert collect(expr, basis) == {
-        prim.Product((source[0], q[0], normal[0])): 1,
-        prim.Product((source[1], q[1], normal[0])): 1,
+        prim.Product((normal[0], q[0], source[0])): 1,
+        prim.Product((normal[0], q[1], source[1])): 1,
     }
 
     # stokeslet-style: w * source[k] * sigma[k]
-    assert collect(w * source[0] * q[0], basis) == {source[0] * q[0]: w}
+    assert collect(w * source[0] * q[0], basis) == {q[0] * source[0]: w}
 
     # CSE densities (e.g. `sym.normal` components or Hsiao-Kress' meanless
     # sigma) are treated as a single source-dependent expression
